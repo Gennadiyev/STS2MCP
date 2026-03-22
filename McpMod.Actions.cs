@@ -594,6 +594,23 @@ public static partial class McpMod
             };
         }
 
+        // Fallback: find ANY enabled NConfirmButton in the screen tree.
+        // Covers NCardGridSelectionScreen subclasses (like NDeckEnchantSelectScreen)
+        // whose confirm button isn't in any of the known container paths above.
+        var allConfirmButtons = FindAll<NConfirmButton>(screen);
+        foreach (var btn in allConfirmButtons)
+        {
+            if (btn.IsEnabled && btn.Visible)
+            {
+                btn.ForceClick();
+                return new Dictionary<string, object?>
+                {
+                    ["status"] = "ok",
+                    ["message"] = "Confirming selection"
+                };
+            }
+        }
+
         return Error("No confirm button is currently enabled — select more cards first");
     }
 

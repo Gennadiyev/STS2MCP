@@ -992,6 +992,12 @@ public static partial class McpMod
                               ?? screen.GetNodeOrNull<NConfirmButton>("%Confirm");
             if (mainConfirm?.IsEnabled == true) canConfirm = true;
         }
+        // Fallback: search entire screen tree for any enabled confirm button
+        // (covers subclasses like NDeckEnchantSelectScreen)
+        if (!canConfirm)
+        {
+            canConfirm = FindAll<NConfirmButton>(screen).Any(b => b.IsEnabled && b.Visible);
+        }
         state["can_confirm"] = canConfirm;
 
         return state;
