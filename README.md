@@ -45,7 +45,31 @@ Full tool reference: [mcp/README.md](./mcp/README.md) | Raw HTTP API: [docs/raw_
 
 ### Build & Install
 
-Build the DLL and copy it along with the manifest JSON to `<game_install>/mods/`. Requires [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0).
+Requires [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0).
+
+**PowerShell** (recommended):
+
+```powershell
+# Pass game path directly:
+.\build.ps1 -GameDir "D:\SteamLibrary\steamapps\common\Slay the Spire 2"
+
+# Or set it once and forget:
+$env:STS2_GAME_DIR = "D:\SteamLibrary\steamapps\common\Slay the Spire 2"
+.\build.ps1
+```
+
+**Bash** (from repo root):
+
+```bash
+./build.sh
+```
+
+Both scripts build `STS2_MCP.dll` into `out/STS2_MCP/`. Copy it along with the manifest JSON to `<game_install>/mods/` to install:
+
+```
+out/STS2_MCP/STS2_MCP.dll           ->  <game_install>/mods/STS2_MCP.dll
+STS2_MCP/mod_manifest.json          ->  <game_install>/mods/STS2_MCP.json
+```
 
 ### Features
 
