@@ -3,7 +3,7 @@
   "name": "STS2 MCP",
   "author": "kunology",
   "description": "MCP server bridge for Slay the Spire 2",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "has_pck": false,
   "has_dll": true,
   "affects_gameplay": false

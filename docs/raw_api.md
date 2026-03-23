@@ -37,9 +37,9 @@ Returns the current game state. The `state_type` field indicates the screen:
 ### State details
 
 **Battle state includes:**
-- Player: HP, block, energy, stars (Regent), gold, character, powers, relics, potions, hand (with card details including star costs), pile counts, orbs
-- Enemies: entity_id, name, HP, block, powers, intents with labels
-- Keywords on all entities (cards, relics, potions, powers)
+- Player: HP, block, energy, stars (Regent), gold, character, status, relics, potions, hand (with card details including star costs), pile counts, pile contents, orbs
+- Enemies: entity_id, name, HP, block, status, intents with title/label/description
+- Keywords on all entities (cards, relics, potions, status)
 
 **Hand select state includes:**
 - Mode: `simple_select` (exhaust/discard) or `upgrade_select` (in-combat upgrade)
@@ -279,7 +279,7 @@ Returns the multiplayer game state. Shares the same `state_type` values as singl
 
 **Battle state additions:**
 - `all_players_ready`: whether all players have submitted end turn
-- `players[]`: full state for the local player, summary (HP, block, energy, powers, relics, potions) for others
+- `players[]`: full state for the local player, summary (HP, block, energy, status, relics, potions) for others
 - Each player entry includes `is_local`, `is_alive`, and `is_ready_to_end_turn`
 
 **Map state additions:**
