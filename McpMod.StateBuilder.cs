@@ -285,6 +285,11 @@ public static partial class McpMod
             state["discard_pile_count"] = combatState.DiscardPile.Cards.Count;
             state["exhaust_pile_count"] = combatState.ExhaustPile.Cards.Count;
 
+            // Pile contents
+            state["draw_pile"] = BuildPileCardList(combatState.DrawPile.Cards, PileType.Draw);
+            state["discard_pile"] = BuildPileCardList(combatState.DiscardPile.Cards, PileType.Discard);
+            state["exhaust_pile"] = BuildPileCardList(combatState.ExhaustPile.Cards, PileType.Exhaust);
+
             // Orbs
             if (combatState.OrbQueue.Capacity > 0)
             {
@@ -320,7 +325,7 @@ public static partial class McpMod
         state["gold"] = player.Gold;
 
         // Powers (status effects)
-        state["powers"] = BuildPowersState(creature);
+        state["status"] = BuildPowersState(creature);
 
         // Relics
         var relics = new List<Dictionary<string, object?>>();
@@ -399,6 +404,20 @@ public static partial class McpMod
         };
     }
 
+    private static List<Dictionary<string, object?>> BuildPileCardList(IEnumerable<CardModel> cards, PileType pile)
+    {
+        var list = new List<Dictionary<string, object?>>();
+        foreach (var card in cards)
+        {
+            list.Add(new Dictionary<string, object?>
+            {
+                ["name"] = SafeGetText(() => card.Title),
+                ["description"] = SafeGetCardDescription(card, pile)
+            });
+        }
+        return list;
+    }
+
     private static Dictionary<string, object?> BuildEnemyState(Creature creature, Dictionary<string, int> entityCounts)
     {
         var monster = creature.Monster;
@@ -418,7 +437,7 @@ public static partial class McpMod
             ["hp"] = creature.CurrentHp,
             ["max_hp"] = creature.MaxHp,
             ["block"] = creature.Block,
-            ["powers"] = BuildPowersState(creature)
+            ["status"] = BuildPowersState(creature)
         };
 
         // Intents
@@ -438,6 +457,12 @@ public static partial class McpMod
                     {
                         string label = intent.GetIntentLabel(targets, creature).GetFormattedText();
                         intentData["label"] = StripRichTextTags(label);
+
+                        var hoverTip = intent.GetHoverTip(targets, creature);
+                        if (hoverTip.Title != null)
+                            intentData["title"] = StripRichTextTags(hoverTip.Title);
+                        if (hoverTip.Description != null)
+                            intentData["description"] = StripRichTextTags(hoverTip.Description);
                     }
                 }
                 catch { /* intent label may fail for some types */ }
