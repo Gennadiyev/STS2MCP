@@ -419,7 +419,7 @@ public static partial class McpMod
         }
 
         state["gold"] = player.Gold;
-        state["powers"] = BuildPowersState(creature);
+        state["status"] = BuildPowersState(creature);
 
         var relics = new List<Dictionary<string, object?>>();
         foreach (var relic in player.Relics)
