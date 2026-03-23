@@ -63,7 +63,7 @@ Install the .NET 9 SDK from:
 # --- Build ---
 $scriptDir = $PSScriptRoot
 $project = Join-Path $scriptDir "STS2_MCP.csproj"
-$outDir = Join-Path $scriptDir ".." "out" "STS2_MCP"
+$outDir = Join-Path $scriptDir "out" "STS2_MCP"
 
 Write-Host "=== Building STS2_MCP ($Configuration) ===" -ForegroundColor Cyan
 Write-Host "Game directory : $GameDir"
