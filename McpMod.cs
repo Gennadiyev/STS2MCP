@@ -41,6 +41,7 @@ public static partial class McpMod
 
             _listener = new HttpListener();
             _listener.Prefixes.Add("http://localhost:15526/");
+            _listener.Prefixes.Add("http://127.0.0.1:15526/");
             _listener.Start();
 
             _serverThread = new Thread(ServerLoop)
