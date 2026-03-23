@@ -14,8 +14,8 @@ public static partial class McpMod
 {
     private static string? SafeGetCardDescription(CardModel card, PileType pile = PileType.Hand)
     {
-        try { return StripRichTextTags(card.GetDescriptionForPile(pile)); }
-        catch { return SafeGetText(() => card.Description); }
+        try { return StripRichTextTags(card.GetDescriptionForPile(pile)).Replace("\n", " "); }
+        catch { return SafeGetText(() => card.Description)?.Replace("\n", " "); }
     }
 
     internal static string? SafeGetText(Func<object?> getter)
