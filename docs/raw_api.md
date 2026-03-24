@@ -174,7 +174,7 @@ Returns the current game state. The `state_type` field indicates the screen:
 ```json
 { "action": "choose_rest_option", "index": 0 }
 ```
-- `index`: 0-based index of the enabled option (from GET response)
+- `index`: 0-based index of the option from the current GET response
 - Options include Rest (heal), Smith (upgrade a card), and relic-granted options
 
 **Purchase a shop item:**
@@ -230,6 +230,22 @@ Returns the current game state. The `state_type` field indicates the screen:
 - For choose-a-card screens, clicks the skip button (if available)
 - Otherwise, closes the card selection screen (only if cancellation is allowed)
 
+**Open a bundle preview:**
+```json
+{ "action": "select_bundle", "index": 0 }
+```
+- `index`: 0-based index of the bundle (from GET response)
+
+**Confirm bundle selection:**
+```json
+{ "action": "confirm_bundle_selection" }
+```
+
+**Cancel bundle selection:**
+```json
+{ "action": "cancel_bundle_selection" }
+```
+
 **Select a relic:**
 ```json
 { "action": "select_relic", "index": 0 }
@@ -248,6 +264,24 @@ Returns the current game state. The `state_type` field indicates the screen:
 ```
 - `index`: 0-based index of the relic (from GET response)
 - Chest is auto-opened when state is queried; this claims a revealed relic
+
+**Set Crystal Sphere tool:**
+```json
+{ "action": "crystal_sphere_set_tool", "tool": "big" }
+```
+- `tool`: `"big"` or `"small"`
+
+**Click a Crystal Sphere cell:**
+```json
+{ "action": "crystal_sphere_click_cell", "x": 4, "y": 7 }
+```
+- `x`: Cell x-coordinate
+- `y`: Cell y-coordinate
+
+**Proceed from Crystal Sphere:**
+```json
+{ "action": "crystal_sphere_proceed" }
+```
 
 ### Error responses
 

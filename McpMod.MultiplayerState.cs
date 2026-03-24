@@ -7,6 +7,7 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Events;
+using MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens;
@@ -77,10 +78,20 @@ public static partial class McpMod
             result["state_type"] = "card_select";
             result["card_select"] = BuildChooseCardState(chooseCardScreen, runState);
         }
+        else if (topOverlay is NChooseABundleSelectionScreen bundleScreen)
+        {
+            result["state_type"] = "bundle_select";
+            result["bundle_select"] = BuildBundleSelectState(bundleScreen, runState);
+        }
         else if (topOverlay is NChooseARelicSelection relicSelectScreen)
         {
             result["state_type"] = "relic_select";
             result["relic_select"] = BuildRelicSelectState(relicSelectScreen, runState);
+        }
+        else if (topOverlay is NCrystalSphereScreen crystalSphereScreen)
+        {
+            result["state_type"] = "crystal_sphere";
+            result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen, runState);
         }
         else if (topOverlay is IOverlayScreen
                  && topOverlay is not NRewardsScreen

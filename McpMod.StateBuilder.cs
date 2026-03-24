@@ -14,6 +14,7 @@ using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.Events;
 using MegaCrit.Sts2.Core.Nodes.Events;
+using MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Nodes.Cards;
@@ -67,10 +68,20 @@ public static partial class McpMod
             result["state_type"] = "card_select";
             result["card_select"] = BuildChooseCardState(chooseCardScreen, runState);
         }
+        else if (topOverlay is NChooseABundleSelectionScreen bundleScreen)
+        {
+            result["state_type"] = "bundle_select";
+            result["bundle_select"] = BuildBundleSelectState(bundleScreen, runState);
+        }
         else if (topOverlay is NChooseARelicSelection relicSelectScreen)
         {
             result["state_type"] = "relic_select";
             result["relic_select"] = BuildRelicSelectState(relicSelectScreen, runState);
+        }
+        else if (topOverlay is NCrystalSphereScreen crystalSphereScreen)
+        {
+            result["state_type"] = "crystal_sphere";
+            result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen, runState);
         }
         else if (topOverlay is IOverlayScreen
                  && topOverlay is not NRewardsScreen
@@ -1080,6 +1091,97 @@ public static partial class McpMod
         return state;
     }
 
+    private static Dictionary<string, object?> BuildBundleSelectState(NChooseABundleSelectionScreen screen, RunState runState)
+    {
+        var state = new Dictionary<string, object?>();
+        state["screen_type"] = "bundle";
+
+        var player = LocalContext.GetMe(runState);
+        if (player != null)
+        {
+            state["player"] = new Dictionary<string, object?>
+            {
+                ["character"] = SafeGetText(() => player.Character.Title),
+                ["hp"] = player.Creature.CurrentHp,
+                ["max_hp"] = player.Creature.MaxHp,
+                ["gold"] = player.Gold
+            };
+        }
+
+        state["prompt"] = "Choose a bundle.";
+
+        var bundles = new List<Dictionary<string, object?>>();
+        int index = 0;
+        foreach (var bundle in FindAll<NCardBundle>(screen))
+        {
+            var cards = new List<Dictionary<string, object?>>();
+            int cardIndex = 0;
+            foreach (var card in bundle.Bundle)
+            {
+                cards.Add(new Dictionary<string, object?>
+                {
+                    ["index"] = cardIndex,
+                    ["id"] = card.Id.Entry,
+                    ["name"] = SafeGetText(() => card.Title),
+                    ["type"] = card.Type.ToString(),
+                    ["cost"] = card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString(),
+                    ["description"] = SafeGetCardDescription(card, PileType.None),
+                    ["rarity"] = card.Rarity.ToString(),
+                    ["is_upgraded"] = card.IsUpgraded,
+                    ["keywords"] = BuildHoverTips(card.HoverTips)
+                });
+                cardIndex++;
+            }
+
+            bundles.Add(new Dictionary<string, object?>
+            {
+                ["index"] = index,
+                ["card_count"] = cards.Count,
+                ["cards"] = cards
+            });
+            index++;
+        }
+        state["bundles"] = bundles;
+
+        var previewContainer = screen.GetNodeOrNull<Godot.Control>("%BundlePreviewContainer");
+        bool previewShowing = previewContainer?.Visible == true;
+        state["preview_showing"] = previewShowing;
+
+        var previewCards = new List<Dictionary<string, object?>>();
+        var previewCardsContainer = screen.GetNodeOrNull<Godot.Control>("%Cards");
+        if (previewCardsContainer != null)
+        {
+            int previewIndex = 0;
+            foreach (var holder in FindAll<NPreviewCardHolder>(previewCardsContainer))
+            {
+                var card = holder.CardModel;
+                if (card == null) continue;
+
+                previewCards.Add(new Dictionary<string, object?>
+                {
+                    ["index"] = previewIndex,
+                    ["id"] = card.Id.Entry,
+                    ["name"] = SafeGetText(() => card.Title),
+                    ["type"] = card.Type.ToString(),
+                    ["cost"] = card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString(),
+                    ["description"] = SafeGetCardDescription(card, PileType.None),
+                    ["rarity"] = card.Rarity.ToString(),
+                    ["is_upgraded"] = card.IsUpgraded,
+                    ["keywords"] = BuildHoverTips(card.HoverTips)
+                });
+                previewIndex++;
+            }
+        }
+        state["preview_cards"] = previewCards;
+
+        var cancelButton = screen.GetNodeOrNull<NBackButton>("%Cancel");
+        var confirmButton = screen.GetNodeOrNull<NConfirmButton>("%Confirm");
+        state["can_cancel"] = cancelButton?.IsEnabled == true;
+        state["can_confirm"] = confirmButton?.IsEnabled == true;
+
+        return state;
+    }
+
     private static Dictionary<string, object?> BuildHandSelectState(NPlayerHand hand, RunState runState)
     {
         var state = new Dictionary<string, object?>();
@@ -1195,6 +1297,118 @@ public static partial class McpMod
 
         var skipButton = screen.GetNodeOrNull<NClickableControl>("SkipButton");
         state["can_skip"] = skipButton?.IsEnabled == true && skipButton.Visible;
+
+        return state;
+    }
+
+    private static Dictionary<string, object?> BuildCrystalSphereState(NCrystalSphereScreen screen, RunState runState)
+    {
+        var state = new Dictionary<string, object?>();
+
+        var player = LocalContext.GetMe(runState);
+        if (player != null)
+        {
+            state["player"] = new Dictionary<string, object?>
+            {
+                ["character"] = SafeGetText(() => player.Character.Title),
+                ["hp"] = player.Creature.CurrentHp,
+                ["max_hp"] = player.Creature.MaxHp,
+                ["gold"] = player.Gold
+            };
+        }
+
+        var instructionsTitle = screen.GetNodeOrNull<Godot.Control>("%InstructionsTitle");
+        if (instructionsTitle != null)
+        {
+            var textVariant = instructionsTitle.Get("text");
+            if (textVariant.VariantType != Godot.Variant.Type.Nil)
+                state["instructions_title"] = StripRichTextTags(textVariant.AsString());
+        }
+
+        var instructionsDescription = screen.GetNodeOrNull<Godot.Control>("%InstructionsDescription");
+        if (instructionsDescription != null)
+        {
+            var textVariant = instructionsDescription.Get("text");
+            if (textVariant.VariantType != Godot.Variant.Type.Nil)
+                state["instructions_description"] = StripRichTextTags(textVariant.AsString());
+        }
+
+        var cells = FindAll<NCrystalSphereCell>(screen);
+        state["grid_width"] = cells.Count > 0 ? cells.Max(c => c.Entity.X) + 1 : 0;
+        state["grid_height"] = cells.Count > 0 ? cells.Max(c => c.Entity.Y) + 1 : 0;
+
+        var cellStates = new List<Dictionary<string, object?>>();
+        var clickableCells = new List<Dictionary<string, object?>>();
+        foreach (var cell in cells.OrderBy(c => c.Entity.Y).ThenBy(c => c.Entity.X))
+        {
+            var cellState = new Dictionary<string, object?>
+            {
+                ["x"] = cell.Entity.X,
+                ["y"] = cell.Entity.Y,
+                ["is_hidden"] = cell.Entity.IsHidden,
+                ["is_clickable"] = cell.Entity.IsHidden && cell.Visible,
+                ["is_highlighted"] = cell.Entity.IsHighlighted,
+                ["is_hovered"] = cell.Entity.IsHovered
+            };
+
+            if (!cell.Entity.IsHidden && cell.Entity.Item != null)
+            {
+                cellState["item_type"] = cell.Entity.Item.GetType().Name;
+                cellState["is_good"] = cell.Entity.Item.IsGood;
+            }
+
+            cellStates.Add(cellState);
+            if (cell.Entity.IsHidden && cell.Visible)
+            {
+                clickableCells.Add(new Dictionary<string, object?>
+                {
+                    ["x"] = cell.Entity.X,
+                    ["y"] = cell.Entity.Y
+                });
+            }
+        }
+        state["cells"] = cellStates;
+        state["clickable_cells"] = clickableCells;
+
+        var revealedItems = new List<Dictionary<string, object?>>();
+        foreach (var item in cells
+                     .Where(c => !c.Entity.IsHidden && c.Entity.Item != null)
+                     .Select(c => c.Entity.Item!)
+                     .Distinct())
+        {
+            revealedItems.Add(new Dictionary<string, object?>
+            {
+                ["item_type"] = item.GetType().Name,
+                ["x"] = item.Position.X,
+                ["y"] = item.Position.Y,
+                ["width"] = item.Size.X,
+                ["height"] = item.Size.Y,
+                ["is_good"] = item.IsGood
+            });
+        }
+        state["revealed_items"] = revealedItems;
+
+        var bigButton = screen.GetNodeOrNull<Godot.Control>("%BigDivinationButton");
+        var smallButton = screen.GetNodeOrNull<Godot.Control>("%SmallDivinationButton");
+        bool bigVisible = bigButton?.Visible == true;
+        bool smallVisible = smallButton?.Visible == true;
+        bool bigActive = bigButton?.GetNodeOrNull<Godot.Control>("%Outline")?.Visible == true;
+        bool smallActive = smallButton?.GetNodeOrNull<Godot.Control>("%Outline")?.Visible == true;
+
+        state["tool"] = bigActive ? "big" : smallActive ? "small" : "none";
+        state["can_use_big_tool"] = bigVisible;
+        state["can_use_small_tool"] = smallVisible;
+
+        var divinationsLeft = screen.GetNodeOrNull<Godot.Control>("%DivinationsLeft");
+        if (divinationsLeft != null)
+        {
+            var textVariant = divinationsLeft.Get("text");
+            if (textVariant.VariantType != Godot.Variant.Type.Nil)
+                state["divinations_left_text"] = StripRichTextTags(textVariant.AsString());
+        }
+
+        var proceedButton = screen.GetNodeOrNull<NProceedButton>("%ProceedButton");
+        state["can_proceed"] = proceedButton?.IsEnabled == true;
 
         return state;
     }

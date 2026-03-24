@@ -366,6 +366,42 @@ async def deck_cancel_selection() -> str:
 
 
 # ---------------------------------------------------------------------------
+# Bundle Selection (state_type: bundle_select)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def bundle_select(bundle_index: int) -> str:
+    """[Bundle Selection] Open a bundle preview.
+
+    Args:
+        bundle_index: 0-based index of the bundle.
+    """
+    try:
+        return await _post({"action": "select_bundle", "index": bundle_index})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def bundle_confirm_selection() -> str:
+    """[Bundle Selection] Confirm the currently previewed bundle."""
+    try:
+        return await _post({"action": "confirm_bundle_selection"})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def bundle_cancel_selection() -> str:
+    """[Bundle Selection] Cancel the current bundle preview."""
+    try:
+        return await _post({"action": "cancel_bundle_selection"})
+    except Exception as e:
+        return _handle_error(e)
+
+
+# ---------------------------------------------------------------------------
 # Relic Selection (state_type: relic_select)
 # ---------------------------------------------------------------------------
 
@@ -411,6 +447,47 @@ async def treasure_claim_relic(relic_index: int) -> str:
     """
     try:
         return await _post({"action": "claim_treasure_relic", "index": relic_index})
+    except Exception as e:
+        return _handle_error(e)
+
+
+# ---------------------------------------------------------------------------
+# Crystal Sphere (state_type: crystal_sphere)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def crystal_sphere_set_tool(tool: str) -> str:
+    """[Crystal Sphere] Switch the active divination tool.
+
+    Args:
+        tool: Either "big" or "small".
+    """
+    try:
+        return await _post({"action": "crystal_sphere_set_tool", "tool": tool})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def crystal_sphere_click_cell(x: int, y: int) -> str:
+    """[Crystal Sphere] Click a hidden cell on the Crystal Sphere grid.
+
+    Args:
+        x: Cell x-coordinate.
+        y: Cell y-coordinate.
+    """
+    try:
+        return await _post({"action": "crystal_sphere_click_cell", "x": x, "y": y})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def crystal_sphere_proceed() -> str:
+    """[Crystal Sphere] Continue after the Crystal Sphere minigame finishes."""
+    try:
+        return await _post({"action": "crystal_sphere_proceed"})
     except Exception as e:
         return _handle_error(e)
 
@@ -650,6 +727,37 @@ async def mp_deck_cancel_selection() -> str:
 
 
 @mcp.tool()
+async def mp_bundle_select(bundle_index: int) -> str:
+    """[Multiplayer Bundle Selection] Open a bundle preview.
+
+    Args:
+        bundle_index: 0-based index of the bundle.
+    """
+    try:
+        return await _mp_post({"action": "select_bundle", "index": bundle_index})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_bundle_confirm_selection() -> str:
+    """[Multiplayer Bundle Selection] Confirm the currently previewed bundle."""
+    try:
+        return await _mp_post({"action": "confirm_bundle_selection"})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_bundle_cancel_selection() -> str:
+    """[Multiplayer Bundle Selection] Cancel the current bundle preview."""
+    try:
+        return await _mp_post({"action": "cancel_bundle_selection"})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
 async def mp_combat_select_card(card_index: int) -> str:
     """[Multiplayer Combat Selection] Select a card from hand during in-combat card selection.
 
@@ -705,6 +813,42 @@ async def mp_treasure_claim_relic(relic_index: int) -> str:
     """
     try:
         return await _mp_post({"action": "claim_treasure_relic", "index": relic_index})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_crystal_sphere_set_tool(tool: str) -> str:
+    """[Multiplayer Crystal Sphere] Switch the active divination tool.
+
+    Args:
+        tool: Either "big" or "small".
+    """
+    try:
+        return await _mp_post({"action": "crystal_sphere_set_tool", "tool": tool})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_crystal_sphere_click_cell(x: int, y: int) -> str:
+    """[Multiplayer Crystal Sphere] Click a hidden cell on the Crystal Sphere grid.
+
+    Args:
+        x: Cell x-coordinate.
+        y: Cell y-coordinate.
+    """
+    try:
+        return await _mp_post({"action": "crystal_sphere_click_cell", "x": x, "y": y})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_crystal_sphere_proceed() -> str:
+    """[Multiplayer Crystal Sphere] Continue after the Crystal Sphere minigame finishes."""
+    try:
+        return await _mp_post({"action": "crystal_sphere_proceed"})
     except Exception as e:
         return _handle_error(e)
 

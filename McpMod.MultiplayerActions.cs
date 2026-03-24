@@ -43,11 +43,17 @@ public static partial class McpMod
             "select_card" => ExecuteSelectCard(data),
             "confirm_selection" => ExecuteConfirmSelection(),
             "cancel_selection" => ExecuteCancelSelection(),
+            "select_bundle" => ExecuteSelectBundle(data),
+            "confirm_bundle_selection" => ExecuteConfirmBundleSelection(),
+            "cancel_bundle_selection" => ExecuteCancelBundleSelection(),
             "combat_select_card" => ExecuteCombatSelectCard(data),
             "combat_confirm_selection" => ExecuteCombatConfirmSelection(),
             "select_relic" => ExecuteSelectRelic(data),
             "skip_relic_selection" => ExecuteSkipRelicSelection(),
             "claim_treasure_relic" => ExecuteClaimTreasureRelic(data),
+            "crystal_sphere_set_tool" => ExecuteCrystalSphereSetTool(data),
+            "crystal_sphere_click_cell" => ExecuteCrystalSphereClickCell(data),
+            "crystal_sphere_proceed" => ExecuteCrystalSphereProceed(),
 
             // Multiplayer-specific actions
             "end_turn" => ExecuteMultiplayerEndTurn(player),

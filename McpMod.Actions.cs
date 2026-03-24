@@ -13,6 +13,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
 using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Nodes.Events;
+using MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Rooms;
@@ -61,11 +62,17 @@ public static partial class McpMod
             "select_card" => ExecuteSelectCard(data),
             "confirm_selection" => ExecuteConfirmSelection(),
             "cancel_selection" => ExecuteCancelSelection(),
+            "select_bundle" => ExecuteSelectBundle(data),
+            "confirm_bundle_selection" => ExecuteConfirmBundleSelection(),
+            "cancel_bundle_selection" => ExecuteCancelBundleSelection(),
             "combat_select_card" => ExecuteCombatSelectCard(data),
             "combat_confirm_selection" => ExecuteCombatConfirmSelection(),
             "select_relic" => ExecuteSelectRelic(data),
             "skip_relic_selection" => ExecuteSkipRelicSelection(),
             "claim_treasure_relic" => ExecuteClaimTreasureRelic(data),
+            "crystal_sphere_set_tool" => ExecuteCrystalSphereSetTool(data),
+            "crystal_sphere_click_cell" => ExecuteCrystalSphereClickCell(data),
+            "crystal_sphere_proceed" => ExecuteCrystalSphereProceed(),
             _ => Error($"Unknown action: {action}")
         };
     }
@@ -672,6 +679,68 @@ public static partial class McpMod
         return Error("No cancel/close button is currently enabled — selection may be mandatory");
     }
 
+    private static Dictionary<string, object?> ExecuteSelectBundle(Dictionary<string, JsonElement> data)
+    {
+        var overlay = NOverlayStack.Instance?.Peek();
+        if (overlay is not NChooseABundleSelectionScreen screen)
+            return Error("No bundle selection screen is open");
+
+        if (!data.TryGetValue("index", out var indexElem))
+            return Error("Missing 'index' (bundle index)");
+
+        int index = indexElem.GetInt32();
+        var previewContainer = screen.GetNodeOrNull<Godot.Control>("%BundlePreviewContainer");
+        if (previewContainer?.Visible == true)
+            return Error("A bundle preview is already open - confirm or cancel it first");
+
+        var bundles = FindAll<NCardBundle>(screen);
+        if (index < 0 || index >= bundles.Count)
+            return Error($"Bundle index {index} out of range ({bundles.Count} bundles available)");
+
+        bundles[index].Hitbox.ForceClick();
+        return new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["message"] = $"Selecting bundle {index}"
+        };
+    }
+
+    private static Dictionary<string, object?> ExecuteConfirmBundleSelection()
+    {
+        var overlay = NOverlayStack.Instance?.Peek();
+        if (overlay is not NChooseABundleSelectionScreen screen)
+            return Error("No bundle selection screen is open");
+
+        var confirmButton = screen.GetNodeOrNull<NConfirmButton>("%Confirm");
+        if (confirmButton is not { IsEnabled: true })
+            return Error("Bundle confirm button is not enabled");
+
+        confirmButton.ForceClick();
+        return new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["message"] = "Confirming bundle selection"
+        };
+    }
+
+    private static Dictionary<string, object?> ExecuteCancelBundleSelection()
+    {
+        var overlay = NOverlayStack.Instance?.Peek();
+        if (overlay is not NChooseABundleSelectionScreen screen)
+            return Error("No bundle selection screen is open");
+
+        var cancelButton = screen.GetNodeOrNull<NBackButton>("%Cancel");
+        if (cancelButton is not { IsEnabled: true })
+            return Error("Bundle cancel button is not enabled");
+
+        cancelButton.ForceClick();
+        return new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["message"] = "Cancelling bundle selection"
+        };
+    }
+
     private static Dictionary<string, object?> ExecuteCombatSelectCard(Dictionary<string, JsonElement> data)
     {
         var hand = NPlayerHand.Instance;
@@ -794,6 +863,83 @@ public static partial class McpMod
         {
             ["status"] = "ok",
             ["message"] = $"Claiming treasure relic: {relicName}"
+        };
+    }
+
+    private static Dictionary<string, object?> ExecuteCrystalSphereSetTool(Dictionary<string, JsonElement> data)
+    {
+        var overlay = NOverlayStack.Instance?.Peek();
+        if (overlay is not NCrystalSphereScreen screen)
+            return Error("Crystal Sphere screen is not open");
+
+        if (!data.TryGetValue("tool", out var toolElem))
+            return Error("Missing 'tool' (expected 'big' or 'small')");
+
+        string tool = toolElem.GetString() ?? "";
+        var button = tool switch
+        {
+            "big" => screen.GetNodeOrNull<NClickableControl>("%BigDivinationButton"),
+            "small" => screen.GetNodeOrNull<NClickableControl>("%SmallDivinationButton"),
+            _ => null
+        };
+
+        if (button == null)
+            return Error($"Unknown Crystal Sphere tool: {tool}");
+        if (!button.Visible || !button.IsEnabled)
+            return Error($"Crystal Sphere tool '{tool}' is not available");
+
+        button.ForceClick();
+        return new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["message"] = $"Setting Crystal Sphere tool to {tool}"
+        };
+    }
+
+    private static Dictionary<string, object?> ExecuteCrystalSphereClickCell(Dictionary<string, JsonElement> data)
+    {
+        var overlay = NOverlayStack.Instance?.Peek();
+        if (overlay is not NCrystalSphereScreen screen)
+            return Error("Crystal Sphere screen is not open");
+
+        if (!data.TryGetValue("x", out var xElem))
+            return Error("Missing 'x' (cell x-coordinate)");
+        if (!data.TryGetValue("y", out var yElem))
+            return Error("Missing 'y' (cell y-coordinate)");
+
+        int x = xElem.GetInt32();
+        int y = yElem.GetInt32();
+
+        var cell = FindAll<NCrystalSphereCell>(screen)
+            .FirstOrDefault(c => c.Entity.X == x && c.Entity.Y == y);
+        if (cell == null)
+            return Error($"Crystal Sphere cell ({x}, {y}) was not found");
+        if (!cell.Entity.IsHidden || !cell.Visible)
+            return Error($"Crystal Sphere cell ({x}, {y}) is not clickable");
+
+        cell.EmitSignal(NClickableControl.SignalName.Released, cell);
+        return new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["message"] = $"Clicking Crystal Sphere cell ({x}, {y})"
+        };
+    }
+
+    private static Dictionary<string, object?> ExecuteCrystalSphereProceed()
+    {
+        var overlay = NOverlayStack.Instance?.Peek();
+        if (overlay is not NCrystalSphereScreen screen)
+            return Error("Crystal Sphere screen is not open");
+
+        var proceedButton = screen.GetNodeOrNull<NProceedButton>("%ProceedButton");
+        if (proceedButton is not { IsEnabled: true })
+            return Error("Crystal Sphere proceed button is not enabled");
+
+        proceedButton.ForceClick();
+        return new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["message"] = "Proceeding from Crystal Sphere"
         };
     }
 
