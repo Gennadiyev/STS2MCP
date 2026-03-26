@@ -5,11 +5,14 @@ as MCP tools for Claude Desktop / Claude Code.
 """
 
 import argparse
+import asyncio
 import json
 import sys
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+
+from run_logger import log_tool_call, log_decision
 
 mcp = FastMCP("sts2")
 
@@ -28,6 +31,7 @@ async def _get(params: dict | None = None) -> str:
     async with httpx.AsyncClient(timeout=10) as client:
         r = await client.get(_sp_url(), params=params)
         r.raise_for_status()
+        log_tool_call("get_state", params or {}, r.text)
         return r.text
 
 
@@ -35,6 +39,7 @@ async def _post(body: dict) -> str:
     async with httpx.AsyncClient(timeout=10) as client:
         r = await client.post(_sp_url(), json=body)
         r.raise_for_status()
+        log_tool_call(body.get("action", "unknown"), body, r.text)
         return r.text
 
 
@@ -42,6 +47,7 @@ async def _mp_get(params: dict | None = None) -> str:
     async with httpx.AsyncClient(timeout=10) as client:
         r = await client.get(_mp_url(), params=params)
         r.raise_for_status()
+        log_tool_call("mp_get_state", params or {}, r.text)
         return r.text
 
 
@@ -49,6 +55,7 @@ async def _mp_post(body: dict) -> str:
     async with httpx.AsyncClient(timeout=10) as client:
         r = await client.post(_mp_url(), json=body)
         r.raise_for_status()
+        log_tool_call("mp_" + body.get("action", "unknown"), body, r.text)
         return r.text
 
 
@@ -58,6 +65,44 @@ def _handle_error(e: Exception) -> str:
     if isinstance(e, httpx.HTTPStatusError):
         return f"Error: HTTP {e.response.status_code} — {e.response.text}"
     return f"Error: {e}"
+
+
+# ---------------------------------------------------------------------------
+# Smart polling
+# ---------------------------------------------------------------------------
+
+
+async def _get_smart(params: dict | None = None, wait_for_player_turn: bool = True) -> str:
+    """Get game state, optionally waiting until it's the player's turn.
+
+    In combat, the game alternates between player and enemy turns. Calling
+    get_state during the enemy turn returns a state the AI can't act on,
+    wasting a tool call and tokens. This helper polls (up to ~8 seconds)
+    until the state is actionable:
+      - Play Phase: True (player's turn in combat)
+      - A non-combat state (map, rewards, event, etc.)
+      - "Combat ended" transition state
+    """
+    text = await _get(params)
+
+    if not wait_for_player_turn:
+        return text
+
+    # Only poll if we're in a combat state that isn't actionable yet
+    combat_keywords = ["# Game State: monster", "# Game State: elite", "# Game State: boss"]
+    is_combat = any(kw in text for kw in combat_keywords)
+
+    if is_combat and "Play Phase: False" in text:
+        for _ in range(8):
+            await asyncio.sleep(1.0)
+            text = await _get(params)
+            # Stop polling if: player turn, combat ended, or state changed to non-combat
+            if "Play Phase: True" in text or "Combat ended" in text:
+                break
+            if not any(kw in text for kw in combat_keywords):
+                break
+
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -72,11 +117,14 @@ async def get_game_state(format: str = "markdown") -> str:
     Returns the full game state including player stats, hand, enemies, potions, etc.
     The state_type field indicates the current screen (combat, map, event, shop, etc.).
 
+    In combat, this automatically waits for the player's turn before returning,
+    so you don't need to poll repeatedly during enemy turns.
+
     Args:
         format: "markdown" for human-readable output, "json" for structured data.
     """
     try:
-        return await _get({"format": format})
+        return await _get_smart({"format": format})
     except Exception as e:
         return _handle_error(e)
 
@@ -707,6 +755,26 @@ async def mp_treasure_claim_relic(relic_index: int) -> str:
         return await _mp_post({"action": "claim_treasure_relic", "index": relic_index})
     except Exception as e:
         return _handle_error(e)
+
+
+# ---------------------------------------------------------------------------
+# Decision Logging
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def log_agent_decision(decision: str) -> str:
+    """Log your reasoning before a key decision.
+
+    Call this BEFORE every significant action (playing cards, choosing a path,
+    picking a card reward, etc.) to record why you chose that action.
+
+    Args:
+        decision: Your reasoning — what the situation is, what you considered, and why you chose this action.
+                  Include a brief context label at the start (e.g. "Combat turn 3: ...", "Card reward: ...", "Map: ...").
+    """
+    log_decision("", decision)
+    return "Decision logged."
 
 
 def main():
