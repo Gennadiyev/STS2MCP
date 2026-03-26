@@ -372,16 +372,24 @@ public static partial class McpMod
             sb.AppendLine();
         }
 
-        // Next options — the key decision section
+        // Build node lookup for path traversal
+        var nodeLookup = new Dictionary<string, Dictionary<string, object?>>();
+        if (map.TryGetValue("nodes", out var nodesObj) && nodesObj is List<Dictionary<string, object?>> nodes)
+        {
+            foreach (var node in nodes)
+                nodeLookup[$"{node["col"]},{node["row"]}"] = node;
+        }
+
+        // Next options with future path trees
         if (map.TryGetValue("next_options", out var optObj) && optObj is List<Dictionary<string, object?>> options && options.Count > 0)
         {
             sb.AppendLine("## Choose Next Node");
             foreach (var opt in options)
             {
-                string lookahead = "";
-                if (opt.TryGetValue("leads_to", out var leadsObj) && leadsObj is List<Dictionary<string, object?>> leads && leads.Count > 0)
-                    lookahead = " → leads to: " + string.Join(", ", leads.Select(l => $"{l["type"]}({l["col"]},{l["row"]})"));
-                sb.AppendLine($"- [{opt["index"]}] **{opt["type"]}** ({opt["col"]},{opt["row"]}){lookahead}");
+                sb.AppendLine($"- [{opt["index"]}] **{opt["type"]}** ({opt["col"]},{opt["row"]})");
+                string tree = BuildFuturePathTree(opt, nodeLookup);
+                if (tree.Length > 0)
+                    sb.AppendLine($"  Future paths: {tree}");
             }
             sb.AppendLine();
         }
@@ -391,60 +399,64 @@ public static partial class McpMod
             sb.AppendLine("No travelable nodes available.");
             sb.AppendLine();
         }
+    }
 
-        // Full map overview — compact row-by-row
-        if (map.TryGetValue("nodes", out var nodesObj) && nodesObj is List<Dictionary<string, object?>> nodes && nodes.Count > 0)
+    /// <summary>
+    /// BFS from a node through its children to build a future path tree string.
+    /// Format: -> Type (col,row) or Type (col,row) -> Type (col,row) or ...
+    /// </summary>
+    private static string BuildFuturePathTree(Dictionary<string, object?> startNode, Dictionary<string, Dictionary<string, object?>> nodeLookup)
+    {
+        // Look up the canonical node (with children) from the full node list
+        string startKey = $"{startNode["col"]},{startNode["row"]}";
+        var canonicalStart = nodeLookup.TryGetValue(startKey, out var cs) ? cs : startNode;
+        var currentKeys = GetChildKeys(canonicalStart);
+        var sb = new StringBuilder();
+
+        while (currentKeys.Count > 0)
         {
-            // Collect visited and travelable coords for markers
-            var visitedSet = new HashSet<string>();
-            if (map.TryGetValue("visited", out var v2) && v2 is List<Dictionary<string, object?>> vList)
-                foreach (var vn in vList)
-                    visitedSet.Add($"{vn["col"]},{vn["row"]}");
+            // Collect node info for this level
+            var levelNodes = new List<(string type, int col, int row)>();
+            var nextKeys = new HashSet<string>();
 
-            var travelableSet = new HashSet<string>();
-            if (map.TryGetValue("next_options", out var o2) && o2 is List<Dictionary<string, object?>> oList)
-                foreach (var on in oList)
-                    travelableSet.Add($"{on["col"]},{on["row"]}");
-
-            string? currentKey = null;
-            if (map.TryGetValue("current_position", out var cpObj) && cpObj is Dictionary<string, object?> cp)
-                currentKey = $"{cp["col"]},{cp["row"]}";
-
-            // Group nodes by row
-            var byRow = new SortedDictionary<int, List<Dictionary<string, object?>>>();
-            foreach (var node in nodes)
+            foreach (var key in currentKeys.OrderBy(k => k))
             {
-                int row = node["row"] is int r ? r : Convert.ToInt32(node["row"]);
-                if (!byRow.TryGetValue(row, out var rowList))
-                    byRow[row] = rowList = new List<Dictionary<string, object?>>();
-                rowList.Add(node);
-            }
-
-            sb.AppendLine("## Map Overview");
-            sb.AppendLine("```");
-            sb.AppendLine("Legend: · = visited, * = current, → = next option");
-            sb.AppendLine();
-            foreach (var (row, rowNodes) in byRow)
-            {
-                var sorted = rowNodes.OrderBy(n => n["col"] is int c ? c : Convert.ToInt32(n["col"])).ToList();
-                var labels = new List<string>();
-                foreach (var node in sorted)
+                if (nodeLookup.TryGetValue(key, out var node))
                 {
                     string type = node["type"]?.ToString() ?? "Unknown";
-                    string key = $"{node["col"]},{node["row"]}";
+                    int col = node["col"] is int c ? c : Convert.ToInt32(node["col"]);
+                    int row = node["row"] is int r ? r : Convert.ToInt32(node["row"]);
+                    levelNodes.Add((type, col, row));
 
-                    string marker = "";
-                    if (key == currentKey) marker = "*";
-                    else if (travelableSet.Contains(key)) marker = "→";
-                    else if (visitedSet.Contains(key)) marker = "·";
-
-                    labels.Add($"{marker}{type}({node["col"]},{node["row"]})");
+                    foreach (var childKey in GetChildKeys(node))
+                        nextKeys.Add(childKey);
                 }
-                sb.AppendLine($"  Row {row,2}: {string.Join("  ", labels)}");
             }
-            sb.AppendLine("```");
-            sb.AppendLine();
+
+            if (levelNodes.Count == 0) break;
+
+            sb.Append("-> ");
+            sb.Append(string.Join(" or ", levelNodes.Select(n => $"{n.type} ({n.col},{n.row})")));
+            sb.Append(' ');
+
+            currentKeys = nextKeys;
         }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private static HashSet<string> GetChildKeys(Dictionary<string, object?> node)
+    {
+        var keys = new HashSet<string>();
+        if (node.TryGetValue("children", out var childrenObj) && childrenObj is System.Collections.IList childList)
+        {
+            foreach (var child in childList)
+            {
+                if (child is System.Collections.IList coords && coords.Count >= 2)
+                    keys.Add($"{coords[0]},{coords[1]}");
+            }
+        }
+        return keys;
     }
 
     private static void FormatRewardsMarkdown(StringBuilder sb, Dictionary<string, object?> rewards)
