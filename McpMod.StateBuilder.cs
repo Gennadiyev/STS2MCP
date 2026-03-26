@@ -1012,18 +1012,6 @@ public static partial class McpMod
         var state = new Dictionary<string, object?>();
         state["screen_type"] = "bundle";
 
-        var player = LocalContext.GetMe(runState);
-        if (player != null)
-        {
-            state["player"] = new Dictionary<string, object?>
-            {
-                ["character"] = SafeGetText(() => player.Character.Title),
-                ["hp"] = player.Creature.CurrentHp,
-                ["max_hp"] = player.Creature.MaxHp,
-                ["gold"] = player.Gold
-            };
-        }
-
         state["prompt"] = "Choose a bundle.";
 
         var bundles = new List<Dictionary<string, object?>>();
@@ -1208,18 +1196,6 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildCrystalSphereState(NCrystalSphereScreen screen, RunState runState)
     {
         var state = new Dictionary<string, object?>();
-
-        var player = LocalContext.GetMe(runState);
-        if (player != null)
-        {
-            state["player"] = new Dictionary<string, object?>
-            {
-                ["character"] = SafeGetText(() => player.Character.Title),
-                ["hp"] = player.Creature.CurrentHp,
-                ["max_hp"] = player.Creature.MaxHp,
-                ["gold"] = player.Gold
-            };
-        }
 
         var instructionsTitle = screen.GetNodeOrNull<Godot.Control>("%InstructionsTitle");
         if (instructionsTitle != null)

@@ -623,12 +623,6 @@ public static partial class McpMod
             sb.AppendLine($"*{promptObj}*");
         sb.AppendLine();
 
-        if (bundleSelect.TryGetValue("player", out var playerObj) && playerObj is Dictionary<string, object?> player)
-        {
-            sb.AppendLine($"**{player["character"]}** - HP: {player["hp"]}/{player["max_hp"]} | Gold: {player["gold"]}");
-            sb.AppendLine();
-        }
-
         if (bundleSelect.TryGetValue("bundles", out var bundlesObj) && bundlesObj is List<Dictionary<string, object?>> bundles && bundles.Count > 0)
         {
             sb.AppendLine("### Bundles");
@@ -675,12 +669,6 @@ public static partial class McpMod
         if (crystalSphere.TryGetValue("instructions_description", out var descObj) && descObj != null)
             sb.AppendLine(descObj.ToString());
         sb.AppendLine();
-
-        if (crystalSphere.TryGetValue("player", out var playerObj) && playerObj is Dictionary<string, object?> player)
-        {
-            sb.AppendLine($"**{player["character"]}** - HP: {player["hp"]}/{player["max_hp"]} | Gold: {player["gold"]}");
-            sb.AppendLine();
-        }
 
         string tool = crystalSphere.TryGetValue("tool", out var toolObj) ? toolObj?.ToString() ?? "none" : "none";
         string divinationsLeft = crystalSphere.TryGetValue("divinations_left_text", out var dlObj) && dlObj != null
