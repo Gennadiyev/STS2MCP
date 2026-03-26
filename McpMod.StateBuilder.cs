@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using MegaCrit.Sts2.Core.Combat;
@@ -285,8 +286,10 @@ public static partial class McpMod
             state["discard_pile_count"] = combatState.DiscardPile.Cards.Count;
             state["exhaust_pile_count"] = combatState.ExhaustPile.Cards.Count;
 
-            // Pile contents
-            state["draw_pile"] = BuildPileCardList(combatState.DrawPile.Cards, PileType.Draw);
+            // Pile contents (draw pile is shuffled to avoid leaking actual draw order)
+            var drawPileList = BuildPileCardList(combatState.DrawPile.Cards, PileType.Draw);
+            ShuffleList(drawPileList);
+            state["draw_pile"] = drawPileList;
             state["discard_pile"] = BuildPileCardList(combatState.DiscardPile.Cards, PileType.Discard);
             state["exhaust_pile"] = BuildPileCardList(combatState.ExhaustPile.Cards, PileType.Exhaust);
 
@@ -402,6 +405,15 @@ public static partial class McpMod
             ["is_upgraded"] = card.IsUpgraded,
             ["keywords"] = BuildHoverTips(card.HoverTips)
         };
+    }
+
+    private static void ShuffleList<T>(List<T> list)
+    {
+        for (int i = list.Count - 1; i > 0; i--)
+        {
+            int j = Random.Shared.Next(i + 1);
+            (list[i], list[j]) = (list[j], list[i]);
+        }
     }
 
     private static List<Dictionary<string, object?>> BuildPileCardList(IEnumerable<CardModel> cards, PileType pile)
