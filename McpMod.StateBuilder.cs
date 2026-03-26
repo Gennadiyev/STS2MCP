@@ -208,6 +208,13 @@ public static partial class McpMod
             ["ascension"] = runState.AscensionLevel
         };
 
+        // Always include full player data (relics, potions, deck, etc.) on every screen
+        var _player = LocalContext.GetMe(runState);
+        if (_player != null)
+        {
+            result["player"] = BuildPlayerState(_player);
+        }
+
         return result;
     }
 
