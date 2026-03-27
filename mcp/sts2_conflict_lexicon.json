@@ -1,0 +1,25 @@
+{
+  "sts1_terms_to_review": [
+    "Artifact",
+    "Intangible",
+    "Dark Embrace",
+    "Corruption",
+    "Dead Branch",
+    "Watcher",
+    "Defect"
+  ],
+  "ambiguous_concepts": [
+    {
+      "term": "Vulnerable",
+      "action": "Always verify STS2 wording/effect from wiki before numeric assumptions."
+    },
+    {
+      "term": "Strength scaling",
+      "action": "Check STS2 card/relic specific interactions instead of reusing STS1 habits."
+    }
+  ],
+  "policy": {
+    "sts2_only": true,
+    "fallback_behavior": "If uncertain and no STS2 evidence found, mark as unknown and pick conservative lines."
+  }
+}

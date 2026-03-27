@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "STS2ReplayTurnRecord",
+  "type": "object",
+  "required": [
+    "battle_id",
+    "turn",
+    "snapshot",
+    "intent",
+    "expected",
+    "actual",
+    "lessons"
+  ],
+  "properties": {
+    "battle_id": {
+      "type": "string",
+      "description": "Unique battle identifier, e.g. act2_floor23_elite_01"
+    },
+    "turn": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "snapshot": {
+      "type": "object",
+      "required": [
+        "player_hp",
+        "player_block",
+        "energy",
+        "enemy_name",
+        "incoming_damage"
+      ],
+      "properties": {
+        "player_hp": { "type": "integer", "minimum": 0 },
+        "player_block": { "type": "integer", "minimum": 0 },
+        "energy": { "type": "integer", "minimum": 0 },
+        "enemy_name": { "type": "string" },
+        "incoming_damage": { "type": "integer", "minimum": 0 },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional tags like revive, scaling, multi_hit, weak, vulnerable"
+        }
+      },
+      "additionalProperties": true
+    },
+    "intent": {
+      "type": "string",
+      "description": "This turn objective: survive, setup, burst, finish, etc."
+    },
+    "expected": {
+      "type": "object",
+      "properties": {
+        "expected_block": { "type": "integer" },
+        "expected_damage": { "type": "integer" },
+        "risk_after_turn": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "actual": {
+      "type": "object",
+      "properties": {
+        "actual_block": { "type": "integer" },
+        "actual_damage": { "type": "integer" },
+        "hp_delta": { "type": "integer" }
+      },
+      "additionalProperties": true
+    },
+    "lessons": {
+      "type": "string",
+      "description": "Transferable takeaway for future similar states."
+    },
+    "sources": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "STS2 wiki citations used this turn."
+    }
+  },
+  "additionalProperties": true
+}
