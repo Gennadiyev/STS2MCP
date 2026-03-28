@@ -323,6 +323,13 @@ public static partial class McpMod
 
     private static void FormatShopMarkdown(StringBuilder sb, Dictionary<string, object?> shop)
     {
+        if (shop.TryGetValue("error", out var err) && err != null)
+        {
+            sb.AppendLine("## Shop");
+            sb.AppendLine($"**Note:** {err}");
+            sb.AppendLine();
+        }
+
         if (shop.TryGetValue("items", out var itemsObj) && itemsObj is List<Dictionary<string, object?>> items)
         {
             sb.AppendLine("## Shop Inventory");

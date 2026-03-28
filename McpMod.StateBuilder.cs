@@ -159,11 +159,15 @@ public static partial class McpMod
             }
             else
             {
-                // Auto-open the shopkeeper's inventory if not already open
+                // Open the shop UI when inventory is missing or closed. If Inventory is null,
+                // we must still call OpenInventory() — otherwise we never run it (old code threw on
+                // .IsOpen first) and Inventory stays null for the whole visit until a save reload.
                 var merchUI = NMerchantRoom.Instance;
-                if (merchUI != null && !merchUI.Inventory.IsOpen)
+                if (merchUI != null)
                 {
-                    merchUI.OpenInventory();
+                    var shopInv = merchUI.Inventory;
+                    if (shopInv == null || !shopInv.IsOpen)
+                        merchUI.OpenInventory();
                 }
                 result["state_type"] = "shop";
                 result["shop"] = BuildShopState(merchantRoom, runState);
@@ -255,49 +259,81 @@ public static partial class McpMod
         var creature = player.Creature;
         var combatState = player.PlayerCombatState;
 
-        state["character"] = SafeGetText(() => player.Character.Title);
-        state["hp"] = creature.CurrentHp;
-        state["max_hp"] = creature.MaxHp;
-        state["block"] = creature.Block;
-
-        if (combatState != null)
+        state["character"] = SafeGetText(() => player.Character?.Title);
+        if (creature != null)
         {
-            state["energy"] = combatState.Energy;
-            state["max_energy"] = combatState.MaxEnergy;
+            state["hp"] = creature.CurrentHp;
+            state["max_hp"] = creature.MaxHp;
+            state["block"] = creature.Block;
+        }
+        else
+        {
+            state["hp"] = 0;
+            state["max_hp"] = 0;
+            state["block"] = 0;
+        }
+
+        // PlayerCombatState can linger after combat while on map/rest/shop. Energy/MaxEnergy getters
+        // run hooks (e.g. Hook.ModifyMaxEnergy) that null-ref without a live combat — only serialize
+        // combat fields when a fight is actually in progress.
+        bool inLiveCombat = CombatManager.Instance != null && CombatManager.Instance.IsInProgress;
+        if (combatState != null && inLiveCombat)
+        {
+            try
+            {
+                state["energy"] = combatState.Energy;
+                state["max_energy"] = combatState.MaxEnergy;
+            }
+            catch
+            {
+                state["energy"] = null;
+                state["max_energy"] = null;
+            }
 
             // Stars (The Regent's resource, conditionally shown)
-            if (player.Character.ShouldAlwaysShowStarCounter || combatState.Stars > 0)
+            if (player.Character != null
+                && (player.Character.ShouldAlwaysShowStarCounter || combatState.Stars > 0))
             {
                 state["stars"] = combatState.Stars;
             }
 
-            // Hand
+            // Hand / piles — null-safe (stale combat snapshot on map/rest/shop can leave partial state)
             var hand = new List<Dictionary<string, object?>>();
-            int cardIndex = 0;
-            foreach (var card in combatState.Hand.Cards)
+            var handCards = combatState.Hand?.Cards;
+            if (handCards != null)
             {
-                hand.Add(BuildCardState(card, cardIndex));
-                cardIndex++;
+                int cardIndex = 0;
+                foreach (var card in handCards)
+                {
+                    hand.Add(BuildCardState(card, cardIndex));
+                    cardIndex++;
+                }
             }
             state["hand"] = hand;
 
-            // Pile counts
-            state["draw_pile_count"] = combatState.DrawPile.Cards.Count;
-            state["discard_pile_count"] = combatState.DiscardPile.Cards.Count;
-            state["exhaust_pile_count"] = combatState.ExhaustPile.Cards.Count;
+            state["draw_pile_count"] = combatState.DrawPile?.Cards?.Count ?? 0;
+            state["discard_pile_count"] = combatState.DiscardPile?.Cards?.Count ?? 0;
+            state["exhaust_pile_count"] = combatState.ExhaustPile?.Cards?.Count ?? 0;
 
-            // Pile contents (draw pile is shuffled to avoid leaking actual draw order)
-            var drawPileList = BuildPileCardList(combatState.DrawPile.Cards, PileType.Draw);
+            var drawCards = combatState.DrawPile?.Cards;
+            var discardCards = combatState.DiscardPile?.Cards;
+            var exhaustCards = combatState.ExhaustPile?.Cards;
+            var drawPileList = drawCards != null ? BuildPileCardList(drawCards, PileType.Draw) : new List<Dictionary<string, object?>>();
             ShuffleList(drawPileList);
             state["draw_pile"] = drawPileList;
-            state["discard_pile"] = BuildPileCardList(combatState.DiscardPile.Cards, PileType.Discard);
-            state["exhaust_pile"] = BuildPileCardList(combatState.ExhaustPile.Cards, PileType.Exhaust);
+            state["discard_pile"] = discardCards != null
+                ? BuildPileCardList(discardCards, PileType.Discard)
+                : new List<Dictionary<string, object?>>();
+            state["exhaust_pile"] = exhaustCards != null
+                ? BuildPileCardList(exhaustCards, PileType.Exhaust)
+                : new List<Dictionary<string, object?>>();
 
             // Orbs
-            if (combatState.OrbQueue.Capacity > 0)
+            var orbQueue = combatState.OrbQueue;
+            if (orbQueue != null && orbQueue.Capacity > 0)
             {
                 var orbs = new List<Dictionary<string, object?>>();
-                foreach (var orb in combatState.OrbQueue.Orbs)
+                foreach (var orb in orbQueue.Orbs)
                 {
                     // Populate SmartDescription placeholders with Focus-modified values,
                     // mirroring OrbModel.HoverTips getter (OrbModel.cs:92-94)
@@ -320,8 +356,8 @@ public static partial class McpMod
                     });
                 }
                 state["orbs"] = orbs;
-                state["orb_slots"] = combatState.OrbQueue.Capacity;
-                state["orb_empty_slots"] = combatState.OrbQueue.Capacity - combatState.OrbQueue.Orbs.Count;
+                state["orb_slots"] = orbQueue.Capacity;
+                state["orb_empty_slots"] = orbQueue.Capacity - orbQueue.Orbs.Count;
             }
         }
 
@@ -332,7 +368,14 @@ public static partial class McpMod
 
         // Relics
         var relics = new List<Dictionary<string, object?>>();
-        foreach (var relic in player.Relics)
+        var relicEnum = player.Relics;
+        if (relicEnum == null)
+        {
+            state["relics"] = relics;
+            state["potions"] = new List<Dictionary<string, object?>>();
+            return state;
+        }
+        foreach (var relic in relicEnum)
         {
             relics.Add(new Dictionary<string, object?>
             {
@@ -348,7 +391,13 @@ public static partial class McpMod
         // Potions
         var potions = new List<Dictionary<string, object?>>();
         int slotIndex = 0;
-        foreach (var potion in player.PotionSlots)
+        var slots = player.PotionSlots;
+        if (slots == null)
+        {
+            state["potions"] = potions;
+            return state;
+        }
+        foreach (var potion in slots)
         {
             if (potion != null)
             {
@@ -522,6 +571,7 @@ public static partial class McpMod
             foreach (var button in buttons)
             {
                 var opt = button.Option;
+                if (opt == null) continue;
                 var optData = new Dictionary<string, object?>
                 {
                     ["index"] = index,
@@ -551,18 +601,22 @@ public static partial class McpMod
         var state = new Dictionary<string, object?>();
 
         var options = new List<Dictionary<string, object?>>();
-        int index = 0;
-        foreach (var opt in restSiteRoom.Options)
+        var restOpts = restSiteRoom.Options;
+        if (restOpts != null)
         {
-            options.Add(new Dictionary<string, object?>
+            int index = 0;
+            foreach (var opt in restOpts)
             {
-                ["index"] = index,
-                ["id"] = opt.OptionId,
-                ["name"] = SafeGetText(() => opt.Title),
-                ["description"] = SafeGetText(() => opt.Description),
-                ["is_enabled"] = opt.IsEnabled
-            });
-            index++;
+                options.Add(new Dictionary<string, object?>
+                {
+                    ["index"] = index,
+                    ["id"] = opt.OptionId,
+                    ["name"] = SafeGetText(() => opt.Title),
+                    ["description"] = SafeGetText(() => opt.Description),
+                    ["is_enabled"] = opt.IsEnabled
+                });
+                index++;
+            }
         }
         state["options"] = options;
 
@@ -577,6 +631,15 @@ public static partial class McpMod
         var state = new Dictionary<string, object?>();
 
         var inventory = merchantRoom.Inventory;
+        if (inventory == null)
+        {
+            state["items"] = new List<Dictionary<string, object?>>();
+            state["can_proceed"] = NMerchantRoom.Instance?.ProceedButton?.IsEnabled ?? false;
+            state["error"] =
+                "Shop inventory is not ready yet (null). Often happens right after entering the merchant from the map; retry in a moment.";
+            return state;
+        }
+
         var items = new List<Dictionary<string, object?>>();
         int index = 0;
 
@@ -675,10 +738,17 @@ public static partial class McpMod
         var state = new Dictionary<string, object?>();
 
         var map = runState.Map;
+        if (map == null)
+        {
+            state["error"] = "runState.Map is null";
+            state["next_options"] = new List<Dictionary<string, object?>>();
+            return state;
+        }
+
         var visitedCoords = runState.VisitedMapCoords;
 
         // Current position
-        if (visitedCoords.Count > 0)
+        if (visitedCoords != null && visitedCoords.Count > 0)
         {
             var cur = visitedCoords[visitedCoords.Count - 1];
             state["current_position"] = new Dictionary<string, object?>
@@ -690,13 +760,16 @@ public static partial class McpMod
 
         // Visited path
         var visited = new List<Dictionary<string, object?>>();
-        foreach (var coord in visitedCoords)
+        if (visitedCoords != null)
         {
-            visited.Add(new Dictionary<string, object?>
+            foreach (var coord in visitedCoords)
             {
-                ["col"] = coord.col, ["row"] = coord.row,
-                ["type"] = map.GetPoint(coord)?.PointType.ToString()
-            });
+                visited.Add(new Dictionary<string, object?>
+                {
+                    ["col"] = coord.col, ["row"] = coord.row,
+                    ["type"] = map.GetPoint(coord)?.PointType.ToString()
+                });
+            }
         }
         state["visited"] = visited;
 
@@ -706,14 +779,15 @@ public static partial class McpMod
         if (mapScreen != null)
         {
             var travelable = FindAll<NMapPoint>(mapScreen)
-                .Where(mp => mp.State == MapPointState.Travelable)
-                .OrderBy(mp => mp.Point.coord.col)
+                .Where(mp => mp.State == MapPointState.Travelable && mp.Point != null)
+                .OrderBy(mp => mp.Point!.coord.col)
                 .ToList();
 
             int index = 0;
             foreach (var nmp in travelable)
             {
                 var pt = nmp.Point;
+                if (pt == null) continue;
                 var option = new Dictionary<string, object?>
                 {
                     ["index"] = index,
@@ -723,13 +797,19 @@ public static partial class McpMod
                 };
 
                 // 1-level lookahead
-                var children = pt.Children
-                    .OrderBy(c => c.coord.col)
-                    .Select(c => new Dictionary<string, object?>
-                    {
-                        ["col"] = c.coord.col, ["row"] = c.coord.row,
-                        ["type"] = c.PointType.ToString()
-                    }).ToList();
+                List<Dictionary<string, object?>> children;
+                if (pt.Children != null)
+                {
+                    children = pt.Children
+                        .OrderBy(c => c.coord.col)
+                        .Select(c => new Dictionary<string, object?>
+                        {
+                            ["col"] = c.coord.col, ["row"] = c.coord.row,
+                            ["type"] = c.PointType.ToString()
+                        }).ToList();
+                }
+                else
+                    children = new List<Dictionary<string, object?>>();
                 if (children.Count > 0)
                     option["leads_to"] = children;
 
@@ -743,39 +823,62 @@ public static partial class McpMod
         var nodes = new List<Dictionary<string, object?>>();
 
         // Starting point
-        var start = map.StartingMapPoint;
-        nodes.Add(BuildMapNode(start));
+        if (map.StartingMapPoint != null)
+            nodes.Add(BuildMapNode(map.StartingMapPoint));
 
         // Grid nodes
         foreach (var pt in map.GetAllMapPoints())
-            nodes.Add(BuildMapNode(pt));
+        {
+            if (pt != null)
+                nodes.Add(BuildMapNode(pt));
+        }
 
         // Boss
-        nodes.Add(BuildMapNode(map.BossMapPoint));
+        if (map.BossMapPoint != null)
+            nodes.Add(BuildMapNode(map.BossMapPoint));
         if (map.SecondBossMapPoint != null)
             nodes.Add(BuildMapNode(map.SecondBossMapPoint));
 
         state["nodes"] = nodes;
-        state["boss"] = new Dictionary<string, object?>
+        if (map.BossMapPoint != null)
         {
-            ["col"] = map.BossMapPoint.coord.col,
-            ["row"] = map.BossMapPoint.coord.row
-        };
+            state["boss"] = new Dictionary<string, object?>
+            {
+                ["col"] = map.BossMapPoint.coord.col,
+                ["row"] = map.BossMapPoint.coord.row
+            };
+        }
 
         return state;
     }
 
-    private static Dictionary<string, object?> BuildMapNode(MapPoint pt)
+    private static Dictionary<string, object?> BuildMapNode(MapPoint? pt)
     {
+        if (pt == null)
+        {
+            return new Dictionary<string, object?>
+            {
+                ["error"] = "null MapPoint"
+            };
+        }
+
+        List<List<int>> childCoords;
+        if (pt.Children != null)
+        {
+            childCoords = pt.Children
+                .OrderBy(c => c.coord.col)
+                .Select(c => new List<int> { c.coord.col, c.coord.row })
+                .ToList();
+        }
+        else
+            childCoords = new List<List<int>>();
+
         return new Dictionary<string, object?>
         {
             ["col"] = pt.coord.col,
             ["row"] = pt.coord.row,
             ["type"] = pt.PointType.ToString(),
-            ["children"] = pt.Children
-                .OrderBy(c => c.coord.col)
-                .Select(c => new List<int> { c.coord.col, c.coord.row })
-                .ToList()
+            ["children"] = childCoords
         };
     }
 
@@ -1169,16 +1272,17 @@ public static partial class McpMod
         _ => reward.GetType().Name.ToLower()
     };
 
-    private static List<Dictionary<string, object?>> BuildPowersState(Creature creature)
+    private static List<Dictionary<string, object?>> BuildPowersState(Creature? creature)
     {
         var powers = new List<Dictionary<string, object?>>();
+        if (creature?.Powers == null) return powers;
         foreach (var power in creature.Powers)
         {
             if (!power.IsVisible) continue;
 
             // HoverTips resolves all dynamic vars (Amount, DynamicVars, etc.)
             // The first tip is the power's own description; the rest are extra keywords
-            var allTips = power.HoverTips.ToList();
+            var allTips = power.HoverTips?.ToList() ?? new List<IHoverTip>();
             string? resolvedDesc = null;
             var extraTips = new List<IHoverTip>();
             foreach (var tip in allTips)
