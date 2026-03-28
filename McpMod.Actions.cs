@@ -318,14 +318,10 @@ public static partial class McpMod
         if (player.RunState.CurrentRoom is not MerchantRoom merchantRoom)
             return Error("Not in a shop");
 
-        // Open when null or closed so we do not get stuck (null Inventory never recovers until OpenInventory).
+        // Auto-open inventory if needed (guard null — OpenInventory() dereferences Inventory.IsOpen)
         var merchUI = NMerchantRoom.Instance;
-        if (merchUI != null)
-        {
-            var invUi = merchUI.Inventory;
-            if (invUi == null || !invUi.IsOpen)
-                merchUI.OpenInventory();
-        }
+        if (merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
+            merchUI.OpenInventory();
 
         if (merchantRoom.Inventory == null)
             return Error("Shop inventory not ready yet; wait a moment and retry");
