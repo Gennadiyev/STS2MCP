@@ -318,10 +318,17 @@ public static partial class McpMod
         if (player.RunState.CurrentRoom is not MerchantRoom merchantRoom)
             return Error("Not in a shop");
 
-        // Auto-open inventory if needed
+        // Open when null or closed so we do not get stuck (null Inventory never recovers until OpenInventory).
         var merchUI = NMerchantRoom.Instance;
-        if (merchUI != null && !merchUI.Inventory.IsOpen)
-            merchUI.OpenInventory();
+        if (merchUI != null)
+        {
+            var invUi = merchUI.Inventory;
+            if (invUi == null || !invUi.IsOpen)
+                merchUI.OpenInventory();
+        }
+
+        if (merchantRoom.Inventory == null)
+            return Error("Shop inventory not ready yet; wait a moment and retry");
 
         if (!data.TryGetValue("index", out var indexElem))
             return Error("Missing 'index' (shop item index)");
@@ -360,8 +367,8 @@ public static partial class McpMod
         int index = indexElem.GetInt32();
 
         var travelable = FindAll<NMapPoint>(mapScreen)
-            .Where(mp => mp.State == MapPointState.Travelable)
-            .OrderBy(mp => mp.Point.coord.col)
+            .Where(mp => mp.State == MapPointState.Travelable && mp.Point != null)
+            .OrderBy(mp => mp.Point!.coord.col)
             .ToList();
 
         if (travelable.Count == 0)
@@ -370,12 +377,13 @@ public static partial class McpMod
             return Error($"Map node index {index} out of range ({travelable.Count} options available)");
 
         var target = travelable[index];
+        var pt = target.Point!;
         mapScreen.OnMapPointSelectedLocally(target);
 
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",
-            ["message"] = $"Traveling to {target.Point.PointType} at ({target.Point.coord.col},{target.Point.coord.row})"
+            ["message"] = $"Traveling to {pt.PointType} at ({pt.coord.col},{pt.coord.row})"
         };
     }
 
@@ -485,7 +493,7 @@ public static partial class McpMod
         // Try merchant — close inventory first if open, then proceed
         if (NMerchantRoom.Instance is { } merchRoom)
         {
-            if (merchRoom.Inventory.IsOpen)
+            if (merchRoom.Inventory?.IsOpen == true)
             {
                 var backBtn = FindFirst<NBackButton>(merchRoom);
                 if (backBtn is { IsEnabled: true })

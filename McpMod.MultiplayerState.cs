@@ -177,8 +177,12 @@ public static partial class McpMod
             else
             {
                 var merchUI = NMerchantRoom.Instance;
-                if (merchUI != null && !merchUI.Inventory.IsOpen)
-                    merchUI.OpenInventory();
+                if (merchUI != null)
+                {
+                    var shopInv = merchUI.Inventory;
+                    if (shopInv == null || !shopInv.IsOpen)
+                        merchUI.OpenInventory();
+                }
 
                 result["state_type"] = "shop";
                 result["shop"] = BuildShopState(merchantRoom, runState);
@@ -420,12 +424,22 @@ public static partial class McpMod
         state["max_hp"] = creature.MaxHp;
         state["block"] = creature.Block;
 
-        if (combatState != null)
+        bool inLiveCombat = CombatManager.Instance != null && CombatManager.Instance.IsInProgress;
+        if (combatState != null && inLiveCombat)
         {
-            state["energy"] = combatState.Energy;
-            state["max_energy"] = combatState.MaxEnergy;
+            try
+            {
+                state["energy"] = combatState.Energy;
+                state["max_energy"] = combatState.MaxEnergy;
+            }
+            catch
+            {
+                state["energy"] = null;
+                state["max_energy"] = null;
+            }
 
-            if (player.Character.ShouldAlwaysShowStarCounter || combatState.Stars > 0)
+            if (player.Character != null
+                && (player.Character.ShouldAlwaysShowStarCounter || combatState.Stars > 0))
                 state["stars"] = combatState.Stars;
         }
 

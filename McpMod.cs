@@ -218,7 +218,18 @@ public static partial class McpMod
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Failed to read multiplayer game state: {ex.Message}");
+            GD.PrintErr($"[STS2 MCP] HandleGetMultiplayerState: {ex}");
+            try
+            {
+                response.StatusCode = 500;
+                SendJson(response, new Dictionary<string, object?>
+                {
+                    ["error"] = $"Failed to read multiplayer game state: {ex.Message}",
+                    ["exception_type"] = ex.GetType().FullName,
+                    ["stack_trace"] = ex.StackTrace
+                });
+            }
+            catch { /* response may be unusable */ }
         }
     }
 
@@ -270,8 +281,15 @@ public static partial class McpMod
 
             if (format == "markdown")
             {
-                string md = FormatAsMarkdown(state);
-                SendText(response, md, "text/markdown");
+                try
+                {
+                    SendText(response, FormatAsMarkdown(state), "text/markdown");
+                }
+                catch (Exception ex)
+                {
+                    GD.PrintErr($"[STS2 MCP] FormatAsMarkdown failed, returning JSON: {ex}");
+                    SendJson(response, state);
+                }
             }
             else
             {
@@ -280,7 +298,18 @@ public static partial class McpMod
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Failed to read game state: {ex.Message}");
+            GD.PrintErr($"[STS2 MCP] HandleGetState: {ex}");
+            try
+            {
+                response.StatusCode = 500;
+                SendJson(response, new Dictionary<string, object?>
+                {
+                    ["error"] = $"Failed to read game state: {ex.Message}",
+                    ["exception_type"] = ex.GetType().FullName,
+                    ["stack_trace"] = ex.StackTrace
+                });
+            }
+            catch { /* response may be unusable */ }
         }
     }
 
