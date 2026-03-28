@@ -56,9 +56,12 @@ public static partial class McpMod
             return result;
         }
 
-        // Card selection overlays can appear on top of any room (events, rest sites, combat)
+        // Overlays can appear on top of any room (events, rest sites, combat).
+        // Rewards/card-reward overlays defer to the map — they may linger on the
+        // overlay stack while the map opens after the player clicks proceed.
         var topOverlay = NOverlayStack.Instance?.Peek();
         var currentRoom = runState.CurrentRoom;
+        bool mapIsOpen = NMapScreen.Instance is { IsOpen: true };
         if (topOverlay is NCardGridSelectionScreen cardSelectScreen)
         {
             result["state_type"] = "card_select";
@@ -83,6 +86,16 @@ public static partial class McpMod
         {
             result["state_type"] = "crystal_sphere";
             result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen, runState);
+        }
+        else if (!mapIsOpen && topOverlay is NCardRewardSelectionScreen cardRewardScreen)
+        {
+            result["state_type"] = "card_reward";
+            result["card_reward"] = BuildCardRewardState(cardRewardScreen);
+        }
+        else if (!mapIsOpen && topOverlay is NRewardsScreen rewardsScreen)
+        {
+            result["state_type"] = "rewards";
+            result["rewards"] = BuildRewardsState(rewardsScreen, runState);
         }
         else if (topOverlay is IOverlayScreen
                  && topOverlay is not NRewardsScreen
@@ -116,7 +129,8 @@ public static partial class McpMod
             }
             else
             {
-                // After combat ends, check: map open (post-rewards) > overlays > fallback
+                // After combat ends — reward/card overlays are caught by top-level checks above.
+                // Only handle map and the brief transition before rewards appear.
                 if (NMapScreen.Instance is { IsOpen: true })
                 {
                     result["state_type"] = "map";
@@ -124,22 +138,8 @@ public static partial class McpMod
                 }
                 else
                 {
-                    var overlay = NOverlayStack.Instance?.Peek();
-                    if (overlay is NCardRewardSelectionScreen cardScreen)
-                    {
-                        result["state_type"] = "card_reward";
-                        result["card_reward"] = BuildCardRewardState(cardScreen);
-                    }
-                    else if (overlay is NRewardsScreen rewardsScreen)
-                    {
-                        result["state_type"] = "combat_rewards";
-                        result["rewards"] = BuildRewardsState(rewardsScreen, runState);
-                    }
-                    else
-                    {
-                        result["state_type"] = combatRoom.RoomType.ToString().ToLower();
-                        result["message"] = "Combat ended. Waiting for rewards...";
-                    }
+                    result["state_type"] = combatRoom.RoomType.ToString().ToLower();
+                    result["message"] = "Combat ended. Waiting for rewards...";
                 }
             }
         }
