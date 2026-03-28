@@ -280,7 +280,7 @@ public static partial class McpMod
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Failed to read game state: {ex.Message}");
+            SendError(response, 500, $"Failed to read game state: {ex.Message}\n{ex.StackTrace}");
         }
     }
 

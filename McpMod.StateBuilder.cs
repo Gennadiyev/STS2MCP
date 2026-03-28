@@ -502,6 +502,11 @@ public static partial class McpMod
         var state = new Dictionary<string, object?>();
 
         var eventModel = eventRoom.CanonicalEvent;
+        if (eventModel == null)
+        {
+            state["error"] = "Event model not yet available";
+            return state;
+        }
         bool isAncient = eventModel is AncientEventModel;
         state["event_id"] = eventModel.Id.Entry;
         state["event_name"] = SafeGetText(() => eventModel.Title);
@@ -563,7 +568,7 @@ public static partial class McpMod
 
         var options = new List<Dictionary<string, object?>>();
         int index = 0;
-        foreach (var opt in restSiteRoom.Options)
+        foreach (var opt in restSiteRoom.Options ?? [])
         {
             options.Add(new Dictionary<string, object?>
             {
@@ -588,6 +593,11 @@ public static partial class McpMod
         var state = new Dictionary<string, object?>();
 
         var inventory = merchantRoom.Inventory;
+        if (inventory == null)
+        {
+            state["error"] = "Shop inventory not yet available";
+            return state;
+        }
         var items = new List<Dictionary<string, object?>>();
         int index = 0;
 
@@ -686,10 +696,15 @@ public static partial class McpMod
         var state = new Dictionary<string, object?>();
 
         var map = runState.Map;
+        if (map == null)
+        {
+            state["error"] = "Map not yet available";
+            return state;
+        }
         var visitedCoords = runState.VisitedMapCoords;
 
         // Current position
-        if (visitedCoords.Count > 0)
+        if (visitedCoords != null && visitedCoords.Count > 0)
         {
             var cur = visitedCoords[visitedCoords.Count - 1];
             state["current_position"] = new Dictionary<string, object?>
@@ -701,7 +716,7 @@ public static partial class McpMod
 
         // Visited path
         var visited = new List<Dictionary<string, object?>>();
-        foreach (var coord in visitedCoords)
+        foreach (var coord in visitedCoords ?? [])
         {
             visited.Add(new Dictionary<string, object?>
             {
@@ -762,16 +777,19 @@ public static partial class McpMod
             nodes.Add(BuildMapNode(pt));
 
         // Boss
-        nodes.Add(BuildMapNode(map.BossMapPoint));
+        if (map.BossMapPoint != null)
+        {
+            nodes.Add(BuildMapNode(map.BossMapPoint));
+            state["boss"] = new Dictionary<string, object?>
+            {
+                ["col"] = map.BossMapPoint.coord.col,
+                ["row"] = map.BossMapPoint.coord.row
+            };
+        }
         if (map.SecondBossMapPoint != null)
             nodes.Add(BuildMapNode(map.SecondBossMapPoint));
 
         state["nodes"] = nodes;
-        state["boss"] = new Dictionary<string, object?>
-        {
-            ["col"] = map.BossMapPoint.coord.col,
-            ["row"] = map.BossMapPoint.coord.row
-        };
 
         return state;
     }
@@ -1213,7 +1231,8 @@ public static partial class McpMod
                 state["instructions_description"] = StripRichTextTags(textVariant.AsString());
         }
 
-        var cells = FindAll<NCrystalSphereCell>(screen);
+        var cells = FindAll<NCrystalSphereCell>(screen)
+            .Where(c => c.Entity != null).ToList();
         state["grid_width"] = cells.Count > 0 ? cells.Max(c => c.Entity.X) + 1 : 0;
         state["grid_height"] = cells.Count > 0 ? cells.Max(c => c.Entity.Y) + 1 : 0;
 
