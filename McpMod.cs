@@ -10,6 +10,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Godot;
+using HarmonyLib;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 
@@ -35,6 +36,9 @@ public static partial class McpMod
     {
         try
         {
+            // Apply Harmony patches (settings UI injection, etc.)
+            new Harmony("com.sts2mcp").PatchAll();
+
             // Connect to main thread process frame for action execution
             var tree = (SceneTree)Engine.GetMainLoop();
             tree.Connect(SceneTree.SignalName.ProcessFrame, Callable.From(ProcessMainThreadQueue));
