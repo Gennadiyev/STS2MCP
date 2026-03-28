@@ -241,16 +241,17 @@ public static partial class McpMod
 
         int index = indexElem.GetInt32();
 
-        var buttons = FindAll<NEventOptionButton>(uiRoom)
-            .Where(b => !b.Option.IsLocked)
-            .ToList();
+        var buttons = FindAll<NEventOptionButton>(uiRoom);
 
         if (buttons.Count == 0)
-            return Error("No unlocked event options available");
+            return Error("No event options available");
         if (index < 0 || index >= buttons.Count)
-            return Error($"Event option index {index} out of range ({buttons.Count} unlocked options)");
+            return Error($"Event option index {index} out of range ({buttons.Count} options)");
 
         var button = buttons[index];
+        if (button.Option.IsLocked)
+            return Error($"Event option index {index} is locked");
+
         string title = SafeGetText(() => button.Option.Title) ?? "option";
         button.ForceClick();
 
@@ -295,14 +296,15 @@ public static partial class McpMod
         if (restRoom == null)
             return Error("Rest site room is not open");
 
-        var buttons = FindAll<NRestSiteButton>(restRoom)
-            .Where(b => b.Option.IsEnabled)
-            .ToList();
+        var buttons = FindAll<NRestSiteButton>(restRoom);
 
         if (index < 0 || index >= buttons.Count)
-            return Error($"Rest option index {index} out of range ({buttons.Count} enabled options)");
+            return Error($"Rest option index {index} out of range ({buttons.Count} options)");
 
         var button = buttons[index];
+        if (!button.Option.IsEnabled)
+            return Error($"Rest option index {index} is disabled");
+
         string optionName = SafeGetText(() => button.Option.Title) ?? button.Option.OptionId;
         button.ForceClick();
 

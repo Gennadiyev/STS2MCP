@@ -294,7 +294,7 @@ async def event_choose_option(option_index: int) -> str:
     Also used to click the Proceed option after an event resolves.
 
     Args:
-        option_index: 0-based index of the unlocked option.
+        option_index: 0-based index of the option from the current event state.
     """
     try:
         return await _post({"action": "choose_event_option", "index": option_index})
@@ -601,7 +601,7 @@ async def mp_event_choose_option(option_index: int) -> str:
     For individual events: immediate choice, same as singleplayer.
 
     Args:
-        option_index: 0-based index of the unlocked option.
+        option_index: 0-based index of the option from the current event state.
     """
     try:
         return await _mp_post({"action": "choose_event_option", "index": option_index})

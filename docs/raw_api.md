@@ -189,7 +189,7 @@ Returns the current game state. The `state_type` field indicates the screen:
 ```json
 { "action": "choose_event_option", "index": 0 }
 ```
-- `index`: 0-based index of the unlocked option (from GET response)
+- `index`: 0-based index of the option from the current GET response
 - Works for both regular events and ancients (after dialogue)
 
 **Advance ancient dialogue:**
