@@ -245,45 +245,39 @@ public static partial class McpMod
                             result["menu_screen"] = "timeline";
                             result["message"] = "Timeline screen.";
 
-                            // Read epoch slots from UI + progress save
+                            // Read epochs from ProgressState (stable, not hover-dependent)
                             try
                             {
-                                var epochList = new List<Dictionary<string, object?>>();
-
-                                // Get slots from UI for hover tip data
-                                var allSlots = FindAll<NEpochSlot>(timelineScreen);
-                                foreach (var slot in allSlots)
+                                var progress = SaveManager.Instance?.Progress;
+                                if (progress != null)
                                 {
-                                    try
+                                    var epochList = new List<Dictionary<string, object?>>();
+                                    foreach (var epoch in progress.Epochs)
                                     {
-                                        var era = slot.GetType().GetField("_era", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(slot);
-                                        var hoverTip = slot.GetType().GetField("_hoverTip", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(slot);
-                                        var stateVal = slot.State;
+                                        var eraName = epoch.Id;
+                                        // Clean up ID to readable name
+                                        var name = System.Text.RegularExpressions.Regex.Replace(eraName, @"(\d+)$", "");
+                                        name = System.Text.RegularExpressions.Regex.Replace(name, @"(?<=[a-z])(?=[A-Z])", " ");
 
-                                        var epochData = new Dictionary<string, object?>
+                                        epochList.Add(new Dictionary<string, object?>
                                         {
-                                            ["state"] = stateVal.ToString(),
-                                            ["era"] = era?.ToString(),
-                                        };
-
-                                        if (hoverTip is HoverTip ht)
-                                        {
-                                            epochData["name"] = SafeGetText(() => ht.Title);
-                                            epochData["description"] = SafeGetText(() => ht.Description);
-                                        }
-                                        else if (stateVal.ToString() == "Complete" || stateVal.ToString() == "Obtained")
-                                        {
-                                            // For completed epochs, use era name as fallback
-                                            epochData["name"] = era?.ToString()?.Replace("0", "").Replace("1", "").Replace("2", "").Replace("3", "").Replace("4", "").Replace("5", "").Replace("6", "").Replace("7", "");
-                                        }
-
-                                        epochList.Add(epochData);
+                                            ["id"] = eraName,
+                                            ["name"] = name,
+                                            ["state"] = epoch.State.ToString(),
+                                            ["obtained"] = epoch.ObtainDate
+                                        });
                                     }
-                                    catch { }
-                                }
 
-                                if (epochList.Count > 0)
+                                    // Count total slots from UI for hidden count
+                                    var allSlots = FindAll<NEpochSlot>(timelineScreen);
+                                    var completedCount = allSlots.Count(s => s.State.ToString() == "Complete" || s.State.ToString() == "Obtained");
+                                    var lockedVisible = allSlots.Count(s => s.State.ToString() == "NotObtained");
+
                                     result["epochs"] = epochList;
+                                    result["total_slots"] = allSlots.Count;
+                                    result["completed_count"] = completedCount;
+                                    result["locked_count"] = lockedVisible;
+                                }
                             }
                             catch { }
                         }
