@@ -63,8 +63,28 @@ public static partial class McpMod
                 if (spSubmenu != null && spSubmenu.Visible)
                 {
                     result["menu_screen"] = "singleplayer";
-                    result["message"] = "Singleplayer mode select: Standard, Daily, Custom.";
-                    result["options"] = new List<string> { "standard", "daily", "custom" };
+                    result["message"] = "Select game mode.";
+
+                    var modeOptions = new List<Dictionary<string, object?>>();
+                    var modeFields = new[] { ("_standardButton", "standard"), ("_dailyButton", "daily"), ("_customButton", "custom") };
+                    foreach (var (fieldName, label) in modeFields)
+                    {
+                        try
+                        {
+                            var btn = spSubmenu.GetType().GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(spSubmenu);
+                            if (btn is Control ctrl && ctrl.Visible)
+                            {
+                                var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
+                                modeOptions.Add(new Dictionary<string, object?>
+                                {
+                                    ["name"] = label,
+                                    ["enabled"] = isEnabled ?? true
+                                });
+                            }
+                        }
+                        catch { }
+                    }
+                    result["options"] = modeOptions;
                 }
                 // Check for character select screen
                 else
@@ -73,7 +93,7 @@ public static partial class McpMod
                     if (charSelect != null && charSelect.Visible)
                     {
                         result["menu_screen"] = "character_select";
-                        result["message"] = "Character select screen is active.";
+                        result["message"] = "Select a character.";
 
                         var buttons = FindAll<NCharacterSelectButton>(charSelect);
                         var characters = new List<Dictionary<string, object?>>();
@@ -81,14 +101,67 @@ public static partial class McpMod
                         {
                             try
                             {
-                                var charModel = btn.GetType().GetField("_character", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(btn);
-                                if (charModel is CharacterModel cm)
+                                if (btn.Character is { } cm)
                                 {
-                                    characters.Add(new Dictionary<string, object?>
+                                    var charData = new Dictionary<string, object?>
                                     {
                                         ["name"] = SafeGetText(() => cm.Title),
-                                        ["id"] = cm.Id.Entry
-                                    });
+                                        ["id"] = cm.Id.Entry,
+                                        ["locked"] = btn.IsLocked,
+                                        ["hp"] = cm.StartingHp,
+                                        ["gold"] = cm.StartingGold,
+                                        ["energy"] = cm.MaxEnergy,
+                                        ["description"] = SafeGetText(() => cm.CardsModifierDescription),
+                                    };
+
+                                    // Starting relics
+                                    var startRelics = new List<Dictionary<string, object?>>();
+                                    foreach (var relic in cm.StartingRelics)
+                                    {
+                                        startRelics.Add(new Dictionary<string, object?>
+                                        {
+                                            ["name"] = SafeGetText(() => relic.Title),
+                                            ["description"] = SafeGetText(() => relic.DynamicDescription)
+                                        });
+                                    }
+                                    if (startRelics.Count > 0)
+                                        charData["starting_relics"] = startRelics;
+
+                                    // Starting deck summary
+                                    var deckCards = new List<string>();
+                                    foreach (var card in cm.StartingDeck)
+                                        deckCards.Add(SafeGetText(() => card.Title) ?? "?");
+                                    if (deckCards.Count > 0)
+                                        charData["starting_deck"] = deckCards;
+
+                                    // Known cards count from card pool
+                                    try
+                                    {
+                                        var allCards = cm.CardPool?.AllCards;
+                                        if (allCards != null)
+                                            charData["total_cards"] = System.Linq.Enumerable.Count(allCards);
+                                    }
+                                    catch { }
+
+                                    // Known relics count from relic pool
+                                    try
+                                    {
+                                        var allRelics = cm.RelicPool?.AllRelics;
+                                        if (allRelics != null)
+                                            charData["total_relics"] = System.Linq.Enumerable.Count(allRelics);
+                                    }
+                                    catch { }
+
+                                    // Known potions count from potion pool
+                                    try
+                                    {
+                                        var allPotions = cm.PotionPool?.AllPotions;
+                                        if (allPotions != null)
+                                            charData["total_potions"] = System.Linq.Enumerable.Count(allPotions);
+                                    }
+                                    catch { }
+
+                                    characters.Add(charData);
                                 }
                             }
                             catch { }
