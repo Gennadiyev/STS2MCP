@@ -1070,8 +1070,37 @@ public static partial class McpMod
         var timelineScreen = FindFirst<NTimelineScreen>(tree.Root);
         if (timelineScreen != null && timelineScreen.Visible)
         {
-            if (string.Equals(option, "advance", System.StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(option, "advance", System.StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(option, "proceed", System.StringComparison.OrdinalIgnoreCase))
             {
+                // Check for timeline tutorial screen (first-time "Proceed" button).
+                var tutorial = FindFirst<NTimelineTutorial>(tree.Root);
+                if (tutorial != null && tutorial.Visible)
+                {
+                    var ackBtn = tutorial.GetType().GetField("_acknowledgeButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(tutorial);
+                    if (ackBtn is NClickableControl ackClickable && ackClickable.IsEnabled)
+                    {
+                        ackClickable.ForceClick();
+                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Clicked tutorial proceed button" };
+                    }
+                }
+
+                // Check for confirm button
+                var confirmBtn = FindFirst<NConfirmButton>(tree.Root);
+                if (confirmBtn != null && confirmBtn.Visible && confirmBtn.IsEnabled)
+                {
+                    confirmBtn.ForceClick();
+                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Clicked confirm button" };
+                }
+
+                // Check for any clickable proceed button
+                var proceedBtn = FindFirst<NProceedButton>(tree.Root);
+                if (proceedBtn != null && proceedBtn.Visible && proceedBtn.IsEnabled)
+                {
+                    proceedBtn.ForceClick();
+                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Clicked proceed button" };
+                }
+
                 // Check for inspect screen (epoch detail view) - close it.
                 var inspectScreen = FindFirst<NEpochInspectScreen>(tree.Root);
                 if (inspectScreen != null && inspectScreen.Visible)
@@ -1093,15 +1122,23 @@ public static partial class McpMod
                     return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Opening queued unlock screen" };
                 }
 
-                // Find an obtained but not-yet-revealed epoch slot to click.
+                // Find an obtained epoch slot to click.
                 var slots = FindAll<NEpochSlot>(timelineScreen);
                 foreach (var slot in slots)
                 {
                     if (slot.State.ToString() == "Obtained")
                     {
-                        var onPress = slot.GetType().GetMethod("OnPress", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                        onPress?.Invoke(slot, null);
-                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Clicking obtained epoch slot" };
+                        // Try RevealEpoch to properly transition the state.
+                        var revealMethod = slot.GetType().GetMethod("RevealEpoch", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                        if (revealMethod != null)
+                        {
+                            revealMethod.Invoke(slot, null);
+                            return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Revealing epoch" };
+                        }
+                        // Fallback: set state directly and open inspect.
+                        slot.SetState(EpochSlotState.Complete);
+                        timelineScreen.OpenInspectScreen(slot, true);
+                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Force-revealing epoch" };
                     }
                 }
 
@@ -1109,11 +1146,23 @@ public static partial class McpMod
             }
             else if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
             {
+                // Try NBackButton directly on NTimelineScreen
                 var backBtn = timelineScreen.GetType().GetField("_backButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
-                if (backBtn is NClickableControl backClickable && backClickable.IsEnabled)
+                if (backBtn is NClickableControl backClickable)
                 {
-                    backClickable.ForceClick();
-                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Going back from timeline" };
+                    if (backClickable.IsEnabled)
+                    {
+                        backClickable.ForceClick();
+                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Going back from timeline" };
+                    }
+                }
+                // Try the submenu stack
+                var stack = timelineScreen.GetType().GetField("_stack", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
+                if (stack != null)
+                {
+                    var popMethod = stack.GetType().GetMethod("Pop");
+                    popMethod?.Invoke(stack, null);
+                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Popped timeline from stack" };
                 }
                 return Error("Back button not available on timeline");
             }
