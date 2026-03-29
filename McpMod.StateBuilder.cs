@@ -245,43 +245,45 @@ public static partial class McpMod
                             result["menu_screen"] = "timeline";
                             result["message"] = "Timeline screen.";
 
-                            // Read epoch slots from the timeline
+                            // Read epoch slots from UI + progress save
                             try
                             {
-                                var slotsContainer = timelineScreen.GetType().GetField("_epochSlotContainer", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen) as Control;
-                                if (slotsContainer == null)
-                                    slotsContainer = timelineScreen.GetType().GetField("_slotsContainer", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen) as Control;
+                                var epochList = new List<Dictionary<string, object?>>();
 
-                                if (slotsContainer != null)
+                                // Get slots from UI for hover tip data
+                                var allSlots = FindAll<NEpochSlot>(timelineScreen);
+                                foreach (var slot in allSlots)
                                 {
-                                    var slots = FindAll<NEpochSlot>(slotsContainer);
-                                    var epochList = new List<Dictionary<string, object?>>();
-                                    foreach (var slot in slots)
+                                    try
                                     {
-                                        try
+                                        var era = slot.GetType().GetField("_era", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(slot);
+                                        var hoverTip = slot.GetType().GetField("_hoverTip", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(slot);
+                                        var stateVal = slot.State;
+
+                                        var epochData = new Dictionary<string, object?>
                                         {
-                                            var era = slot.GetType().GetField("_era", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(slot);
-                                            var hoverTip = slot.GetType().GetField("_hoverTip", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(slot);
-                                            var state_val = slot.State;
+                                            ["state"] = stateVal.ToString(),
+                                            ["era"] = era?.ToString(),
+                                        };
 
-                                            var epochData = new Dictionary<string, object?>
-                                            {
-                                                ["state"] = state_val.ToString(),
-                                            };
-
-                                            if (hoverTip is HoverTip ht)
-                                            {
-                                                epochData["name"] = SafeGetText(() => ht.Title);
-                                                epochData["description"] = SafeGetText(() => ht.Description);
-                                            }
-
-                                            epochList.Add(epochData);
+                                        if (hoverTip is HoverTip ht)
+                                        {
+                                            epochData["name"] = SafeGetText(() => ht.Title);
+                                            epochData["description"] = SafeGetText(() => ht.Description);
                                         }
-                                        catch { }
+                                        else if (stateVal.ToString() == "Complete" || stateVal.ToString() == "Obtained")
+                                        {
+                                            // For completed epochs, use era name as fallback
+                                            epochData["name"] = era?.ToString()?.Replace("0", "").Replace("1", "").Replace("2", "").Replace("3", "").Replace("4", "").Replace("5", "").Replace("6", "").Replace("7", "");
+                                        }
+
+                                        epochList.Add(epochData);
                                     }
-                                    if (epochList.Count > 0)
-                                        result["epochs"] = epochList;
+                                    catch { }
                                 }
+
+                                if (epochList.Count > 0)
+                                    result["epochs"] = epochList;
                             }
                             catch { }
                         }
