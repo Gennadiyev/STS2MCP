@@ -1088,6 +1088,38 @@ public static partial class McpMod
             return Error($"Button '{option}' not available");
         }
 
+        // Tutorial/FTUE popup - "Enable Tutorials?" dialog
+        var tutorialFtue = FindFirst<MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue>(tree.Root);
+        if (tutorialFtue != null && tutorialFtue.Visible)
+        {
+            var popup = tutorialFtue.GetType().GetField("_verticalPopup", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(tutorialFtue);
+            if (popup != null)
+            {
+                // "no" clicks No, "yes" clicks Yes, default to No.
+                var isYes = string.Equals(option, "yes", System.StringComparison.OrdinalIgnoreCase);
+                var btnField = isYes ? "<YesButton>k__BackingField" : "<NoButton>k__BackingField";
+                var btn = popup.GetType().GetField(btnField, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(popup);
+                if (btn is NClickableControl clickable && clickable.IsEnabled)
+                {
+                    clickable.ForceClick();
+                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = $"Tutorials: {(isYes ? "enabled" : "disabled")}" };
+                }
+            }
+            return Error("Tutorial popup visible but buttons not accessible");
+        }
+
+        // Any other FTUE/tutorial popup with a confirm button.
+        var ftue = FindFirst<MegaCrit.Sts2.Core.Nodes.Ftue.NFtue>(tree.Root);
+        if (ftue != null && ftue.Visible)
+        {
+            var confirmBtn = ftue.GetType().GetField("_confirmButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(ftue);
+            if (confirmBtn is NClickableControl ftueClickable && ftueClickable.IsEnabled)
+            {
+                ftueClickable.ForceClick();
+                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Dismissed tutorial popup" };
+            }
+        }
+
         // Main menu — click a menu button
         var mainMenu = FindFirst<NMainMenu>(tree.Root);
         if (mainMenu != null)

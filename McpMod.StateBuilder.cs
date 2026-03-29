@@ -59,6 +59,32 @@ public static partial class McpMod
             var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
             if (tree?.Root != null)
             {
+                // Check for tutorial FTUE popup
+                var tutorialFtue = FindFirst<MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue>(tree.Root);
+                if (tutorialFtue != null && tutorialFtue.Visible)
+                {
+                    result["menu_screen"] = "tutorial_prompt";
+                    result["message"] = "Enable Tutorials? Choose yes or no.";
+                    result["options"] = new List<Dictionary<string, object?>>
+                    {
+                        new() { ["name"] = "no", ["enabled"] = true },
+                        new() { ["name"] = "yes", ["enabled"] = true }
+                    };
+                }
+
+                // Check for any other FTUE popup
+                if (!result.ContainsKey("menu_screen"))
+                {
+                    var ftue = FindFirst<MegaCrit.Sts2.Core.Nodes.Ftue.NFtue>(tree.Root);
+                    if (ftue != null && ftue.Visible)
+                    {
+                        result["menu_screen"] = "tutorial";
+                        result["message"] = "Tutorial popup active. Use advance to dismiss.";
+                    }
+                }
+
+                if (!result.ContainsKey("menu_screen"))
+                {
                 // Check for singleplayer submenu (Standard / Daily / Custom)
                 var spSubmenu = FindFirst<NSingleplayerSubmenu>(tree.Root);
                 if (spSubmenu != null && spSubmenu.Visible)
@@ -197,6 +223,7 @@ public static partial class McpMod
                     }
                 }
             }
+            } // close if (!result.ContainsKey("menu_screen"))
             else
             {
                 result["message"] = "No run in progress.";
