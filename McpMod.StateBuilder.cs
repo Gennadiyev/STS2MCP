@@ -40,6 +40,8 @@ using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Models.RelicPools;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
+using MegaCrit.Sts2.Core.Nodes.Screens.Timeline;
+using MegaCrit.Sts2.Core.Nodes.Screens.Settings;
 using Godot;
 
 namespace STS2_MCP;
@@ -86,8 +88,70 @@ public static partial class McpMod
                     }
                     result["options"] = modeOptions;
                 }
-                // Check for character select screen
+                // Check for multiplayer host submenu (Standard / Daily / Custom for multiplayer)
                 else
+                {
+                    var mpHostSubmenu = FindFirst<NMultiplayerHostSubmenu>(tree.Root);
+                    if (mpHostSubmenu != null && mpHostSubmenu.Visible)
+                    {
+                        result["menu_screen"] = "multiplayer_host";
+                        result["message"] = "Multiplayer host: select game mode.";
+
+                        var modeOptions = new List<Dictionary<string, object?>>();
+                        var modeFields = new[] { ("_standardButton", "standard"), ("_dailyButton", "daily"), ("_customButton", "custom") };
+                        foreach (var (fieldName, label) in modeFields)
+                        {
+                            try
+                            {
+                                var btn = mpHostSubmenu.GetType().GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(mpHostSubmenu);
+                                if (btn is Control ctrl && ctrl.Visible)
+                                {
+                                    var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
+                                    modeOptions.Add(new Dictionary<string, object?>
+                                    {
+                                        ["name"] = label,
+                                        ["enabled"] = isEnabled ?? true
+                                    });
+                                }
+                            }
+                            catch { }
+                        }
+                        result["options"] = modeOptions;
+                    }
+                    else
+                    {
+                        // Check for multiplayer submenu (Host / Join / Load / Abandon)
+                        var mpSubmenu = FindFirst<NMultiplayerSubmenu>(tree.Root);
+                        if (mpSubmenu != null && mpSubmenu.Visible)
+                        {
+                            result["menu_screen"] = "multiplayer";
+                            result["message"] = "Multiplayer menu.";
+
+                            var mpOptions = new List<Dictionary<string, object?>>();
+                            var mpFields = new[] { ("_hostButton", "host"), ("_joinButton", "join"), ("_loadButton", "load"), ("_abandonButton", "abandon") };
+                            foreach (var (fieldName, label) in mpFields)
+                            {
+                                try
+                                {
+                                    var btn = mpSubmenu.GetType().GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(mpSubmenu);
+                                    if (btn is Control ctrl && ctrl.Visible)
+                                    {
+                                        var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
+                                        mpOptions.Add(new Dictionary<string, object?>
+                                        {
+                                            ["name"] = label,
+                                            ["enabled"] = isEnabled ?? true
+                                        });
+                                    }
+                                }
+                                catch { }
+                            }
+                            result["options"] = mpOptions;
+                        }
+                    }
+                }
+                // Check for character select screen
+                if (result.ContainsKey("menu_screen") == false)
                 {
                     var charSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
                     if (charSelect != null && charSelect.Visible)
@@ -171,8 +235,70 @@ public static partial class McpMod
                     }
                     else
                     {
-                        result["menu_screen"] = "main";
-                        result["message"] = "Main menu.";
+                        // Check for other screens
+                        var timelineScreen = FindFirst<NTimelineScreen>(tree.Root);
+                        var compendiumSubmenu = FindFirst<NCompendiumSubmenu>(tree.Root);
+                        var settingsScreen = FindFirst<NSettingsScreen>(tree.Root);
+
+                        if (timelineScreen != null && timelineScreen.Visible)
+                        {
+                            result["menu_screen"] = "timeline";
+                            result["message"] = "Timeline screen.";
+
+                            // Read epoch slots from the timeline
+                            try
+                            {
+                                var slotsContainer = timelineScreen.GetType().GetField("_epochSlotContainer", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen) as Control;
+                                if (slotsContainer == null)
+                                    slotsContainer = timelineScreen.GetType().GetField("_slotsContainer", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen) as Control;
+
+                                if (slotsContainer != null)
+                                {
+                                    var slots = FindAll<NEpochSlot>(slotsContainer);
+                                    var epochList = new List<Dictionary<string, object?>>();
+                                    foreach (var slot in slots)
+                                    {
+                                        try
+                                        {
+                                            var era = slot.GetType().GetField("_era", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(slot);
+                                            var hoverTip = slot.GetType().GetField("_hoverTip", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(slot);
+                                            var state_val = slot.State;
+
+                                            var epochData = new Dictionary<string, object?>
+                                            {
+                                                ["state"] = state_val.ToString(),
+                                            };
+
+                                            if (hoverTip is HoverTip ht)
+                                            {
+                                                epochData["name"] = SafeGetText(() => ht.Title);
+                                                epochData["description"] = SafeGetText(() => ht.Description);
+                                            }
+
+                                            epochList.Add(epochData);
+                                        }
+                                        catch { }
+                                    }
+                                    if (epochList.Count > 0)
+                                        result["epochs"] = epochList;
+                                }
+                            }
+                            catch { }
+                        }
+                        else if (compendiumSubmenu != null && compendiumSubmenu.Visible)
+                        {
+                            result["menu_screen"] = "compendium";
+                            result["message"] = "Compendium screen.";
+                        }
+                        else if (settingsScreen != null && settingsScreen.Visible)
+                        {
+                            result["menu_screen"] = "settings";
+                            result["message"] = "Settings screen.";
+                        }
+                        else
+                        {
+                            result["menu_screen"] = "main";
+                            result["message"] = "Main menu.";
 
                         var mainMenu = FindFirst<NMainMenu>(tree.Root);
                         if (mainMenu != null)
@@ -192,6 +318,7 @@ public static partial class McpMod
                             }
                             if (options.Count > 0)
                                 result["options"] = options;
+                        }
                         }
                     }
                 }
