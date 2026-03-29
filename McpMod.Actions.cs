@@ -33,6 +33,9 @@ using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
+using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
+using Godot;
 
 namespace STS2_MCP;
 
@@ -1054,5 +1057,126 @@ public static partial class McpMod
         }
 
         return null;
+    }
+
+    internal static Dictionary<string, object?> ExecuteMenuSelect(string option)
+    {
+        var tree = (Engine.GetMainLoop()) as SceneTree;
+        if (tree?.Root == null)
+            return Error("Cannot access scene tree");
+
+        // Main menu — click a menu button
+        var mainMenu = FindFirst<NMainMenu>(tree.Root);
+        if (mainMenu != null)
+        {
+            // Check if we're on singleplayer submenu
+            var spSubmenu = FindFirst<NSingleplayerSubmenu>(tree.Root);
+            if (spSubmenu != null && spSubmenu.Visible)
+            {
+                if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    var backBtn = spSubmenu.GetType().GetField("_backButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(spSubmenu);
+                    if (backBtn is NClickableControl backClickable && backClickable.IsEnabled)
+                    {
+                        backClickable.ForceClick();
+                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Going back" };
+                    }
+                    return Error("Back button not available");
+                }
+
+                var fieldName = option.ToLower() switch
+                {
+                    "standard" => "_standardButton",
+                    "daily" => "_dailyButton",
+                    "custom" => "_customButton",
+                    _ => null
+                };
+                if (fieldName == null)
+                    return Error($"Unknown singleplayer option: {option}. Use: standard, daily, custom, back");
+
+                var btn = spSubmenu.GetType().GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(spSubmenu);
+                if (btn is NClickableControl clickable)
+                {
+                    if (!clickable.IsEnabled)
+                        return Error($"Option '{option}' is not available (locked)");
+                    clickable.ForceClick();
+                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = $"Selected {option}" };
+                }
+                return Error($"Could not find button for '{option}'");
+            }
+
+            // Check if we're on character select
+            var charSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
+            if (charSelect != null && charSelect.Visible)
+            {
+                // "back" clicks the back/unready button
+                if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    var backBtn = charSelect.GetType().GetField("_backButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(charSelect)
+                        ?? charSelect.GetType().GetField("_unreadyButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(charSelect);
+                    if (backBtn is NClickableControl backClickable && backClickable.IsEnabled)
+                    {
+                        backClickable.ForceClick();
+                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Going back" };
+                    }
+                    return Error("Back button not available");
+                }
+
+                // "confirm" or "embark" clicks the embark button to start the run
+                if (string.Equals(option, "confirm", System.StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(option, "embark", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    var embarkBtn = charSelect.GetType().GetField("_embarkButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(charSelect);
+                    if (embarkBtn is NClickableControl embarkClickable && embarkClickable.IsEnabled)
+                    {
+                        embarkClickable.ForceClick();
+                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Embarking on run" };
+                    }
+                    return Error("Embark button not available — select a character first");
+                }
+
+                var buttons = FindAll<NCharacterSelectButton>(charSelect);
+                foreach (var btn in buttons)
+                {
+                    if (btn.Character != null && (
+                        string.Equals(btn.Character.Id.Entry, option, System.StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(SafeGetText(() => btn.Character.Title), option, System.StringComparison.OrdinalIgnoreCase)))
+                    {
+                        if (btn.IsLocked)
+                            return Error($"Character '{option}' is locked");
+                        btn.Select();
+                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = $"Selected {SafeGetText(() => btn.Character.Title)}. Use 'confirm' to embark." };
+                    }
+                }
+                return Error($"Character '{option}' not found. Available: {string.Join(", ", buttons.Where(b => !b.IsLocked).Select(b => b.Character?.Id.Entry))}");
+            }
+
+            // Main menu buttons
+            var menuFieldName = option.ToLower() switch
+            {
+                "singleplayer" => "_singleplayerButton",
+                "multiplayer" => "_multiplayerButton",
+                "compendium" => "_compendiumButton",
+                "timeline" => "_timelineButton",
+                "settings" => "_settingsButton",
+                "continue" => "_continueButton",
+                "quit" => "_quitButton",
+                _ => null
+            };
+            if (menuFieldName == null)
+                return Error($"Unknown menu option: {option}");
+
+            var menuBtn = mainMenu.GetType().GetField(menuFieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(mainMenu);
+            if (menuBtn is NClickableControl menuClickable)
+            {
+                if (!menuClickable.IsEnabled)
+                    return Error($"Option '{option}' is not available");
+                menuClickable.ForceClick();
+                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = $"Selected {option}" };
+            }
+            return Error($"Could not find button for '{option}'");
+        }
+
+        return Error("Not on a menu screen");
     }
 }

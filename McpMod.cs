@@ -393,6 +393,23 @@ public static partial class McpMod
 
         string action = actionElem.GetString() ?? "";
 
+        // Handle menu actions separately (no run required)
+        if (action == "menu_select")
+        {
+            try
+            {
+                var option = parsed.TryGetValue("option", out var optElem) ? optElem.GetString() ?? "" : "";
+                var resultTask = RunOnMainThread(() => ExecuteMenuSelect(option));
+                var result = resultTask.GetAwaiter().GetResult();
+                SendJson(response, result);
+            }
+            catch (Exception ex)
+            {
+                SendError(response, 500, $"Menu action failed: {ex.Message}");
+            }
+            return;
+        }
+
         try
         {
             var resultTask = RunOnMainThread(() => ExecuteAction(action, parsed));
