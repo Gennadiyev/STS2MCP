@@ -35,6 +35,7 @@ using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
+using MegaCrit.Sts2.Core.Nodes.Screens.Timeline;
 using Godot;
 
 namespace STS2_MCP;
@@ -1064,6 +1065,60 @@ public static partial class McpMod
         var tree = (Engine.GetMainLoop()) as SceneTree;
         if (tree?.Root == null)
             return Error("Cannot access scene tree");
+
+        // Timeline screen - advance through epoch reveals.
+        var timelineScreen = FindFirst<NTimelineScreen>(tree.Root);
+        if (timelineScreen != null && timelineScreen.Visible)
+        {
+            if (string.Equals(option, "advance", System.StringComparison.OrdinalIgnoreCase))
+            {
+                // Check for inspect screen (epoch detail view) - close it.
+                var inspectScreen = FindFirst<NEpochInspectScreen>(tree.Root);
+                if (inspectScreen != null && inspectScreen.Visible)
+                {
+                    var closeBtn = inspectScreen.GetType().GetField("_closeButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(inspectScreen);
+                    if (closeBtn is NClickableControl closeClickable && closeClickable.IsEnabled)
+                    {
+                        closeClickable.ForceClick();
+                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Closed epoch inspect screen" };
+                    }
+                    inspectScreen.Close();
+                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Closed epoch inspect screen" };
+                }
+
+                // Check for queued unlock screens.
+                if (timelineScreen.IsScreenQueued())
+                {
+                    timelineScreen.OpenQueuedScreen();
+                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Opening queued unlock screen" };
+                }
+
+                // Find an obtained but not-yet-revealed epoch slot to click.
+                var slots = FindAll<NEpochSlot>(timelineScreen);
+                foreach (var slot in slots)
+                {
+                    if (slot.State.ToString() == "Obtained")
+                    {
+                        var onPress = slot.GetType().GetMethod("OnPress", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                        onPress?.Invoke(slot, null);
+                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Clicking obtained epoch slot" };
+                    }
+                }
+
+                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "No more epochs to advance", ["done"] = true };
+            }
+            else if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
+            {
+                var backBtn = timelineScreen.GetType().GetField("_backButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
+                if (backBtn is NClickableControl backClickable && backClickable.IsEnabled)
+                {
+                    backClickable.ForceClick();
+                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Going back from timeline" };
+                }
+                return Error("Back button not available on timeline");
+            }
+            return Error($"Unknown timeline option: {option}. Use: advance, back");
+        }
 
         // Main menu — click a menu button
         var mainMenu = FindFirst<NMainMenu>(tree.Root);
