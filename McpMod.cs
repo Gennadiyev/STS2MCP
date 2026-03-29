@@ -399,7 +399,8 @@ public static partial class McpMod
             try
             {
                 var option = parsed.TryGetValue("option", out var optElem) ? optElem.GetString() ?? "" : "";
-                var resultTask = RunOnMainThread(() => ExecuteMenuSelect(option));
+                var seed = parsed.TryGetValue("seed", out var seedElem) ? seedElem.GetString() : null;
+                var resultTask = RunOnMainThread(() => ExecuteMenuSelect(option, seed));
                 var result = resultTask.GetAwaiter().GetResult();
                 SendJson(response, result);
             }

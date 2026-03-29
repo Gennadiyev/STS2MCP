@@ -1059,7 +1059,7 @@ public static partial class McpMod
         return null;
     }
 
-    internal static Dictionary<string, object?> ExecuteMenuSelect(string option)
+    internal static Dictionary<string, object?> ExecuteMenuSelect(string option, string? seed = null)
     {
         var tree = (Engine.GetMainLoop()) as SceneTree;
         if (tree?.Root == null)
@@ -1126,11 +1126,18 @@ public static partial class McpMod
                 if (string.Equals(option, "confirm", System.StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(option, "embark", System.StringComparison.OrdinalIgnoreCase))
                 {
+                    // Set seed before embarking if provided
+                    if (!string.IsNullOrEmpty(seed) && charSelect.Lobby != null)
+                    {
+                        charSelect.Lobby.SetSeed(seed);
+                    }
+
                     var embarkBtn = charSelect.GetType().GetField("_embarkButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(charSelect);
                     if (embarkBtn is NClickableControl embarkClickable && embarkClickable.IsEnabled)
                     {
+                        var msg = string.IsNullOrEmpty(seed) ? "Embarking on run" : $"Embarking on run (seed: {seed})";
                         embarkClickable.ForceClick();
-                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Embarking on run" };
+                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = msg };
                     }
                     return Error("Embark button not available — select a character first");
                 }
