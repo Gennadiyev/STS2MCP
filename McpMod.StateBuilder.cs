@@ -40,6 +40,7 @@ using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Models.RelicPools;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
+using MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen;
 using Godot;
 
 namespace STS2_MCP;
@@ -251,6 +252,15 @@ public static partial class McpMod
         {
             result["state_type"] = "rewards";
             result["rewards"] = BuildRewardsState(rewardsScreen, runState);
+        }
+        else if (topOverlay is NGameOverScreen gameOverScreen)
+        {
+            result["state_type"] = "game_over";
+            result["game_over"] = new Dictionary<string, object?>
+            {
+                ["message"] = "Run ended.",
+                ["options"] = new List<string> { "continue", "main_menu" }
+            };
         }
         else if (topOverlay is IOverlayScreen
                  && topOverlay is not NRewardsScreen

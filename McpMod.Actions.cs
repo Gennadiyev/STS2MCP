@@ -35,6 +35,7 @@ using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
+using MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen;
 using Godot;
 
 namespace STS2_MCP;
@@ -1064,6 +1065,28 @@ public static partial class McpMod
         var tree = (Engine.GetMainLoop()) as SceneTree;
         if (tree?.Root == null)
             return Error("Cannot access scene tree");
+
+        // Game over screen
+        var gameOver = FindFirst<NGameOverScreen>(tree.Root);
+        if (gameOver != null)
+        {
+            var fieldName = option.ToLower() switch
+            {
+                "continue" => "_continueButton",
+                "main_menu" => "_mainMenuButton",
+                _ => null
+            };
+            if (fieldName == null)
+                return Error($"Unknown game over option: {option}. Use: continue, main_menu");
+
+            var btn = gameOver.GetType().GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(gameOver);
+            if (btn is NClickableControl clickable && clickable.IsEnabled)
+            {
+                clickable.ForceClick();
+                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = $"Clicked {option}" };
+            }
+            return Error($"Button '{option}' not available");
+        }
 
         // Main menu — click a menu button
         var mainMenu = FindFirst<NMainMenu>(tree.Root);
