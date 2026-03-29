@@ -5,8 +5,10 @@ as MCP tools for Claude Desktop / Claude Code.
 """
 
 import argparse
+import asyncio
 import json
 import sys
+import time
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -61,6 +63,37 @@ def _handle_error(e: Exception) -> str:
     return f"Error: {e}"
 
 
+def _is_battle_play_phase_false(state: dict) -> bool:
+    battle = state.get("battle")
+    return isinstance(battle, dict) and battle.get("is_play_phase") is False
+
+
+# When combat is in enemy / non-play phase, poll until is_play_phase is true (see get_game_state).
+PLAY_PHASE_POLL_INTERVAL_SEC = 1.0
+# Safety cap so MCP does not hang forever if the game never advances.
+MAX_PLAY_PHASE_WAIT_SEC = 600.0
+
+# After a successful POST (play_card, claim_reward, …), wait before polling state so UI / phase updates settle.
+POST_ACTION_STATE_DELAY_SEC = 1.0
+
+
+async def _get_json_until_play_phase() -> tuple[str, bool]:
+    """Poll GET JSON until ``battle.is_play_phase`` is not false, or timeout.
+
+    Returns ``(raw_json, timed_out)``. ``timed_out`` is True if still non-play phase after
+    ``MAX_PLAY_PHASE_WAIT_SEC``.
+    """
+    deadline = time.monotonic() + MAX_PLAY_PHASE_WAIT_SEC
+    while True:
+        raw_json = await _get({"format": "json"})
+        state = json.loads(raw_json)
+        if not _is_battle_play_phase_false(state):
+            return (raw_json, False)
+        if time.monotonic() >= deadline:
+            return (raw_json, True)
+        await asyncio.sleep(PLAY_PHASE_POLL_INTERVAL_SEC)
+
+
 # ---------------------------------------------------------------------------
 # General
 # ---------------------------------------------------------------------------
@@ -77,7 +110,24 @@ async def get_game_state(format: str = "markdown") -> str:
         format: "markdown" for human-readable output, "json" for structured data.
     """
     try:
-        return await _get({"format": format})
+        raw_json, timed_out = await _get_json_until_play_phase()
+        state = json.loads(raw_json)
+        if timed_out and _is_battle_play_phase_false(state):
+            if format == "json":
+                return json.dumps(
+                    {
+                        "is_play_phase": False,
+                        "wait_timeout_sec": MAX_PLAY_PHASE_WAIT_SEC,
+                    },
+                    ensure_ascii=False,
+                )
+            return (
+                f"Play Phase: False (wait exceeded {int(MAX_PLAY_PHASE_WAIT_SEC)}s; "
+                "still non-play phase)"
+            )
+        if format == "json":
+            return raw_json
+        return await _get({"format": "markdown"})
     except Exception as e:
         return _handle_error(e)
 
@@ -119,24 +169,104 @@ async def proceed_to_map() -> str:
 # ---------------------------------------------------------------------------
 
 
+def _merge_post_result_and_state(
+    json_result_key: str,
+    markdown_action_title: str,
+    post_result: str,
+    state_str: str,
+    format: str,
+) -> str:
+    """Combine action POST JSON with a get_game_state string (markdown or JSON)."""
+    try:
+        action_obj: object = json.loads(post_result)
+    except json.JSONDecodeError:
+        return post_result
+    if format == "json":
+        try:
+            state_obj: object = json.loads(state_str)
+        except json.JSONDecodeError:
+            state_obj = state_str
+        merged = {json_result_key: action_obj, "game_state": state_obj}
+        return json.dumps(merged, ensure_ascii=False, indent=2)
+    action_pretty = (
+        json.dumps(action_obj, ensure_ascii=False, indent=2)
+        if isinstance(action_obj, dict)
+        else post_result
+    )
+    return (
+        f"## {markdown_action_title}\n\n"
+        f"```json\n{action_pretty}\n```\n\n"
+        "## get_game_state (after action)\n\n"
+        f"{state_str}"
+    )
+
+
+async def _post_ok_then_merged_game_state(
+    post_result: str,
+    format: str,
+    json_result_key: str,
+    markdown_action_title: str,
+) -> str:
+    """If POST JSON is success, wait then get_game_state and merge; else return post_result only."""
+    try:
+        action_obj = json.loads(post_result)
+    except json.JSONDecodeError:
+        return post_result
+    if isinstance(action_obj, dict) and action_obj.get("status") == "error":
+        return post_result
+    try:
+        await asyncio.sleep(POST_ACTION_STATE_DELAY_SEC)
+        state_str = await get_game_state(format=format)
+        return _merge_post_result_and_state(
+            json_result_key, markdown_action_title, post_result, state_str, format
+        )
+    except Exception as e:
+        err = _handle_error(e)
+        if format == "json":
+            merged = {json_result_key: action_obj, "game_state_fetch_error": err}
+            return json.dumps(merged, ensure_ascii=False, indent=2)
+        action_pretty = (
+            json.dumps(action_obj, ensure_ascii=False, indent=2)
+            if isinstance(action_obj, dict)
+            else post_result
+        )
+        return (
+            f"## {markdown_action_title}\n\n"
+            f"```json\n{action_pretty}\n```\n\n"
+            "## get_game_state (failed)\n\n"
+            f"{err}"
+        )
+
+
 @mcp.tool()
-async def combat_play_card(card_index: int, target: str | None = None) -> str:
+async def combat_play_card(
+    card_index: int, target: str | None = None, format: str = "markdown"
+) -> str:
     """[Combat] Play a card from the player's hand.
+
+    On success (``status``: ``ok``), waits ``POST_ACTION_STATE_DELAY_SEC`` then fetches
+    ``get_game_state`` with the same ``format`` and returns both parts merged (fewer round-trips).
 
     Args:
         card_index: Index of the card in hand (0-based, as shown in game state).
         target: Entity ID of the target enemy (e.g. "JAW_WORM_0"). Required for single-target cards.
+        format: ``markdown`` or ``json`` for the appended game state (same as ``get_game_state``).
 
-    Note that the index can change as cards are played - playing a card will shift the indices of remaining cards in hand.
-    Refer to the latest game state for accurate indices. New cards are drawn to the right, so playing cards from right to left can help maintain more stable indices for remaining cards.
+    On errors from the play action, returns only the play response (no wait, no state fetch).
+    Indices shift after every play — use the merged state for the next ``card_index``. New cards are
+    drawn to the right; playing from highest index to lowest (right to left) often keeps remaining
+    indices more stable.
     """
     body: dict = {"action": "play_card", "card_index": card_index}
     if target is not None:
         body["target"] = target
     try:
-        return await _post(body)
+        post_result = await _post(body)
     except Exception as e:
         return _handle_error(e)
+    return await _post_ok_then_merged_game_state(
+        post_result, format, "play_card", "combat_play_card"
+    )
 
 
 @mcp.tool()
@@ -188,22 +318,31 @@ async def combat_confirm_selection() -> str:
 
 
 @mcp.tool()
-async def rewards_claim(reward_index: int) -> str:
+async def rewards_claim(reward_index: int, format: str = "markdown") -> str:
     """[Rewards] Claim a reward from the post-combat rewards screen.
 
     Gold, potion, and relic rewards are claimed immediately.
     Card rewards open the card selection screen (state changes to card_reward).
 
+    On success (``status``: ``ok``), waits ``POST_ACTION_STATE_DELAY_SEC`` then fetches
+    ``get_game_state`` with the same ``format`` and returns both parts merged (same pattern as
+    ``combat_play_card``).
+
     Args:
         reward_index: 0-based index of the reward on the rewards screen.
+        format: ``markdown`` or ``json`` for the appended game state (same as ``get_game_state``).
 
-    Note that claiming a reward may change the indices of remaining rewards, so refer to the latest game state for accurate indices.
-    Claiming from right to left can help maintain more stable indices for remaining rewards, as rewards will always shift left to fill in gaps.
+    On errors from the claim action, returns only the POST response (no wait, no state fetch).
+    Claiming a reward may change the indices of remaining rewards — use the merged state for the next index.
+    Claiming from right to left can help keep indices more stable as rewards shift left.
     """
     try:
-        return await _post({"action": "claim_reward", "index": reward_index})
+        post_result = await _post({"action": "claim_reward", "index": reward_index})
     except Exception as e:
         return _handle_error(e)
+    return await _post_ok_then_merged_game_state(
+        post_result, format, "claim_reward", "rewards_claim"
+    )
 
 
 @mcp.tool()
@@ -520,7 +659,8 @@ async def mp_combat_play_card(card_index: int, target: str | None = None) -> str
     """[Multiplayer Combat] Play a card from the local player's hand.
 
     Same as singleplayer combat_play_card but routed through the multiplayer
-    endpoint for sync safety.
+    endpoint for sync safety. Between plays, call ``mp_get_game_state(format="json")`` again
+    to refresh hand indices (same idea as single-player ``get_game_state``).
 
     Args:
         card_index: Index of the card in hand (0-based).
