@@ -37,6 +37,10 @@ using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Models.Monsters;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Models.RelicPools;
+using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
+using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
+using Godot;
 
 namespace STS2_MCP;
 
@@ -49,7 +53,81 @@ public static partial class McpMod
         if (!RunManager.Instance.IsInProgress)
         {
             result["state_type"] = "menu";
-            result["message"] = "No run in progress. Player is in the main menu.";
+
+            // Detect which menu screen is active
+            var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
+            if (tree?.Root != null)
+            {
+                // Check for singleplayer submenu (Standard / Daily / Custom)
+                var spSubmenu = FindFirst<NSingleplayerSubmenu>(tree.Root);
+                if (spSubmenu != null && spSubmenu.Visible)
+                {
+                    result["menu_screen"] = "singleplayer";
+                    result["message"] = "Singleplayer mode select: Standard, Daily, Custom.";
+                    result["options"] = new List<string> { "standard", "daily", "custom" };
+                }
+                // Check for character select screen
+                else
+                {
+                    var charSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
+                    if (charSelect != null && charSelect.Visible)
+                    {
+                        result["menu_screen"] = "character_select";
+                        result["message"] = "Character select screen is active.";
+
+                        var buttons = FindAll<NCharacterSelectButton>(charSelect);
+                        var characters = new List<Dictionary<string, object?>>();
+                        foreach (var btn in buttons)
+                        {
+                            try
+                            {
+                                var charModel = btn.GetType().GetField("_character", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(btn);
+                                if (charModel is CharacterModel cm)
+                                {
+                                    characters.Add(new Dictionary<string, object?>
+                                    {
+                                        ["name"] = SafeGetText(() => cm.Title),
+                                        ["id"] = cm.Id.Entry
+                                    });
+                                }
+                            }
+                            catch { }
+                        }
+                        if (characters.Count > 0)
+                            result["characters"] = characters;
+                    }
+                    else
+                    {
+                        result["menu_screen"] = "main";
+                        result["message"] = "Main menu.";
+
+                        var mainMenu = FindFirst<NMainMenu>(tree.Root);
+                        if (mainMenu != null)
+                        {
+                            var options = new List<string>();
+                            var fields = new[] { "_continueButton", "_singleplayerButton", "_multiplayerButton", "_compendiumButton", "_timelineButton", "_settingsButton", "_quitButton" };
+                            var labels = new[] { "continue", "singleplayer", "multiplayer", "compendium", "timeline", "settings", "quit" };
+                            for (int i = 0; i < fields.Length; i++)
+                            {
+                                try
+                                {
+                                    var btn = mainMenu.GetType().GetField(fields[i], System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(mainMenu) as Control;
+                                    if (btn != null && btn.Visible)
+                                        options.Add(labels[i]);
+                                }
+                                catch { }
+                            }
+                            if (options.Count > 0)
+                                result["options"] = options;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                result["message"] = "No run in progress.";
+            }
+
             return result;
         }
 
