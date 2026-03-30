@@ -102,6 +102,22 @@ async def use_potion(slot: int, target: str | None = None) -> str:
 
 
 @mcp.tool()
+async def discard_potion(slot: int) -> str:
+    """Discard a potion from the player's potion slots to free up space.
+
+    Use this when all potion slots are full and you need room for incoming potions
+    (e.g. before collecting a potion reward).
+
+    Args:
+        slot: Potion slot index to discard (as shown in game state).
+    """
+    try:
+        return await _post({"action": "discard_potion", "slot": slot})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
 async def proceed_to_map() -> str:
     """Proceed from the current screen to the map.
 
@@ -574,6 +590,19 @@ async def mp_use_potion(slot: int, target: str | None = None) -> str:
         body["target"] = target
     try:
         return await _mp_post(body)
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_discard_potion(slot: int) -> str:
+    """[Multiplayer] Discard a potion from the local player's potion slots to free up space.
+
+    Args:
+        slot: Potion slot index to discard (as shown in game state).
+    """
+    try:
+        return await _mp_post({"action": "discard_potion", "slot": slot})
     except Exception as e:
         return _handle_error(e)
 
