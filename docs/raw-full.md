@@ -705,6 +705,20 @@ Use a potion from the potion belt.
 
 **Errors:** Empty slot, combat-only potion used outside combat, automatic potion, already queued, player dead.
 
+### `discard_potion`
+
+Discard a potion to free up the slot. Use when potion slots are full and you need room for incoming potions (rewards, Cauldron, etc.).
+
+```json
+{ "action": "discard_potion", "slot": 0 }
+```
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `slot` | int | Yes | Potion slot index |
+
+**Errors:** Empty slot, out-of-range slot.
+
 ### `end_turn`
 
 End the player's combat turn.
