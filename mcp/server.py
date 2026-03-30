@@ -71,7 +71,8 @@ async def get_game_state(format: str = "markdown") -> str:
     """Get the current Slay the Spire 2 game state.
 
     Returns the full game state including player stats, hand, enemies, potions, etc.
-    The state_type field indicates the current screen (combat, map, event, shop, etc.).
+    The state_type field indicates the current screen (combat, map, event, shop,
+    fake_merchant, etc.).
 
     Args:
         format: "markdown" for human-readable output, "json" for structured data.
@@ -121,7 +122,7 @@ async def discard_potion(slot: int) -> str:
 async def proceed_to_map() -> str:
     """Proceed from the current screen to the map.
 
-    Works from: rewards screen, rest site, shop.
+    Works from: rewards screen, rest site, shop, fake merchant.
     Does NOT work for events — use event_choose_option() with the Proceed option's index.
     """
     try:
@@ -287,7 +288,10 @@ async def rest_choose_option(option_index: int) -> str:
 
 @mcp.tool()
 async def shop_purchase(item_index: int) -> str:
-    """[Shop] Purchase an item from the shop.
+    """[Shop / Fake Merchant] Purchase an item from the shop.
+
+    Works for both regular shops (state_type: shop) and the fake merchant
+    event (state_type: fake_merchant). The fake merchant only sells relics.
 
     Args:
         item_index: 0-based index of the item from the shop state.

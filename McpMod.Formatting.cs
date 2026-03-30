@@ -91,6 +91,11 @@ public static partial class McpMod
             FormatShopMarkdown(sb, shopData);
         }
 
+        if (state.TryGetValue("fake_merchant", out var fmObj) && fmObj is Dictionary<string, object?> fmData)
+        {
+            FormatFakeMerchantMarkdown(sb, fmData);
+        }
+
         if (state.TryGetValue("map", out var mapObj) && mapObj is Dictionary<string, object?> mapData)
         {
             FormatMapMarkdown(sb, mapData);
@@ -376,6 +381,29 @@ public static partial class McpMod
         bool canProceed = shop.TryGetValue("can_proceed", out var cp) && cp is true;
         sb.AppendLine($"**Can proceed:** {(canProceed ? "Yes" : "No")}");
         sb.AppendLine();
+    }
+
+    private static void FormatFakeMerchantMarkdown(StringBuilder sb, Dictionary<string, object?> fm)
+    {
+        string name = fm.TryGetValue("event_name", out var n) && n != null ? n.ToString()! : "Fake Merchant";
+        bool startedFight = fm.TryGetValue("started_fight", out var sf) && sf is true;
+
+        sb.AppendLine($"## Event: {name}");
+        sb.AppendLine();
+
+        if (startedFight)
+        {
+            sb.AppendLine("*The fake merchant has been defeated. Use `proceed` to open the map.*");
+            sb.AppendLine();
+            return;
+        }
+
+        sb.AppendLine("*This is a fake merchant selling dubious relics. You can browse and buy, or throw a Foul Potion (use_potion) to start a fight.*");
+        sb.AppendLine();
+
+        // Reuse shop formatting for the nested shop object
+        if (fm.TryGetValue("shop", out var shopObj) && shopObj is Dictionary<string, object?> shopData)
+            FormatShopMarkdown(sb, shopData);
     }
 
     private static void FormatMapMarkdown(StringBuilder sb, Dictionary<string, object?> map)

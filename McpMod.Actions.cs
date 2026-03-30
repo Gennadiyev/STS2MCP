@@ -12,8 +12,11 @@ using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
 using MegaCrit.Sts2.Core.Entities.Merchant;
+using MegaCrit.Sts2.Core.Models.Events;
 using MegaCrit.Sts2.Core.Nodes.Events;
+using MegaCrit.Sts2.Core.Nodes.Events.Custom;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere;
+using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Rooms;
@@ -339,15 +342,47 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteShopPurchase(Player player, Dictionary<string, JsonElement> data)
     {
-        if (player.RunState.CurrentRoom is not MerchantRoom merchantRoom)
+        MerchantInventory? inventory = null;
+
+        if (player.RunState.CurrentRoom is MerchantRoom merchantRoom)
+        {
+            // Regular merchant — auto-open inventory if needed
+            var merchUI = NMerchantRoom.Instance;
+            if (merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
+                merchUI.OpenInventory();
+            inventory = merchantRoom.Inventory;
+        }
+        else if (player.RunState.CurrentRoom is EventRoom eventRoom
+                 && eventRoom.CanonicalEvent is FakeMerchant
+                 && (eventRoom.LocalMutableEvent ?? eventRoom.CanonicalEvent) is FakeMerchant fakeMerchant)
+        {
+            // Fake merchant event — auto-open via button if needed
+            if (!fakeMerchant.StartedFight)
+            {
+                var uiRoom = NEventRoom.Instance;
+                if (uiRoom != null)
+                {
+                    var fmNode = FindFirst<NFakeMerchant>(uiRoom);
+                    if (fmNode != null)
+                    {
+                        var inventoryUI = FindFirst<NMerchantInventory>(fmNode);
+                        if (inventoryUI != null && !inventoryUI.IsOpen)
+                        {
+                            var btn = fmNode.MerchantButton;
+                            if (btn != null && btn.Visible && btn.IsEnabled)
+                                btn.ForceClick();
+                        }
+                    }
+                }
+            }
+            inventory = fakeMerchant.Inventory;
+        }
+        else
+        {
             return Error("Not in a shop");
+        }
 
-        // Auto-open inventory if needed (guard null — OpenInventory() dereferences Inventory.IsOpen)
-        var merchUI = NMerchantRoom.Instance;
-        if (merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
-            merchUI.OpenInventory();
-
-        if (merchantRoom.Inventory == null)
+        if (inventory == null)
             return Error("Shop inventory not ready yet; wait a moment and retry");
 
         if (!data.TryGetValue("index", out var indexElem))
@@ -355,7 +390,7 @@ public static partial class McpMod
 
         int index = indexElem.GetInt32();
 
-        var allEntries = merchantRoom.Inventory.AllEntries.ToList();
+        var allEntries = inventory.AllEntries.ToList();
         if (index < 0 || index >= allEntries.Count)
             return Error($"Shop item index {index} out of range ({allEntries.Count} items)");
 
@@ -366,7 +401,7 @@ public static partial class McpMod
             return Error($"Not enough gold (need {entry.Cost}, have {player.Gold})");
 
         // Fire-and-forget purchase (same path as AutoSlay)
-        _ = entry.OnTryPurchaseWrapper(merchantRoom.Inventory);
+        _ = entry.OnTryPurchaseWrapper(inventory);
 
         return new Dictionary<string, object?>
         {
@@ -523,6 +558,28 @@ public static partial class McpMod
             {
                 merchRoom.ProceedButton.ForceClick();
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from shop" };
+            }
+        }
+
+        // Try fake merchant — close inventory first if open, then proceed
+        if (NEventRoom.Instance is { } evtRoom)
+        {
+            var fmNode = FindFirst<NFakeMerchant>(evtRoom);
+            if (fmNode != null)
+            {
+                var fmInventory = FindFirst<NMerchantInventory>(fmNode);
+                if (fmInventory is { IsOpen: true })
+                {
+                    var backBtn = FindFirst<NBackButton>(fmNode);
+                    if (backBtn is { IsEnabled: true })
+                        backBtn.ForceClick();
+                }
+                var proceedBtn = FindFirst<NProceedButton>(fmNode);
+                if (proceedBtn is { IsEnabled: true })
+                {
+                    proceedBtn.ForceClick();
+                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from fake merchant" };
+                }
             }
         }
 
