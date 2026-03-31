@@ -10,6 +10,9 @@ mcp/.venv/
 
 # Claude Code
 # .claude/
-# .mcp.json
+.mcp.json
 CLAUDE.md
 GUIDE.md
+
+# Qoder
+.qoder.json

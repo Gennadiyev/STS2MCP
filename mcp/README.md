@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | `get_game_state(format?)` | General | Get current game state (`markdown` or `json`) |
 | `use_potion(slot, target?)` | General | Use a potion (works in and out of combat) |
+| `discard_potion(slot)` | General | Discard a potion to free up the slot |
 | `proceed_to_map()` | General | Proceed from rewards/rest site/shop/treasure to the map |
 | `sts2_wiki_search(query, limit?)` | General | Search STS2 wiki.gg pages to avoid STS1 knowledge pollution |
 | `sts2_wiki_get_summary(title)` | General | Get intro summary for a specific STS2 wiki page |
@@ -31,9 +32,15 @@
 | `deck_select_card(card_index)` | Card Select | Pick/toggle a card in the selection screen |
 | `deck_confirm_selection()` | Card Select | Confirm the current card selection |
 | `deck_cancel_selection()` | Card Select | Cancel/skip card selection |
+| `bundle_select(bundle_index)` | Bundle Select | Open a bundle preview |
+| `bundle_confirm_selection()` | Bundle Select | Confirm the current bundle preview |
+| `bundle_cancel_selection()` | Bundle Select | Cancel the current bundle preview |
 | `relic_select(relic_index)` | Relic Select | Choose a relic from the selection screen |
 | `relic_skip()` | Relic Select | Skip relic selection |
 | `treasure_claim_relic(relic_index)` | Treasure | Claim a relic from the treasure chest |
+| `crystal_sphere_set_tool(tool)` | Crystal Sphere | Switch the active divination tool |
+| `crystal_sphere_click_cell(x, y)` | Crystal Sphere | Click a hidden cell in the grid |
+| `crystal_sphere_proceed()` | Crystal Sphere | Continue after the minigame finishes |
 
 ## Multiplayer
 
@@ -46,6 +53,7 @@ All multiplayer tools are prefixed with `mp_`. They route through `/api/v1/multi
 | `mp_combat_end_turn()` | Combat | Submit end-turn vote (turn ends when all players submit) |
 | `mp_combat_undo_end_turn()` | Combat | Retract end-turn vote |
 | `mp_use_potion(slot, target?)` | General | Use a potion from the local player's slots |
+| `mp_discard_potion(slot)` | General | Discard a potion from the local player's slots |
 | `mp_proceed_to_map()` | General | Proceed from current screen to the map |
 | `mp_map_vote(node_index)` | Map | Vote for a map node (travel when all agree) |
 | `mp_event_choose_option(option_index)` | Event | Vote for / choose an event option |
@@ -58,11 +66,17 @@ All multiplayer tools are prefixed with `mp_`. They route through `/api/v1/multi
 | `mp_deck_select_card(card_index)` | Card Select | Pick/toggle a card in the selection screen |
 | `mp_deck_confirm_selection()` | Card Select | Confirm the current card selection |
 | `mp_deck_cancel_selection()` | Card Select | Cancel/skip card selection |
+| `mp_bundle_select(bundle_index)` | Bundle Select | Open a bundle preview |
+| `mp_bundle_confirm_selection()` | Bundle Select | Confirm the current bundle preview |
+| `mp_bundle_cancel_selection()` | Bundle Select | Cancel the current bundle preview |
 | `mp_combat_select_card(card_index)` | Combat Selection | Select a card during in-combat selection prompts |
 | `mp_combat_confirm_selection()` | Combat Selection | Confirm in-combat card selection |
 | `mp_relic_select(relic_index)` | Relic Select | Choose a relic from the selection screen |
 | `mp_relic_skip()` | Relic Select | Skip relic selection |
 | `mp_treasure_claim_relic(relic_index)` | Treasure | Bid on a relic (relic fight if contested) |
+| `mp_crystal_sphere_set_tool(tool)` | Crystal Sphere | Switch the active divination tool |
+| `mp_crystal_sphere_click_cell(x, y)` | Crystal Sphere | Click a hidden cell in the grid |
+| `mp_crystal_sphere_proceed()` | Crystal Sphere | Continue after the minigame finishes |
 
 ## Recommended STS2 Decision Flow
 

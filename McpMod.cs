@@ -10,6 +10,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Godot;
+using HarmonyLib;
 using MegaCrit.Sts2.Core.Modding;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 
@@ -18,7 +19,9 @@ namespace STS2_MCP;
 [ModInitializer("Initialize")]
 public static partial class McpMod
 {
-    public const string Version = "0.3.1";
+    public const string Version = "0.3.3";
+    public const int DefaultPort = 15526;
+    private const string ConfigFileName = "STS2_MCP.conf";
 
     private static HttpListener? _listener;
     private static Thread? _serverThread;
@@ -31,17 +34,60 @@ public static partial class McpMod
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
+    private static int LoadPort()
+    {
+        try
+        {
+            string? modDir = Path.GetDirectoryName(
+                System.Reflection.Assembly.GetExecutingAssembly().Location);
+            if (modDir == null) return DefaultPort;
+
+            string configPath = Path.Combine(modDir, ConfigFileName);
+            if (!File.Exists(configPath))
+            {
+                // Create default config so the user knows it's configurable
+                var defaultConfig = new Dictionary<string, object> { ["port"] = DefaultPort };
+                string json = JsonSerializer.Serialize(defaultConfig, _jsonOptions);
+                File.WriteAllText(configPath, json);
+                GD.Print($"[STS2 MCP] Created default config at {configPath}");
+                return DefaultPort;
+            }
+
+            string content = File.ReadAllText(configPath);
+            using var doc = JsonDocument.Parse(content);
+            if (doc.RootElement.TryGetProperty("port", out var portElem)
+                && portElem.TryGetInt32(out int port)
+                && port is > 0 and <= 65535)
+            {
+                return port;
+            }
+
+            GD.PrintErr($"[STS2 MCP] Invalid or missing 'port' in {configPath}, using default {DefaultPort}");
+            return DefaultPort;
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr($"[STS2 MCP] Failed to load config: {ex.Message}, using default port {DefaultPort}");
+            return DefaultPort;
+        }
+    }
+
     public static void Initialize()
     {
         try
         {
+            // Apply Harmony patches (settings UI injection, etc.)
+            new Harmony("com.sts2mcp").PatchAll();
+
             // Connect to main thread process frame for action execution
             var tree = (SceneTree)Engine.GetMainLoop();
             tree.Connect(SceneTree.SignalName.ProcessFrame, Callable.From(ProcessMainThreadQueue));
 
+            int port = LoadPort();
+
             _listener = new HttpListener();
-            _listener.Prefixes.Add("http://localhost:15526/");
-            _listener.Prefixes.Add("http://127.0.0.1:15526/");
+            _listener.Prefixes.Add($"http://localhost:{port}/");
+            _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
             _listener.Start();
 
             _serverThread = new Thread(ServerLoop)
@@ -51,7 +97,7 @@ public static partial class McpMod
             };
             _serverThread.Start();
 
-            GD.Print($"[STS2 MCP] v{Version} server started on http://localhost:15526/");
+            GD.Print($"[STS2 MCP] v{Version} server started on http://localhost:{port}/");
         }
         catch (Exception ex)
         {
@@ -214,7 +260,18 @@ public static partial class McpMod
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Failed to read multiplayer game state: {ex.Message}");
+            GD.PrintErr($"[STS2 MCP] HandleGetMultiplayerState: {ex}");
+            try
+            {
+                response.StatusCode = 500;
+                SendJson(response, new Dictionary<string, object?>
+                {
+                    ["error"] = $"Failed to read multiplayer game state: {ex.Message}",
+                    ["exception_type"] = ex.GetType().FullName,
+                    ["stack_trace"] = ex.StackTrace
+                });
+            }
+            catch { /* response may be unusable */ }
         }
     }
 
@@ -266,8 +323,15 @@ public static partial class McpMod
 
             if (format == "markdown")
             {
-                string md = FormatAsMarkdown(state);
-                SendText(response, md, "text/markdown");
+                try
+                {
+                    SendText(response, FormatAsMarkdown(state), "text/markdown");
+                }
+                catch (Exception ex)
+                {
+                    GD.PrintErr($"[STS2 MCP] FormatAsMarkdown failed, returning JSON: {ex}");
+                    SendJson(response, state);
+                }
             }
             else
             {
@@ -276,7 +340,18 @@ public static partial class McpMod
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Failed to read game state: {ex.Message}");
+            GD.PrintErr($"[STS2 MCP] HandleGetState: {ex}");
+            try
+            {
+                response.StatusCode = 500;
+                SendJson(response, new Dictionary<string, object?>
+                {
+                    ["error"] = $"Failed to read game state: {ex.Message}",
+                    ["exception_type"] = ex.GetType().FullName,
+                    ["stack_trace"] = ex.StackTrace
+                });
+            }
+            catch { /* response may be unusable */ }
         }
     }
 

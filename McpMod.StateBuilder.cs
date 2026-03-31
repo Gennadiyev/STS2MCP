@@ -14,7 +14,10 @@ using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.Events;
+using MegaCrit.Sts2.Core.Models.Events;
 using MegaCrit.Sts2.Core.Nodes.Events;
+using MegaCrit.Sts2.Core.Nodes.Events.Custom;
+using MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Nodes.Cards;
@@ -28,6 +31,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
+using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Rooms;
@@ -55,9 +59,12 @@ public static partial class McpMod
             return result;
         }
 
-        // Card selection overlays can appear on top of any room (events, rest sites, combat)
+        // Overlays can appear on top of any room (events, rest sites, combat).
+        // Rewards/card-reward overlays defer to the map — they may linger on the
+        // overlay stack while the map opens after the player clicks proceed.
         var topOverlay = NOverlayStack.Instance?.Peek();
         var currentRoom = runState.CurrentRoom;
+        bool mapIsOpen = NMapScreen.Instance is { IsOpen: true };
         if (topOverlay is NCardGridSelectionScreen cardSelectScreen)
         {
             result["state_type"] = "card_select";
@@ -68,10 +75,30 @@ public static partial class McpMod
             result["state_type"] = "card_select";
             result["card_select"] = BuildChooseCardState(chooseCardScreen, runState);
         }
+        else if (topOverlay is NChooseABundleSelectionScreen bundleScreen)
+        {
+            result["state_type"] = "bundle_select";
+            result["bundle_select"] = BuildBundleSelectState(bundleScreen, runState);
+        }
         else if (topOverlay is NChooseARelicSelection relicSelectScreen)
         {
             result["state_type"] = "relic_select";
             result["relic_select"] = BuildRelicSelectState(relicSelectScreen, runState);
+        }
+        else if (topOverlay is NCrystalSphereScreen crystalSphereScreen)
+        {
+            result["state_type"] = "crystal_sphere";
+            result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen, runState);
+        }
+        else if (!mapIsOpen && topOverlay is NCardRewardSelectionScreen cardRewardScreen)
+        {
+            result["state_type"] = "card_reward";
+            result["card_reward"] = BuildCardRewardState(cardRewardScreen);
+        }
+        else if (!mapIsOpen && topOverlay is NRewardsScreen rewardsScreen)
+        {
+            result["state_type"] = "rewards";
+            result["rewards"] = BuildRewardsState(rewardsScreen, runState);
         }
         else if (topOverlay is IOverlayScreen
                  && topOverlay is not NRewardsScreen
@@ -105,7 +132,8 @@ public static partial class McpMod
             }
             else
             {
-                // After combat ends, check: map open (post-rewards) > overlays > fallback
+                // After combat ends — reward/card overlays are caught by top-level checks above.
+                // Only handle map and the brief transition before rewards appear.
                 if (NMapScreen.Instance is { IsOpen: true })
                 {
                     result["state_type"] = "map";
@@ -113,22 +141,8 @@ public static partial class McpMod
                 }
                 else
                 {
-                    var overlay = NOverlayStack.Instance?.Peek();
-                    if (overlay is NCardRewardSelectionScreen cardScreen)
-                    {
-                        result["state_type"] = "card_reward";
-                        result["card_reward"] = BuildCardRewardState(cardScreen);
-                    }
-                    else if (overlay is NRewardsScreen rewardsScreen)
-                    {
-                        result["state_type"] = "combat_rewards";
-                        result["rewards"] = BuildRewardsState(rewardsScreen, runState);
-                    }
-                    else
-                    {
-                        result["state_type"] = combatRoom.RoomType.ToString().ToLower();
-                        result["message"] = "Combat ended. Waiting for rewards...";
-                    }
+                    result["state_type"] = combatRoom.RoomType.ToString().ToLower();
+                    result["message"] = "Combat ended. Waiting for rewards...";
                 }
             }
         }
@@ -138,6 +152,11 @@ public static partial class McpMod
             {
                 result["state_type"] = "map";
                 result["map"] = BuildMapState(runState);
+            }
+            else if (eventRoom.CanonicalEvent is FakeMerchant)
+            {
+                result["state_type"] = "fake_merchant";
+                result["fake_merchant"] = BuildFakeMerchantState(eventRoom, runState);
             }
             else
             {
@@ -159,9 +178,11 @@ public static partial class McpMod
             }
             else
             {
-                // Auto-open the shopkeeper's inventory if not already open
+                // Auto-open the shopkeeper's inventory if not already open.
+                // NMerchantRoom.Inventory (UI node) can be null before the scene is fully ready;
+                // OpenInventory() itself accesses Inventory.IsOpen, so guard against null.
                 var merchUI = NMerchantRoom.Instance;
-                if (merchUI != null && !merchUI.Inventory.IsOpen)
+                if (merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
                 {
                     merchUI.OpenInventory();
                 }
@@ -260,7 +281,10 @@ public static partial class McpMod
         state["max_hp"] = creature.MaxHp;
         state["block"] = creature.Block;
 
-        if (combatState != null)
+        // PlayerCombatState can linger after combat while on map/rest/shop. Energy/MaxEnergy getters
+        // run hooks (e.g. Hook.ModifyMaxEnergy) that null-ref without a live combat — only serialize
+        // combat fields when a fight is actually in progress.
+        if (combatState != null && CombatManager.Instance.IsInProgress)
         {
             state["energy"] = combatState.Energy;
             state["max_energy"] = combatState.MaxEnergy;
@@ -294,10 +318,11 @@ public static partial class McpMod
             state["exhaust_pile"] = BuildPileCardList(combatState.ExhaustPile.Cards, PileType.Exhaust);
 
             // Orbs
-            if (combatState.OrbQueue.Capacity > 0)
+            var orbQueue = combatState.OrbQueue;
+            if (orbQueue != null && orbQueue.Capacity > 0)
             {
                 var orbs = new List<Dictionary<string, object?>>();
-                foreach (var orb in combatState.OrbQueue.Orbs)
+                foreach (var orb in orbQueue.Orbs)
                 {
                     // Populate SmartDescription placeholders with Focus-modified values,
                     // mirroring OrbModel.HoverTips getter (OrbModel.cs:92-94)
@@ -320,8 +345,8 @@ public static partial class McpMod
                     });
                 }
                 state["orbs"] = orbs;
-                state["orb_slots"] = combatState.OrbQueue.Capacity;
-                state["orb_empty_slots"] = combatState.OrbQueue.Capacity - combatState.OrbQueue.Orbs.Count;
+                state["orb_slots"] = orbQueue.Capacity;
+                state["orb_empty_slots"] = orbQueue.Capacity - orbQueue.Orbs.Count;
             }
         }
 
@@ -546,6 +571,107 @@ public static partial class McpMod
         return state;
     }
 
+    private static Dictionary<string, object?> BuildFakeMerchantState(EventRoom eventRoom, RunState runState)
+    {
+        var state = new Dictionary<string, object?>();
+        // LocalMutableEvent holds the per-player mutable copy with populated inventory;
+        // CanonicalEvent is the shared template which may not have it.
+        var fakeMerchant = (FakeMerchant)(eventRoom.LocalMutableEvent ?? eventRoom.CanonicalEvent);
+
+        state["event_id"] = fakeMerchant.Id.Entry;
+        state["event_name"] = SafeGetText(() => fakeMerchant.Title);
+        state["started_fight"] = fakeMerchant.StartedFight;
+
+        // Find the NFakeMerchant UI node
+        var uiRoom = NEventRoom.Instance;
+        NFakeMerchant? fakeMerchantNode = null;
+        if (uiRoom != null)
+            fakeMerchantNode = FindFirst<NFakeMerchant>(uiRoom);
+
+        if (fakeMerchant.StartedFight)
+        {
+            // After the foul potion fight, merchant is gone — just show proceed
+            state["shop"] = new Dictionary<string, object?>
+            {
+                ["items"] = new List<Dictionary<string, object?>>(),
+                ["can_proceed"] = true
+            };
+            state["message"] = "The fake merchant has been defeated. Proceed to map.";
+            return state;
+        }
+
+        // Auto-open the inventory if the merchant button is still available
+        if (fakeMerchantNode != null)
+        {
+            var inventoryUI = FindFirst<NMerchantInventory>(fakeMerchantNode);
+            if (inventoryUI != null && !inventoryUI.IsOpen)
+            {
+                // ForceClick the merchant button to go through the proper signal chain
+                // (disables proceed button, wires InventoryClosed callback, etc.)
+                var merchantButton = fakeMerchantNode.MerchantButton;
+                if (merchantButton != null && merchantButton.Visible && merchantButton.IsEnabled)
+                    merchantButton.ForceClick();
+            }
+        }
+
+        // Build shop inventory from the FakeMerchant model
+        var shopState = BuildFakeMerchantShopItems(fakeMerchant.Inventory);
+
+        // Proceed button
+        if (fakeMerchantNode != null)
+        {
+            var proceedButton = FindFirst<NProceedButton>(fakeMerchantNode);
+            shopState["can_proceed"] = proceedButton?.IsEnabled ?? false;
+        }
+        else
+        {
+            shopState["can_proceed"] = false;
+        }
+
+        state["shop"] = shopState;
+        return state;
+    }
+
+    private static Dictionary<string, object?> BuildFakeMerchantShopItems(MerchantInventory? inventory)
+    {
+        var state = new Dictionary<string, object?>();
+
+        if (inventory == null)
+        {
+            state["items"] = new List<Dictionary<string, object?>>();
+            state["error"] = "Fake merchant inventory is not ready yet; retry in a moment.";
+            return state;
+        }
+
+        var items = new List<Dictionary<string, object?>>();
+        int index = 0;
+
+        // FakeMerchant only sells relics (no cards, potions, or card removal)
+        foreach (var entry in inventory.RelicEntries)
+        {
+            var item = new Dictionary<string, object?>
+            {
+                ["index"] = index,
+                ["category"] = "relic",
+                ["cost"] = entry.Cost,
+                ["is_stocked"] = entry.IsStocked,
+                ["can_afford"] = entry.EnoughGold
+            };
+            if (entry.Model is { } relic)
+            {
+                item["relic_id"] = relic.Id.Entry;
+                item["relic_name"] = SafeGetText(() => relic.Title);
+                item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
+                item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
+            }
+            items.Add(item);
+            index++;
+        }
+
+        state["items"] = items;
+        return state;
+    }
+
     private static Dictionary<string, object?> BuildRestSiteState(RestSiteRoom restSiteRoom, RunState runState)
     {
         var state = new Dictionary<string, object?>();
@@ -577,6 +703,15 @@ public static partial class McpMod
         var state = new Dictionary<string, object?>();
 
         var inventory = merchantRoom.Inventory;
+        if (inventory == null)
+        {
+            state["items"] = new List<Dictionary<string, object?>>();
+            state["can_proceed"] = NMerchantRoom.Instance?.ProceedButton?.IsEnabled ?? false;
+            state["error"] =
+                "Shop inventory is not ready yet (null). Often happens right after entering the merchant from the map; retry in a moment.";
+            return state;
+        }
+
         var items = new List<Dictionary<string, object?>>();
         int index = 0;
 
@@ -706,8 +841,8 @@ public static partial class McpMod
         if (mapScreen != null)
         {
             var travelable = FindAll<NMapPoint>(mapScreen)
-                .Where(mp => mp.State == MapPointState.Travelable)
-                .OrderBy(mp => mp.Point.coord.col)
+                .Where(mp => mp.State == MapPointState.Travelable && mp.Point != null)
+                .OrderBy(mp => mp.Point!.coord.col)
                 .ToList();
 
             int index = 0;
@@ -996,6 +1131,85 @@ public static partial class McpMod
         return state;
     }
 
+    private static Dictionary<string, object?> BuildBundleSelectState(NChooseABundleSelectionScreen screen, RunState runState)
+    {
+        var state = new Dictionary<string, object?>();
+        state["screen_type"] = "bundle";
+
+        state["prompt"] = "Choose a bundle.";
+
+        var bundles = new List<Dictionary<string, object?>>();
+        int index = 0;
+        foreach (var bundle in FindAll<NCardBundle>(screen))
+        {
+            var cards = new List<Dictionary<string, object?>>();
+            int cardIndex = 0;
+            foreach (var card in bundle.Bundle)
+            {
+                cards.Add(new Dictionary<string, object?>
+                {
+                    ["index"] = cardIndex,
+                    ["id"] = card.Id.Entry,
+                    ["name"] = SafeGetText(() => card.Title),
+                    ["type"] = card.Type.ToString(),
+                    ["cost"] = card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString(),
+                    ["description"] = SafeGetCardDescription(card, PileType.None),
+                    ["rarity"] = card.Rarity.ToString(),
+                    ["is_upgraded"] = card.IsUpgraded,
+                    ["keywords"] = BuildHoverTips(card.HoverTips)
+                });
+                cardIndex++;
+            }
+
+            bundles.Add(new Dictionary<string, object?>
+            {
+                ["index"] = index,
+                ["card_count"] = cards.Count,
+                ["cards"] = cards
+            });
+            index++;
+        }
+        state["bundles"] = bundles;
+
+        var previewContainer = screen.GetNodeOrNull<Godot.Control>("%BundlePreviewContainer");
+        bool previewShowing = previewContainer?.Visible == true;
+        state["preview_showing"] = previewShowing;
+
+        var previewCards = new List<Dictionary<string, object?>>();
+        var previewCardsContainer = screen.GetNodeOrNull<Godot.Control>("%Cards");
+        if (previewCardsContainer != null)
+        {
+            int previewIndex = 0;
+            foreach (var holder in FindAll<NPreviewCardHolder>(previewCardsContainer))
+            {
+                var card = holder.CardModel;
+                if (card == null) continue;
+
+                previewCards.Add(new Dictionary<string, object?>
+                {
+                    ["index"] = previewIndex,
+                    ["id"] = card.Id.Entry,
+                    ["name"] = SafeGetText(() => card.Title),
+                    ["type"] = card.Type.ToString(),
+                    ["cost"] = card.EnergyCost.CostsX ? "X" : card.EnergyCost.GetAmountToSpend().ToString(),
+                    ["description"] = SafeGetCardDescription(card, PileType.None),
+                    ["rarity"] = card.Rarity.ToString(),
+                    ["is_upgraded"] = card.IsUpgraded,
+                    ["keywords"] = BuildHoverTips(card.HoverTips)
+                });
+                previewIndex++;
+            }
+        }
+        state["preview_cards"] = previewCards;
+
+        var cancelButton = screen.GetNodeOrNull<NBackButton>("%Cancel");
+        var confirmButton = screen.GetNodeOrNull<NConfirmButton>("%Confirm");
+        state["can_cancel"] = cancelButton?.IsEnabled == true;
+        state["can_confirm"] = confirmButton?.IsEnabled == true;
+
+        return state;
+    }
+
     private static Dictionary<string, object?> BuildHandSelectState(NPlayerHand hand, RunState runState)
     {
         var state = new Dictionary<string, object?>();
@@ -1103,6 +1317,106 @@ public static partial class McpMod
         return state;
     }
 
+    private static Dictionary<string, object?> BuildCrystalSphereState(NCrystalSphereScreen screen, RunState runState)
+    {
+        var state = new Dictionary<string, object?>();
+
+        var instructionsTitle = screen.GetNodeOrNull<Godot.Control>("%InstructionsTitle");
+        if (instructionsTitle != null)
+        {
+            var textVariant = instructionsTitle.Get("text");
+            if (textVariant.VariantType != Godot.Variant.Type.Nil)
+                state["instructions_title"] = StripRichTextTags(textVariant.AsString());
+        }
+
+        var instructionsDescription = screen.GetNodeOrNull<Godot.Control>("%InstructionsDescription");
+        if (instructionsDescription != null)
+        {
+            var textVariant = instructionsDescription.Get("text");
+            if (textVariant.VariantType != Godot.Variant.Type.Nil)
+                state["instructions_description"] = StripRichTextTags(textVariant.AsString());
+        }
+
+        var cells = FindAll<NCrystalSphereCell>(screen);
+        state["grid_width"] = cells.Count > 0 ? cells.Max(c => c.Entity.X) + 1 : 0;
+        state["grid_height"] = cells.Count > 0 ? cells.Max(c => c.Entity.Y) + 1 : 0;
+
+        var cellStates = new List<Dictionary<string, object?>>();
+        var clickableCells = new List<Dictionary<string, object?>>();
+        foreach (var cell in cells.OrderBy(c => c.Entity.Y).ThenBy(c => c.Entity.X))
+        {
+            var cellState = new Dictionary<string, object?>
+            {
+                ["x"] = cell.Entity.X,
+                ["y"] = cell.Entity.Y,
+                ["is_hidden"] = cell.Entity.IsHidden,
+                ["is_clickable"] = cell.Entity.IsHidden && cell.Visible,
+                ["is_highlighted"] = cell.Entity.IsHighlighted,
+                ["is_hovered"] = cell.Entity.IsHovered
+            };
+
+            if (!cell.Entity.IsHidden && cell.Entity.Item != null)
+            {
+                cellState["item_type"] = cell.Entity.Item.GetType().Name;
+                cellState["is_good"] = cell.Entity.Item.IsGood;
+            }
+
+            cellStates.Add(cellState);
+            if (cell.Entity.IsHidden && cell.Visible)
+            {
+                clickableCells.Add(new Dictionary<string, object?>
+                {
+                    ["x"] = cell.Entity.X,
+                    ["y"] = cell.Entity.Y
+                });
+            }
+        }
+        state["cells"] = cellStates;
+        state["clickable_cells"] = clickableCells;
+
+        var revealedItems = new List<Dictionary<string, object?>>();
+        foreach (var item in cells
+                     .Where(c => !c.Entity.IsHidden && c.Entity.Item != null)
+                     .Select(c => c.Entity.Item!)
+                     .Distinct())
+        {
+            revealedItems.Add(new Dictionary<string, object?>
+            {
+                ["item_type"] = item.GetType().Name,
+                ["x"] = item.Position.X,
+                ["y"] = item.Position.Y,
+                ["width"] = item.Size.X,
+                ["height"] = item.Size.Y,
+                ["is_good"] = item.IsGood
+            });
+        }
+        state["revealed_items"] = revealedItems;
+
+        var bigButton = screen.GetNodeOrNull<Godot.Control>("%BigDivinationButton");
+        var smallButton = screen.GetNodeOrNull<Godot.Control>("%SmallDivinationButton");
+        bool bigVisible = bigButton?.Visible == true;
+        bool smallVisible = smallButton?.Visible == true;
+        bool bigActive = bigButton?.GetNodeOrNull<Godot.Control>("%Outline")?.Visible == true;
+        bool smallActive = smallButton?.GetNodeOrNull<Godot.Control>("%Outline")?.Visible == true;
+
+        state["tool"] = bigActive ? "big" : smallActive ? "small" : "none";
+        state["can_use_big_tool"] = bigVisible;
+        state["can_use_small_tool"] = smallVisible;
+
+        var divinationsLeft = screen.GetNodeOrNull<Godot.Control>("%DivinationsLeft");
+        if (divinationsLeft != null)
+        {
+            var textVariant = divinationsLeft.Get("text");
+            if (textVariant.VariantType != Godot.Variant.Type.Nil)
+                state["divinations_left_text"] = StripRichTextTags(textVariant.AsString());
+        }
+
+        var proceedButton = screen.GetNodeOrNull<NProceedButton>("%ProceedButton");
+        state["can_proceed"] = proceedButton?.IsEnabled == true;
+
+        return state;
+    }
+
     private static Dictionary<string, object?> BuildTreasureState(TreasureRoom treasureRoom, RunState runState)
     {
         var state = new Dictionary<string, object?>();
@@ -1176,36 +1490,40 @@ public static partial class McpMod
         {
             if (!power.IsVisible) continue;
 
-            // HoverTips resolves all dynamic vars (Amount, DynamicVars, etc.)
-            // The first tip is the power's own description; the rest are extra keywords
-            var allTips = power.HoverTips.ToList();
-            string? resolvedDesc = null;
-            var extraTips = new List<IHoverTip>();
-            foreach (var tip in allTips)
+            // Per-power try/catch: HoverTips getter calls into game engine code
+            // (LocString resolution, DynamicVars, virtual ExtraHoverTips) that can
+            // throw during state transitions. Skip the power rather than fail the
+            // entire state query.
+            try
             {
-                if (tip.Id == power.Id.ToString())
+                var allTips = power.HoverTips.ToList();
+                string? resolvedDesc = null;
+                var extraTips = new List<IHoverTip>();
+                foreach (var tip in allTips)
                 {
-                    // This is the power's own hover tip — extract its resolved description
-                    if (tip is HoverTip ht)
-                        resolvedDesc = StripRichTextTags(ht.Description);
+                    if (tip.Id == power.Id.ToString())
+                    {
+                        if (tip is HoverTip ht && ht.Description != null)
+                            resolvedDesc = StripRichTextTags(ht.Description);
+                    }
+                    else
+                    {
+                        extraTips.Add(tip);
+                    }
                 }
-                else
-                {
-                    extraTips.Add(tip);
-                }
-            }
-            // Fallback to raw SmartDescription if HoverTips extraction failed
-            resolvedDesc ??= SafeGetText(() => power.SmartDescription);
+                resolvedDesc ??= SafeGetText(() => power.SmartDescription);
 
-            powers.Add(new Dictionary<string, object?>
-            {
-                ["id"] = power.Id.Entry,
-                ["name"] = SafeGetText(() => power.Title),
-                ["amount"] = power.DisplayAmount,
-                ["type"] = power.Type.ToString(),
-                ["description"] = resolvedDesc,
-                ["keywords"] = BuildHoverTips(extraTips)
-            });
+                powers.Add(new Dictionary<string, object?>
+                {
+                    ["id"] = power.Id.Entry,
+                    ["name"] = SafeGetText(() => power.Title),
+                    ["amount"] = power.DisplayAmount,
+                    ["type"] = power.Type.ToString(),
+                    ["description"] = resolvedDesc,
+                    ["keywords"] = BuildHoverTips(extraTips)
+                });
+            }
+            catch { /* skip this power — game engine state may be inconsistent */ }
         }
         return powers;
     }

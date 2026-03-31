@@ -25,6 +25,7 @@ _mcp_dir: Path = Path(__file__).resolve().parent
 _memory_dir: Path = _mcp_dir / "case_memory"
 _memory_file: Path = _memory_dir / "replay_turns.jsonl"
 _conflict_lexicon_file: Path = _mcp_dir / "sts2_conflict_lexicon.json"
+_trust_env: bool = True
 
 
 def _sp_url() -> str:
@@ -36,28 +37,28 @@ def _mp_url() -> str:
 
 
 async def _get(params: dict | None = None) -> str:
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
         r = await client.get(_sp_url(), params=params)
         r.raise_for_status()
         return r.text
 
 
 async def _post(body: dict) -> str:
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
         r = await client.post(_sp_url(), json=body)
         r.raise_for_status()
         return r.text
 
 
 async def _mp_get(params: dict | None = None) -> str:
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
         r = await client.get(_mp_url(), params=params)
         r.raise_for_status()
         return r.text
 
 
 async def _mp_post(body: dict) -> str:
-    async with httpx.AsyncClient(timeout=10) as client:
+    async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
         r = await client.post(_mp_url(), json=body)
         r.raise_for_status()
         return r.text
@@ -205,7 +206,8 @@ async def get_game_state(format: str = "markdown") -> str:
     """Get the current Slay the Spire 2 game state.
 
     Returns the full game state including player stats, hand, enemies, potions, etc.
-    The state_type field indicates the current screen (combat, map, event, shop, etc.).
+    The state_type field indicates the current screen (combat, map, event, shop,
+    fake_merchant, etc.).
 
     Args:
         format: "markdown" for human-readable output, "json" for structured data.
@@ -236,10 +238,26 @@ async def use_potion(slot: int, target: str | None = None) -> str:
 
 
 @mcp.tool()
+async def discard_potion(slot: int) -> str:
+    """Discard a potion from the player's potion slots to free up space.
+
+    Use this when all potion slots are full and you need room for incoming potions
+    (e.g. before collecting a potion reward).
+
+    Args:
+        slot: Potion slot index to discard (as shown in game state).
+    """
+    try:
+        return await _post({"action": "discard_potion", "slot": slot})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
 async def proceed_to_map() -> str:
     """Proceed from the current screen to the map.
 
-    Works from: rewards screen, rest site, shop.
+    Works from: rewards screen, rest site, shop, fake merchant.
     Does NOT work for events — use event_choose_option() with the Proceed option's index.
     """
     try:
@@ -692,7 +710,7 @@ async def combat_confirm_selection() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Rewards (state_type: combat_rewards / card_reward)
+# Rewards (state_type: rewards / card_reward)
 # ---------------------------------------------------------------------------
 
 
@@ -780,7 +798,10 @@ async def rest_choose_option(option_index: int) -> str:
 
 @mcp.tool()
 async def shop_purchase(item_index: int) -> str:
-    """[Shop] Purchase an item from the shop.
+    """[Shop / Fake Merchant] Purchase an item from the shop.
+
+    Works for both regular shops (state_type: shop) and the fake merchant
+    event (state_type: fake_merchant). The fake merchant only sells relics.
 
     Args:
         item_index: 0-based index of the item from the shop state.
@@ -876,6 +897,42 @@ async def deck_cancel_selection() -> str:
 
 
 # ---------------------------------------------------------------------------
+# Bundle Selection (state_type: bundle_select)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def bundle_select(bundle_index: int) -> str:
+    """[Bundle Selection] Open a bundle preview.
+
+    Args:
+        bundle_index: 0-based index of the bundle.
+    """
+    try:
+        return await _post({"action": "select_bundle", "index": bundle_index})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def bundle_confirm_selection() -> str:
+    """[Bundle Selection] Confirm the currently previewed bundle."""
+    try:
+        return await _post({"action": "confirm_bundle_selection"})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def bundle_cancel_selection() -> str:
+    """[Bundle Selection] Cancel the current bundle preview."""
+    try:
+        return await _post({"action": "cancel_bundle_selection"})
+    except Exception as e:
+        return _handle_error(e)
+
+
+# ---------------------------------------------------------------------------
 # Relic Selection (state_type: relic_select)
 # ---------------------------------------------------------------------------
 
@@ -921,6 +978,47 @@ async def treasure_claim_relic(relic_index: int) -> str:
     """
     try:
         return await _post({"action": "claim_treasure_relic", "index": relic_index})
+    except Exception as e:
+        return _handle_error(e)
+
+
+# ---------------------------------------------------------------------------
+# Crystal Sphere (state_type: crystal_sphere)
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def crystal_sphere_set_tool(tool: str) -> str:
+    """[Crystal Sphere] Switch the active divination tool.
+
+    Args:
+        tool: Either "big" or "small".
+    """
+    try:
+        return await _post({"action": "crystal_sphere_set_tool", "tool": tool})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def crystal_sphere_click_cell(x: int, y: int) -> str:
+    """[Crystal Sphere] Click a hidden cell on the Crystal Sphere grid.
+
+    Args:
+        x: Cell x-coordinate.
+        y: Cell y-coordinate.
+    """
+    try:
+        return await _post({"action": "crystal_sphere_click_cell", "x": x, "y": y})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def crystal_sphere_proceed() -> str:
+    """[Crystal Sphere] Continue after the Crystal Sphere minigame finishes."""
+    try:
+        return await _post({"action": "crystal_sphere_proceed"})
     except Exception as e:
         return _handle_error(e)
 
@@ -1006,6 +1104,19 @@ async def mp_use_potion(slot: int, target: str | None = None) -> str:
         body["target"] = target
     try:
         return await _mp_post(body)
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_discard_potion(slot: int) -> str:
+    """[Multiplayer] Discard a potion from the local player's potion slots to free up space.
+
+    Args:
+        slot: Potion slot index to discard (as shown in game state).
+    """
+    try:
+        return await _mp_post({"action": "discard_potion", "slot": slot})
     except Exception as e:
         return _handle_error(e)
 
@@ -1160,6 +1271,37 @@ async def mp_deck_cancel_selection() -> str:
 
 
 @mcp.tool()
+async def mp_bundle_select(bundle_index: int) -> str:
+    """[Multiplayer Bundle Selection] Open a bundle preview.
+
+    Args:
+        bundle_index: 0-based index of the bundle.
+    """
+    try:
+        return await _mp_post({"action": "select_bundle", "index": bundle_index})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_bundle_confirm_selection() -> str:
+    """[Multiplayer Bundle Selection] Confirm the currently previewed bundle."""
+    try:
+        return await _mp_post({"action": "confirm_bundle_selection"})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_bundle_cancel_selection() -> str:
+    """[Multiplayer Bundle Selection] Cancel the current bundle preview."""
+    try:
+        return await _mp_post({"action": "cancel_bundle_selection"})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
 async def mp_combat_select_card(card_index: int) -> str:
     """[Multiplayer Combat Selection] Select a card from hand during in-combat card selection.
 
@@ -1219,14 +1361,52 @@ async def mp_treasure_claim_relic(relic_index: int) -> str:
         return _handle_error(e)
 
 
+@mcp.tool()
+async def mp_crystal_sphere_set_tool(tool: str) -> str:
+    """[Multiplayer Crystal Sphere] Switch the active divination tool.
+
+    Args:
+        tool: Either "big" or "small".
+    """
+    try:
+        return await _mp_post({"action": "crystal_sphere_set_tool", "tool": tool})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_crystal_sphere_click_cell(x: int, y: int) -> str:
+    """[Multiplayer Crystal Sphere] Click a hidden cell on the Crystal Sphere grid.
+
+    Args:
+        x: Cell x-coordinate.
+        y: Cell y-coordinate.
+    """
+    try:
+        return await _mp_post({"action": "crystal_sphere_click_cell", "x": x, "y": y})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_crystal_sphere_proceed() -> str:
+    """[Multiplayer Crystal Sphere] Continue after the Crystal Sphere minigame finishes."""
+    try:
+        return await _mp_post({"action": "crystal_sphere_proceed"})
+    except Exception as e:
+        return _handle_error(e)
+
+
 def main():
     parser = argparse.ArgumentParser(description="STS2 MCP Server")
     parser.add_argument("--port", type=int, default=15526, help="Game HTTP server port")
     parser.add_argument("--host", type=str, default="localhost", help="Game HTTP server host")
+    parser.add_argument("--no-trust-env", action="store_true", help="Ignore HTTP_PROXY/HTTPS_PROXY environment variables")
     args = parser.parse_args()
 
-    global _base_url
+    global _base_url, _trust_env
     _base_url = f"http://{args.host}:{args.port}"
+    _trust_env = not args.no_trust_env
 
     mcp.run(transport="stdio")
 

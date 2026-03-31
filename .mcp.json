@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "sts2": {
-      "command": "uv",
-      "args": ["run", "--directory", "./mcp", "python", "server.py"]
-    }
-  }
-}

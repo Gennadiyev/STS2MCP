@@ -18,6 +18,7 @@
 
 ### Potions
 - `use_potion(slot=N)` — slot is the potion slot index, not a card index.
+- `discard_potion(slot=N)` — discard a potion to free up the slot when full.
 - Potions don't cost energy or count as card plays. Use buff potions BEFORE playing cards.
 
 ---

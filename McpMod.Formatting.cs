@@ -91,6 +91,11 @@ public static partial class McpMod
             FormatShopMarkdown(sb, shopData);
         }
 
+        if (state.TryGetValue("fake_merchant", out var fmObj) && fmObj is Dictionary<string, object?> fmData)
+        {
+            FormatFakeMerchantMarkdown(sb, fmData);
+        }
+
         if (state.TryGetValue("map", out var mapObj) && mapObj is Dictionary<string, object?> mapData)
         {
             FormatMapMarkdown(sb, mapData);
@@ -118,9 +123,19 @@ public static partial class McpMod
             FormatCardSelectMarkdown(sb, cardSelect);
         }
 
+        if (state.TryGetValue("bundle_select", out var bundleSelectObj) && bundleSelectObj is Dictionary<string, object?> bundleSelect)
+        {
+            FormatBundleSelectMarkdown(sb, bundleSelect);
+        }
+
         if (state.TryGetValue("relic_select", out var relicSelectObj) && relicSelectObj is Dictionary<string, object?> relicSelect)
         {
             FormatRelicSelectMarkdown(sb, relicSelect);
+        }
+
+        if (state.TryGetValue("crystal_sphere", out var crystalSphereObj) && crystalSphereObj is Dictionary<string, object?> crystalSphere)
+        {
+            FormatCrystalSphereMarkdown(sb, crystalSphere);
         }
 
         if (state.TryGetValue("treasure", out var treasureObj) && treasureObj is Dictionary<string, object?> treasureData)
@@ -323,6 +338,13 @@ public static partial class McpMod
 
     private static void FormatShopMarkdown(StringBuilder sb, Dictionary<string, object?> shop)
     {
+        if (shop.TryGetValue("error", out var err) && err != null)
+        {
+            sb.AppendLine("## Shop");
+            sb.AppendLine($"**Note:** {err}");
+            sb.AppendLine();
+        }
+
         if (shop.TryGetValue("items", out var itemsObj) && itemsObj is List<Dictionary<string, object?>> items)
         {
             sb.AppendLine("## Shop Inventory");
@@ -359,6 +381,29 @@ public static partial class McpMod
         bool canProceed = shop.TryGetValue("can_proceed", out var cp) && cp is true;
         sb.AppendLine($"**Can proceed:** {(canProceed ? "Yes" : "No")}");
         sb.AppendLine();
+    }
+
+    private static void FormatFakeMerchantMarkdown(StringBuilder sb, Dictionary<string, object?> fm)
+    {
+        string name = fm.TryGetValue("event_name", out var n) && n != null ? n.ToString()! : "Fake Merchant";
+        bool startedFight = fm.TryGetValue("started_fight", out var sf) && sf is true;
+
+        sb.AppendLine($"## Event: {name}");
+        sb.AppendLine();
+
+        if (startedFight)
+        {
+            sb.AppendLine("*The fake merchant has been defeated. Use `proceed` to open the map.*");
+            sb.AppendLine();
+            return;
+        }
+
+        sb.AppendLine("*This is a fake merchant selling dubious relics. You can browse and buy, or throw a Foul Potion (use_potion) to start a fight.*");
+        sb.AppendLine();
+
+        // Reuse shop formatting for the nested shop object
+        if (fm.TryGetValue("shop", out var shopObj) && shopObj is Dictionary<string, object?> shopData)
+            FormatShopMarkdown(sb, shopData);
     }
 
     private static void FormatMapMarkdown(StringBuilder sb, Dictionary<string, object?> map)
@@ -602,6 +647,96 @@ public static partial class McpMod
             sb.AppendLine("**Preview is showing** — use `confirm_selection` to confirm or `cancel_selection` to go back.");
         else
             sb.AppendLine($"**Select cards** using `select_card(index)`. Can confirm: {(canConfirm ? "Yes" : "No")} | Can cancel: {(canCancel ? "Yes" : "No")}");
+        sb.AppendLine();
+    }
+
+    private static void FormatBundleSelectMarkdown(StringBuilder sb, Dictionary<string, object?> bundleSelect)
+    {
+        sb.AppendLine("## Bundle Selection");
+
+        if (bundleSelect.TryGetValue("prompt", out var promptObj) && promptObj != null)
+            sb.AppendLine($"*{promptObj}*");
+        sb.AppendLine();
+
+        if (bundleSelect.TryGetValue("bundles", out var bundlesObj) && bundlesObj is List<Dictionary<string, object?>> bundles && bundles.Count > 0)
+        {
+            sb.AppendLine("### Bundles");
+            foreach (var bundle in bundles)
+            {
+                sb.AppendLine($"- [{bundle["index"]}] Bundle with {bundle["card_count"]} card(s)");
+                if (bundle.TryGetValue("cards", out var cardsObj) && cardsObj is List<Dictionary<string, object?>> cards)
+                {
+                    foreach (var card in cards)
+                        sb.AppendLine($"  {card["name"]} ({card["cost"]}) [{card["type"]}] {card["rarity"]}");
+                }
+            }
+            sb.AppendLine();
+        }
+
+        bool preview = bundleSelect.TryGetValue("preview_showing", out var pv) && pv is true;
+        bool canConfirm = bundleSelect.TryGetValue("can_confirm", out var cc) && cc is true;
+        bool canCancel = bundleSelect.TryGetValue("can_cancel", out var cn) && cn is true;
+
+        if (preview)
+        {
+            sb.AppendLine("**Preview is showing** - use `confirm_bundle_selection()` to confirm or `cancel_bundle_selection()` to go back.");
+            if (bundleSelect.TryGetValue("preview_cards", out var previewCardsObj) && previewCardsObj is List<Dictionary<string, object?>> previewCards && previewCards.Count > 0)
+            {
+                sb.AppendLine("### Preview Cards");
+                foreach (var card in previewCards)
+                    sb.AppendLine($"- **{card["name"]}** ({card["cost"]} energy) [{card["type"]}] {card["rarity"]} - {card["description"]}");
+                sb.AppendLine();
+            }
+        }
+        else
+        {
+            sb.AppendLine($"Use `select_bundle(index)` to open a bundle preview. Can confirm: {(canConfirm ? "Yes" : "No")} | Can cancel: {(canCancel ? "Yes" : "No")}");
+            sb.AppendLine();
+        }
+    }
+
+    private static void FormatCrystalSphereMarkdown(StringBuilder sb, Dictionary<string, object?> crystalSphere)
+    {
+        sb.AppendLine("## Crystal Sphere");
+
+        if (crystalSphere.TryGetValue("instructions_title", out var titleObj) && titleObj != null)
+            sb.AppendLine($"**{titleObj}**");
+        if (crystalSphere.TryGetValue("instructions_description", out var descObj) && descObj != null)
+            sb.AppendLine(descObj.ToString());
+        sb.AppendLine();
+
+        string tool = crystalSphere.TryGetValue("tool", out var toolObj) ? toolObj?.ToString() ?? "none" : "none";
+        string divinationsLeft = crystalSphere.TryGetValue("divinations_left_text", out var dlObj) && dlObj != null
+            ? dlObj.ToString()!
+            : "Unknown";
+        sb.AppendLine($"**Tool:** {tool} | **Divinations:** {divinationsLeft}");
+        sb.AppendLine();
+
+        if (crystalSphere.TryGetValue("clickable_cells", out var cellsObj) && cellsObj is List<Dictionary<string, object?>> clickableCells && clickableCells.Count > 0)
+        {
+            sb.AppendLine("### Clickable Cells");
+            foreach (var cell in clickableCells)
+                sb.AppendLine($"- ({cell["x"]}, {cell["y"]})");
+            sb.AppendLine();
+        }
+
+        if (crystalSphere.TryGetValue("revealed_items", out var itemsObj) && itemsObj is List<Dictionary<string, object?>> revealedItems && revealedItems.Count > 0)
+        {
+            sb.AppendLine("### Revealed Items");
+            foreach (var item in revealedItems)
+                sb.AppendLine($"- **{item["item_type"]}** at ({item["x"]}, {item["y"]}) size {item["width"]}x{item["height"]}");
+            sb.AppendLine();
+        }
+
+        bool canProceed = crystalSphere.TryGetValue("can_proceed", out var cp) && cp is true;
+        if (canProceed)
+        {
+            sb.AppendLine("Use `crystal_sphere_proceed()` to continue.");
+        }
+        else
+        {
+            sb.AppendLine("Use `crystal_sphere_set_tool(tool)` with `big` or `small`, then `crystal_sphere_click_cell(x, y)`.");
+        }
         sb.AppendLine();
     }
 
