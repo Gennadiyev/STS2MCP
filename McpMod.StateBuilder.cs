@@ -14,7 +14,9 @@ using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.Events;
+using MegaCrit.Sts2.Core.Models.Events;
 using MegaCrit.Sts2.Core.Nodes.Events;
+using MegaCrit.Sts2.Core.Nodes.Events.Custom;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Map;
@@ -29,6 +31,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
+using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
 using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Rooms;
@@ -149,6 +152,11 @@ public static partial class McpMod
             {
                 result["state_type"] = "map";
                 result["map"] = BuildMapState(runState);
+            }
+            else if (eventRoom.CanonicalEvent is FakeMerchant)
+            {
+                result["state_type"] = "fake_merchant";
+                result["fake_merchant"] = BuildFakeMerchantState(eventRoom, runState);
             }
             else
             {
@@ -560,6 +568,107 @@ public static partial class McpMod
         }
         state["options"] = options;
 
+        return state;
+    }
+
+    private static Dictionary<string, object?> BuildFakeMerchantState(EventRoom eventRoom, RunState runState)
+    {
+        var state = new Dictionary<string, object?>();
+        // LocalMutableEvent holds the per-player mutable copy with populated inventory;
+        // CanonicalEvent is the shared template which may not have it.
+        var fakeMerchant = (FakeMerchant)(eventRoom.LocalMutableEvent ?? eventRoom.CanonicalEvent);
+
+        state["event_id"] = fakeMerchant.Id.Entry;
+        state["event_name"] = SafeGetText(() => fakeMerchant.Title);
+        state["started_fight"] = fakeMerchant.StartedFight;
+
+        // Find the NFakeMerchant UI node
+        var uiRoom = NEventRoom.Instance;
+        NFakeMerchant? fakeMerchantNode = null;
+        if (uiRoom != null)
+            fakeMerchantNode = FindFirst<NFakeMerchant>(uiRoom);
+
+        if (fakeMerchant.StartedFight)
+        {
+            // After the foul potion fight, merchant is gone — just show proceed
+            state["shop"] = new Dictionary<string, object?>
+            {
+                ["items"] = new List<Dictionary<string, object?>>(),
+                ["can_proceed"] = true
+            };
+            state["message"] = "The fake merchant has been defeated. Proceed to map.";
+            return state;
+        }
+
+        // Auto-open the inventory if the merchant button is still available
+        if (fakeMerchantNode != null)
+        {
+            var inventoryUI = FindFirst<NMerchantInventory>(fakeMerchantNode);
+            if (inventoryUI != null && !inventoryUI.IsOpen)
+            {
+                // ForceClick the merchant button to go through the proper signal chain
+                // (disables proceed button, wires InventoryClosed callback, etc.)
+                var merchantButton = fakeMerchantNode.MerchantButton;
+                if (merchantButton != null && merchantButton.Visible && merchantButton.IsEnabled)
+                    merchantButton.ForceClick();
+            }
+        }
+
+        // Build shop inventory from the FakeMerchant model
+        var shopState = BuildFakeMerchantShopItems(fakeMerchant.Inventory);
+
+        // Proceed button
+        if (fakeMerchantNode != null)
+        {
+            var proceedButton = FindFirst<NProceedButton>(fakeMerchantNode);
+            shopState["can_proceed"] = proceedButton?.IsEnabled ?? false;
+        }
+        else
+        {
+            shopState["can_proceed"] = false;
+        }
+
+        state["shop"] = shopState;
+        return state;
+    }
+
+    private static Dictionary<string, object?> BuildFakeMerchantShopItems(MerchantInventory? inventory)
+    {
+        var state = new Dictionary<string, object?>();
+
+        if (inventory == null)
+        {
+            state["items"] = new List<Dictionary<string, object?>>();
+            state["error"] = "Fake merchant inventory is not ready yet; retry in a moment.";
+            return state;
+        }
+
+        var items = new List<Dictionary<string, object?>>();
+        int index = 0;
+
+        // FakeMerchant only sells relics (no cards, potions, or card removal)
+        foreach (var entry in inventory.RelicEntries)
+        {
+            var item = new Dictionary<string, object?>
+            {
+                ["index"] = index,
+                ["category"] = "relic",
+                ["cost"] = entry.Cost,
+                ["is_stocked"] = entry.IsStocked,
+                ["can_afford"] = entry.EnoughGold
+            };
+            if (entry.Model is { } relic)
+            {
+                item["relic_id"] = relic.Id.Entry;
+                item["relic_name"] = SafeGetText(() => relic.Title);
+                item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
+                item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
+            }
+            items.Add(item);
+            index++;
+        }
+
+        state["items"] = items;
         return state;
     }
 

@@ -6,6 +6,7 @@
 |---|---|---|
 | `get_game_state(format?)` | General | Get current game state (`markdown` or `json`) |
 | `use_potion(slot, target?)` | General | Use a potion (works in and out of combat) |
+| `discard_potion(slot)` | General | Discard a potion to free up the slot |
 | `proceed_to_map()` | General | Proceed from rewards/rest site/shop/treasure to the map |
 | `combat_play_card(card_index, target?)` | Combat | Play a card from hand |
 | `combat_end_turn()` | Combat | End the current turn |
@@ -43,6 +44,7 @@ All multiplayer tools are prefixed with `mp_`. They route through `/api/v1/multi
 | `mp_combat_end_turn()` | Combat | Submit end-turn vote (turn ends when all players submit) |
 | `mp_combat_undo_end_turn()` | Combat | Retract end-turn vote |
 | `mp_use_potion(slot, target?)` | General | Use a potion from the local player's slots |
+| `mp_discard_potion(slot)` | General | Discard a potion from the local player's slots |
 | `mp_proceed_to_map()` | General | Proceed from current screen to the map |
 | `mp_map_vote(node_index)` | Map | Vote for a map node (travel when all agree) |
 | `mp_event_choose_option(option_index)` | Event | Vote for / choose an event option |

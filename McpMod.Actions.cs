@@ -12,8 +12,11 @@ using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
 using MegaCrit.Sts2.Core.Entities.Merchant;
+using MegaCrit.Sts2.Core.Models.Events;
 using MegaCrit.Sts2.Core.Nodes.Events;
+using MegaCrit.Sts2.Core.Nodes.Events.Custom;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom.CrystalSphere;
+using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Map;
 using MegaCrit.Sts2.Core.Rooms;
@@ -49,6 +52,7 @@ public static partial class McpMod
         {
             "play_card" => ExecutePlayCard(player, data),
             "use_potion" => ExecuteUsePotion(player, data),
+            "discard_potion" => ExecuteDiscardPotion(player, data),
             "end_turn" => ExecuteEndTurn(player),
             "choose_map_node" => ExecuteChooseMapNode(data),
             "choose_event_option" => ExecuteChooseEventOption(data),
@@ -230,6 +234,29 @@ public static partial class McpMod
         };
     }
 
+    private static Dictionary<string, object?> ExecuteDiscardPotion(Player player, Dictionary<string, JsonElement> data)
+    {
+        if (!data.TryGetValue("slot", out var slotElem))
+            return Error("Missing 'slot' (potion slot index)");
+
+        int slot = slotElem.GetInt32();
+        if (slot < 0 || slot >= player.PotionSlots.Count)
+            return Error($"Potion slot {slot} out of range (player has {player.PotionSlots.Count} slots)");
+
+        var potion = player.GetPotionAtSlotIndex(slot);
+        if (potion == null)
+            return Error($"No potion in slot {slot}");
+
+        string potionName = SafeGetText(() => potion.Title) ?? "unknown";
+        _ = PotionCmd.Discard(potion);
+
+        return new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["message"] = $"Discarded potion '{potionName}' from slot {slot}"
+        };
+    }
+
     private static Dictionary<string, object?> ExecuteChooseEventOption(Dictionary<string, JsonElement> data)
     {
         var uiRoom = NEventRoom.Instance;
@@ -315,15 +342,47 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteShopPurchase(Player player, Dictionary<string, JsonElement> data)
     {
-        if (player.RunState.CurrentRoom is not MerchantRoom merchantRoom)
+        MerchantInventory? inventory = null;
+
+        if (player.RunState.CurrentRoom is MerchantRoom merchantRoom)
+        {
+            // Regular merchant — auto-open inventory if needed
+            var merchUI = NMerchantRoom.Instance;
+            if (merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
+                merchUI.OpenInventory();
+            inventory = merchantRoom.Inventory;
+        }
+        else if (player.RunState.CurrentRoom is EventRoom eventRoom
+                 && eventRoom.CanonicalEvent is FakeMerchant
+                 && (eventRoom.LocalMutableEvent ?? eventRoom.CanonicalEvent) is FakeMerchant fakeMerchant)
+        {
+            // Fake merchant event — auto-open via button if needed
+            if (!fakeMerchant.StartedFight)
+            {
+                var uiRoom = NEventRoom.Instance;
+                if (uiRoom != null)
+                {
+                    var fmNode = FindFirst<NFakeMerchant>(uiRoom);
+                    if (fmNode != null)
+                    {
+                        var inventoryUI = FindFirst<NMerchantInventory>(fmNode);
+                        if (inventoryUI != null && !inventoryUI.IsOpen)
+                        {
+                            var btn = fmNode.MerchantButton;
+                            if (btn != null && btn.Visible && btn.IsEnabled)
+                                btn.ForceClick();
+                        }
+                    }
+                }
+            }
+            inventory = fakeMerchant.Inventory;
+        }
+        else
+        {
             return Error("Not in a shop");
+        }
 
-        // Auto-open inventory if needed (guard null — OpenInventory() dereferences Inventory.IsOpen)
-        var merchUI = NMerchantRoom.Instance;
-        if (merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
-            merchUI.OpenInventory();
-
-        if (merchantRoom.Inventory == null)
+        if (inventory == null)
             return Error("Shop inventory not ready yet; wait a moment and retry");
 
         if (!data.TryGetValue("index", out var indexElem))
@@ -331,7 +390,7 @@ public static partial class McpMod
 
         int index = indexElem.GetInt32();
 
-        var allEntries = merchantRoom.Inventory.AllEntries.ToList();
+        var allEntries = inventory.AllEntries.ToList();
         if (index < 0 || index >= allEntries.Count)
             return Error($"Shop item index {index} out of range ({allEntries.Count} items)");
 
@@ -342,7 +401,7 @@ public static partial class McpMod
             return Error($"Not enough gold (need {entry.Cost}, have {player.Gold})");
 
         // Fire-and-forget purchase (same path as AutoSlay)
-        _ = entry.OnTryPurchaseWrapper(merchantRoom.Inventory);
+        _ = entry.OnTryPurchaseWrapper(inventory);
 
         return new Dictionary<string, object?>
         {
@@ -499,6 +558,28 @@ public static partial class McpMod
             {
                 merchRoom.ProceedButton.ForceClick();
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from shop" };
+            }
+        }
+
+        // Try fake merchant — close inventory first if open, then proceed
+        if (NEventRoom.Instance is { } evtRoom)
+        {
+            var fmNode = FindFirst<NFakeMerchant>(evtRoom);
+            if (fmNode != null)
+            {
+                var fmInventory = FindFirst<NMerchantInventory>(fmNode);
+                if (fmInventory is { IsOpen: true })
+                {
+                    var backBtn = FindFirst<NBackButton>(fmNode);
+                    if (backBtn is { IsEnabled: true })
+                        backBtn.ForceClick();
+                }
+                var proceedBtn = FindFirst<NProceedButton>(fmNode);
+                if (proceedBtn is { IsEnabled: true })
+                {
+                    proceedBtn.ForceClick();
+                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from fake merchant" };
+                }
             }
         }
 

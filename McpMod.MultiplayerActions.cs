@@ -31,6 +31,7 @@ public static partial class McpMod
             // Delegated to existing sync-safe handlers
             "play_card" => ExecutePlayCard(player, data),
             "use_potion" => ExecuteUsePotion(player, data),
+            "discard_potion" => ExecuteDiscardPotion(player, data),
             "choose_map_node" => ExecuteChooseMapNode(data),
             "choose_event_option" => ExecuteChooseEventOption(data),
             "advance_dialogue" => ExecuteAdvanceDialogue(),

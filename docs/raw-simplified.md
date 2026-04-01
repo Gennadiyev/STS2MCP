@@ -41,7 +41,7 @@ Every JSON response includes:
 | `crystal_sphere` | Crystal Sphere minigame | `crystal_sphere_set_tool`, `crystal_sphere_click_cell`, `crystal_sphere_proceed` |
 | `overlay` | Unhandled overlay (catch-all, prevents soft-lock) | None (manual interaction needed) |
 
-**Note:** `use_potion` works during any state where potions are usable (combat, map, events, etc.).
+**Note:** `use_potion` and `discard_potion` work during any state where potions are accessible (combat, map, events, etc.).
 
 ## POST — Actions
 
@@ -53,6 +53,7 @@ All POST requests use JSON body with `"action"` field. All responses include `{ 
 |---|---|---|
 | `play_card` | `card_index`: int, `target`?: string | Play a card from hand. `target` is an `entity_id` (e.g. `"JAW_WORM_0"`), required for single-target cards. |
 | `use_potion` | `slot`: int, `target`?: string | Use a potion. `target` required for enemy-targeting potions. Works outside combat for non-combat-only potions. |
+| `discard_potion` | `slot`: int | Discard a potion to free up the slot. Use when slots are full and you need room for incoming potions. |
 | `end_turn` | _(none)_ | End the player's turn. |
 
 ### In-Combat Hand Selection (`hand_select`)
