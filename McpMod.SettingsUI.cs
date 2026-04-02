@@ -122,7 +122,7 @@ public static partial class McpMod
         static bool Prefix(NFastModeTickbox __instance)
         {
             if (!IsInInstantModeLine(__instance)) return true;
-            // Instant Mode turned off — fall back to Fast
+            // Instant Mode turned off - fall back to Fast
             SaveManager.Instance.PrefsSave.FastMode = FastModeType.Fast;
             return false;
         }

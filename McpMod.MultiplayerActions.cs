@@ -69,13 +69,13 @@ public static partial class McpMod
         if (!CombatManager.Instance.IsInProgress)
             return Error("Not in combat");
         if (!CombatManager.Instance.IsPlayPhase)
-            return Error("Not in play phase — cannot act during enemy turn");
+            return Error("Not in play phase - cannot act during enemy turn");
         if (CombatManager.Instance.PlayerActionsDisabled)
             return Error("Player actions are currently disabled");
         if (!player.Creature.IsAlive)
-            return Error("Player creature is dead — cannot end turn");
+            return Error("Player creature is dead - cannot end turn");
         if (CombatManager.Instance.IsPlayerReadyToEndTurn(player))
-            return Error("Already submitted end turn — use 'undo_end_turn' to retract");
+            return Error("Already submitted end turn - use 'undo_end_turn' to retract");
 
         // Match the game's own CanTurnBeEnded guard (NEndTurnButton.cs:114-123)
         var hand = NCombatRoom.Instance?.Ui?.Hand;
@@ -102,13 +102,13 @@ public static partial class McpMod
         if (!CombatManager.Instance.IsInProgress)
             return Error("Not in combat");
         if (!CombatManager.Instance.IsPlayPhase)
-            return Error("Not in play phase — cannot act during enemy turn");
+            return Error("Not in play phase - cannot act during enemy turn");
         if (CombatManager.Instance.PlayerActionsDisabled)
             return Error("Player actions are currently disabled");
         if (!player.Creature.IsAlive)
             return Error("Player creature is dead");
         if (!CombatManager.Instance.IsPlayerReadyToEndTurn(player))
-            return Error("Not ready to end turn — nothing to undo");
+            return Error("Not ready to end turn - nothing to undo");
 
         var combatState = player.Creature.CombatState;
         if (combatState == null)
@@ -121,7 +121,7 @@ public static partial class McpMod
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",
-            ["message"] = "Undid end turn — continue playing cards"
+            ["message"] = "Undid end turn - continue playing cards"
         };
     }
 }

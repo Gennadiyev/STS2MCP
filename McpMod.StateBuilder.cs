@@ -60,7 +60,7 @@ public static partial class McpMod
         }
 
         // Overlays can appear on top of any room (events, rest sites, combat).
-        // Rewards/card-reward overlays defer to the map — they may linger on the
+        // Rewards/card-reward overlays defer to the map - they may linger on the
         // overlay stack while the map opens after the player clicks proceed.
         var topOverlay = NOverlayStack.Instance?.Peek();
         var currentRoom = runState.CurrentRoom;
@@ -104,7 +104,7 @@ public static partial class McpMod
                  && topOverlay is not NRewardsScreen
                  && topOverlay is not NCardRewardSelectionScreen)
         {
-            // Catch-all for unhandled overlays — prevents soft-locks
+            // Catch-all for unhandled overlays - prevents soft-locks
             result["state_type"] = "overlay";
             result["overlay"] = new Dictionary<string, object?>
             {
@@ -132,7 +132,7 @@ public static partial class McpMod
             }
             else
             {
-                // After combat ends — reward/card overlays are caught by top-level checks above.
+                // After combat ends - reward/card overlays are caught by top-level checks above.
                 // Only handle map and the brief transition before rewards appear.
                 if (NMapScreen.Instance is { IsOpen: true })
                 {
@@ -282,7 +282,7 @@ public static partial class McpMod
         state["block"] = creature.Block;
 
         // PlayerCombatState can linger after combat while on map/rest/shop. Energy/MaxEnergy getters
-        // run hooks (e.g. Hook.ModifyMaxEnergy) that null-ref without a live combat — only serialize
+        // run hooks (e.g. Hook.ModifyMaxEnergy) that null-ref without a live combat - only serialize
         // combat fields when a fight is actually in progress.
         if (combatState != null && CombatManager.Instance.IsInProgress)
         {
@@ -590,7 +590,7 @@ public static partial class McpMod
 
         if (fakeMerchant.StartedFight)
         {
-            // After the foul potion fight, merchant is gone — just show proceed
+            // After the foul potion fight, merchant is gone - just show proceed
             state["shop"] = new Dictionary<string, object?>
             {
                 ["items"] = new List<Dictionary<string, object?>>(),
@@ -835,7 +835,7 @@ public static partial class McpMod
         }
         state["visited"] = visited;
 
-        // Next options — read travelable state from UI nodes
+        // Next options - read travelable state from UI nodes
         var nextOptions = new List<Dictionary<string, object?>>();
         var mapScreen = NMapScreen.Instance;
         if (mapScreen != null)
@@ -874,7 +874,7 @@ public static partial class McpMod
         }
         state["next_options"] = nextOptions;
 
-        // Full map — all nodes organized for planning
+        // Full map - all nodes organized for planning
         var nodes = new List<Dictionary<string, object?>>();
 
         // Starting point
@@ -941,6 +941,7 @@ public static partial class McpMod
             {
                 item["potion_id"] = potionReward.Potion.Id.Entry;
                 item["potion_name"] = SafeGetText(() => potionReward.Potion.Title);
+                item["potion_description"] = SafeGetText(() => potionReward.Potion.DynamicDescription);
             }
 
             items.Add(item);
@@ -1024,7 +1025,7 @@ public static partial class McpMod
             state["prompt"] = prompt;
         }
 
-        // Cards in the grid (sorted by visual position — MoveToFront can reorder children)
+        // Cards in the grid (sorted by visual position - MoveToFront can reorder children)
         var cardHolders = FindAllSortedByPosition<NGridCardHolder>(screen);
         var cards = new List<Dictionary<string, object?>>();
         int index = 0;
@@ -1063,7 +1064,7 @@ public static partial class McpMod
         var closeButton = screen.GetNodeOrNull<NBackButton>("%Close");
         state["can_cancel"] = closeButton?.IsEnabled ?? false;
 
-        // Confirm button — search all preview containers and main screen
+        // Confirm button - search all preview containers and main screen
         bool canConfirm = false;
         foreach (var container in new[] { previewSingle, previewMulti, previewGeneric })
         {
@@ -1523,7 +1524,7 @@ public static partial class McpMod
                     ["keywords"] = BuildHoverTips(extraTips)
                 });
             }
-            catch { /* skip this power — game engine state may be inconsistent */ }
+            catch { /* skip this power - game engine state may be inconsistent */ }
         }
         return powers;
     }
