@@ -134,7 +134,7 @@ public static partial class McpMod
             }
             else
             {
-                // After combat ends — reward/card overlays are caught by top-level checks above.
+                // After combat ends - reward/card overlays are caught by top-level checks above.
                 if (NMapScreen.Instance is { IsOpen: true })
                 {
                     result["state_type"] = "map";
@@ -246,7 +246,7 @@ public static partial class McpMod
         battle["is_play_phase"] = CombatManager.Instance.IsPlayPhase;
         battle["all_players_ready"] = CombatManager.Instance.AllPlayersReadyToEndTurn();
 
-        // All players in combat — full state for local player, summary for others
+        // All players in combat - full state for local player, summary for others
         var players = new List<Dictionary<string, object?>>();
         Dictionary<string, object?>? localPlayerState = null;
         foreach (var player in runState.Players)
@@ -364,7 +364,7 @@ public static partial class McpMod
     {
         // Auto-open chest same as singleplayer. BeginRelicPicking() runs during
         // TreasureRoom.Enter(), so relics are already generated. The chest click
-        // just triggers the UI animation + gold via OneOffSynchronizer — same path
+        // just triggers the UI animation + gold via OneOffSynchronizer - same path
         // as a human click or the game's own AutoSlay handler.
         var state = BuildTreasureState(treasureRoom, runState);
 
@@ -407,7 +407,7 @@ public static partial class McpMod
 
     /// <summary>
     /// Builds player combat state without private info (hand, draw/discard/exhaust piles, orbs).
-    /// Used for non-local players in multiplayer — shows HP, block, energy, powers, relics, potions.
+    /// Used for non-local players in multiplayer - shows HP, block, energy, powers, relics, potions.
     /// </summary>
     private static Dictionary<string, object?> BuildPlayerStateSummary(Player player)
     {
