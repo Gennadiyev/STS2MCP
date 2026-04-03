@@ -250,31 +250,22 @@ public static partial class McpMod
         sb.AppendLine("### Deck Information");
         sb.AppendLine();
 
-        sb.AppendLine($"#### Draw Pile ({player["draw_pile_count"]} cards, in random order)");
-        if (player.TryGetValue("draw_pile", out var drawObj) && drawObj is List<Dictionary<string, object?>> drawPile && drawPile.Count > 0)
-        {
-            foreach (var card in drawPile)
-                sb.AppendLine($"- {card["name"]}: {card["description"]}");
-        }
-        else
-            sb.AppendLine("- *(empty)*");
-        sb.AppendLine();
+        FormatPileMarkdown(sb, player, "draw_pile", "draw_pile_count", "Draw Pile", " in random order");
+        FormatPileMarkdown(sb, player, "discard_pile", "discard_pile_count", "Discard Pile");
+        FormatPileMarkdown(sb, player, "exhaust_pile", "exhaust_pile_count", "Exhaust Pile");
+    }
 
-        sb.AppendLine($"#### Discard Pile ({player["discard_pile_count"]} cards)");
-        if (player.TryGetValue("discard_pile", out var discardObj) && discardObj is List<Dictionary<string, object?>> discardPile && discardPile.Count > 0)
+    private static void FormatPileMarkdown(StringBuilder sb, Dictionary<string, object?> player,
+        string pileKey, string countKey, string label, string suffix = "")
+    {
+        sb.AppendLine($"#### {label} ({player[countKey]} cards{(suffix.Length > 0 ? "," : "")}{suffix})");
+        if (player.TryGetValue(pileKey, out var pileObj) && pileObj is List<Dictionary<string, object?>> pile && pile.Count > 0)
         {
-            foreach (var card in discardPile)
-                sb.AppendLine($"- {card["name"]}: {card["description"]}");
-        }
-        else
-            sb.AppendLine("- *(empty)*");
-        sb.AppendLine();
-
-        sb.AppendLine($"#### Exhaust Pile ({player["exhaust_pile_count"]} cards)");
-        if (player.TryGetValue("exhaust_pile", out var exhaustObj) && exhaustObj is List<Dictionary<string, object?>> exhaustPile && exhaustPile.Count > 0)
-        {
-            foreach (var card in exhaustPile)
-                sb.AppendLine($"- {card["name"]}: {card["description"]}");
+            foreach (var card in pile)
+            {
+                string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
+                sb.AppendLine($"- {card["name"]} ({card["cost"]}{starCost}): {card["description"]}");
+            }
         }
         else
             sb.AppendLine("- *(empty)*");
@@ -365,9 +356,10 @@ public static partial class McpMod
                 string affordTag = stocked && !afford ? " (can't afford)" : "";
                 string saleTag = item.TryGetValue("on_sale", out var os) && os is true ? " **SALE**" : "";
 
+                string cardStarCost = item.TryGetValue("card_star_cost", out var csc) && csc != null ? $" ({csc} star)" : "";
                 string desc = category switch
                 {
-                    "card" => $"**{item.GetValueOrDefault("card_name")}** [{item.GetValueOrDefault("card_type")}] {item.GetValueOrDefault("card_rarity")} — {item.GetValueOrDefault("card_description")}",
+                    "card" => $"**{item.GetValueOrDefault("card_name")}** [{item.GetValueOrDefault("card_type")}]{cardStarCost} {item.GetValueOrDefault("card_rarity")} — {item.GetValueOrDefault("card_description")}",
                     "relic" => $"**{item.GetValueOrDefault("relic_name")}** — {item.GetValueOrDefault("relic_description")}",
                     "potion" => $"**{item.GetValueOrDefault("potion_name")}** — {item.GetValueOrDefault("potion_description")}",
                     "card_removal" => "**Remove a card** from your deck",
@@ -592,7 +584,8 @@ public static partial class McpMod
             sb.AppendLine("### Selectable Cards");
             foreach (var card in cards)
             {
-                sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy) [{card["type"]}] — {card["description"]}");
+                string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
+                sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] — {card["description"]}");
             }
             sb.AppendLine();
         }
@@ -634,7 +627,8 @@ public static partial class McpMod
             sb.AppendLine("### Cards");
             foreach (var card in cards)
             {
-                sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy) [{card["type"]}] {card["rarity"]} — {card["description"]}");
+                string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
+                sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]} — {card["description"]}");
             }
             sb.AppendLine();
         }
@@ -667,7 +661,10 @@ public static partial class McpMod
                 if (bundle.TryGetValue("cards", out var cardsObj) && cardsObj is List<Dictionary<string, object?>> cards)
                 {
                     foreach (var card in cards)
-                        sb.AppendLine($"  {card["name"]} ({card["cost"]}) [{card["type"]}] {card["rarity"]}");
+                    {
+                        string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
+                        sb.AppendLine($"  {card["name"]} ({card["cost"]}{starCost}) [{card["type"]}] {card["rarity"]}");
+                    }
                 }
             }
             sb.AppendLine();
@@ -684,7 +681,10 @@ public static partial class McpMod
             {
                 sb.AppendLine("### Preview Cards");
                 foreach (var card in previewCards)
-                    sb.AppendLine($"- **{card["name"]}** ({card["cost"]} energy) [{card["type"]}] {card["rarity"]} - {card["description"]}");
+                {
+                    string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
+                    sb.AppendLine($"- **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]} - {card["description"]}");
+                }
                 sb.AppendLine();
             }
         }

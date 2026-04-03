@@ -113,6 +113,8 @@ Always present at the top level (except `menu`). Contains everything about the l
 ```jsonc
 {
   "name": "Strike",
+  "cost": "1",               // Energy cost as string ("X" for X-cost)
+  "star_cost": null,          // Regent star cost as string, null if N/A
   "description": "Deal 6 damage."
 }
 ```
@@ -231,6 +233,7 @@ Appears when a card effect prompts "Select a card to exhaust/discard/upgrade". *
         "name": "Strike",
         "type": "Attack",
         "cost": "1",
+        "star_cost": null,       // Regent star cost as string, null if N/A
         "description": "Deal 6 damage.",
         "is_upgraded": false,
         "keywords": [ /* Keyword Objects */ ]
@@ -424,6 +427,7 @@ Shop inventory is auto-opened when state is queried.
         "card_name": "Offering",
         "card_type": "Skill",
         "card_rarity": "Rare",
+        "card_star_cost": null,  // Regent star cost as string, null if N/A
         "card_description": "Lose 6 HP. Gain 2 Energy. Draw 3 cards.",
         "keywords": [ /* Keyword Objects */ ]
       },
@@ -512,6 +516,7 @@ Covers deck transforms, upgrades, removals, and choose-a-card effects. Appears o
         "name": "Strike",
         "type": "Attack",
         "cost": "1",
+        "star_cost": null,       // Regent star cost as string, null if N/A
         "description": "Deal 6 damage.",
         "rarity": "Common",
         "is_upgraded": false,
@@ -551,6 +556,7 @@ Choose between bundles of cards (e.g. from Scroll Boxes relic).
             "name": "Uppercut",
             "type": "Attack",
             "cost": "2",
+            "star_cost": null,   // Regent star cost as string, null if N/A
             "description": "Deal 13 damage. Apply 1 Weak. Apply 1 Vulnerable.",
             "rarity": "Uncommon",
             "is_upgraded": false,
