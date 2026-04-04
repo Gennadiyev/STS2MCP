@@ -1113,7 +1113,7 @@ Finish the Crystal Sphere minigame.
         "player": "The Ironclad",
         "is_local": true,
         "voted": true,
-        "vote_option_index": 0
+        "vote_option": 0
       }
     ],
     "all_voted": false
