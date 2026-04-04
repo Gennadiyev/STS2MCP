@@ -352,20 +352,22 @@ public static partial class McpMod
 
                 bool stocked = item["is_stocked"] is true;
                 bool afford = item["can_afford"] is true;
-                string costTag = stocked ? $"{item["cost"]}g" : "SOLD";
+                string priceTag = stocked ? $"{item["price"]}g" : "SOLD";
                 string affordTag = stocked && !afford ? " (can't afford)" : "";
                 string saleTag = item.TryGetValue("on_sale", out var os) && os is true ? " **SALE**" : "";
 
-                string cardStarCost = item.TryGetValue("card_star_cost", out var csc) && csc != null ? $" ({csc} star)" : "";
+                string cardCost = item.TryGetValue("card_cost", out var cc) && cc != null ? cc.ToString()! : "";
+                string cardStarCost = item.TryGetValue("card_star_cost", out var csc) && csc != null ? $" + {csc} star" : "";
+                string cardEnergy = cardCost != "" ? $" ({cardCost} energy{cardStarCost})" : "";
                 string desc = category switch
                 {
-                    "card" => $"**{item.GetValueOrDefault("card_name")}** [{item.GetValueOrDefault("card_type")}]{cardStarCost} {item.GetValueOrDefault("card_rarity")} - {item.GetValueOrDefault("card_description")}",
+                    "card" => $"**{item.GetValueOrDefault("card_name")}**{cardEnergy} [{item.GetValueOrDefault("card_type")}] {item.GetValueOrDefault("card_rarity")} - {item.GetValueOrDefault("card_description")}",
                     "relic" => $"**{item.GetValueOrDefault("relic_name")}** - {item.GetValueOrDefault("relic_description")}",
                     "potion" => $"**{item.GetValueOrDefault("potion_name")}** - {item.GetValueOrDefault("potion_description")}",
                     "card_removal" => "**Remove a card** from your deck",
                     _ => "Unknown item"
                 };
-                sb.AppendLine($"- [{item["index"]}] {desc} - {costTag}{saleTag}{affordTag}");
+                sb.AppendLine($"- [{item["index"]}] {desc} - {priceTag}{saleTag}{affordTag}");
             }
             sb.AppendLine();
         }

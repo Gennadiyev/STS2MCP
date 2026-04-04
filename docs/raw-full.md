@@ -419,15 +419,16 @@ Shop inventory is auto-opened when state is queried.
       {
         "index": 0,
         "category": "card",
-        "cost": 75,
+        "price": 75,               // Gold price in the shop
         "is_stocked": true,
         "can_afford": true,
         "on_sale": false,
         "card_id": "OFFERING",
         "card_name": "Offering",
         "card_type": "Skill",
+        "card_cost": "1",          // Energy cost as string ("X" for X-cost)
+        "card_star_cost": null,    // Regent star cost as string, null if N/A
         "card_rarity": "Rare",
-        "card_star_cost": null,  // Regent star cost as string, null if N/A
         "card_description": "Lose 6 HP. Gain 2 Energy. Draw 3 cards.",
         "keywords": [ /* Keyword Objects */ ]
       },
@@ -435,7 +436,7 @@ Shop inventory is auto-opened when state is queried.
       {
         "index": 5,
         "category": "relic",
-        "cost": 150,
+        "price": 150,
         "is_stocked": true,
         "can_afford": false,
         "relic_id": "VAJRA",
@@ -447,7 +448,7 @@ Shop inventory is auto-opened when state is queried.
       {
         "index": 8,
         "category": "potion",
-        "cost": 50,
+        "price": 50,
         "is_stocked": true,
         "can_afford": true,
         "potion_id": "FIRE_POTION",
@@ -459,7 +460,7 @@ Shop inventory is auto-opened when state is queried.
       {
         "index": 10,
         "category": "card_removal",
-        "cost": 75,
+        "price": 75,
         "is_stocked": true,
         "can_afford": true
       }
