@@ -227,6 +227,13 @@ public static partial class McpMod
         // All players summary (always included for multiplayer)
         result["players"] = BuildAllPlayersState(runState);
 
+        // Always include full local player data (relics, potions, deck, etc.) on every screen,
+        // matching singleplayer behavior from BuildGameState()
+        if (localPlayer != null)
+        {
+            result["player"] = BuildPlayerState(localPlayer);
+        }
+
         return result;
     }
 

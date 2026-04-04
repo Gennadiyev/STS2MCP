@@ -1298,6 +1298,7 @@ public static partial class McpMod
                 ["id"] = relic.Id.Entry,
                 ["name"] = SafeGetText(() => relic.Title),
                 ["description"] = SafeGetText(() => relic.DynamicDescription),
+                ["rarity"] = relic.Rarity.ToString(),
                 ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
             });
             index++;
