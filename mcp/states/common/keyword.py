@@ -23,16 +23,18 @@ class Keywords(BaseModel):
         for name, keyword in other_keywords.keywords.items():
             if name not in combined_keywords:
                 combined_keywords[name] = keyword
-        return Keywords(keywords=combined_keywords)
+        return Keywords.model_construct(keywords=combined_keywords)
     
     def to_markdown(self) -> str:
         """Convert the keywords to a markdown string."""
         if not self.keywords:
             return ""
-        lines = ["## Keyword Glossary"]
+        lines = []
+        lines.append("## Keyword Glossary\n")
         for keyword in self.keywords.values():
-            lines.append(f"- {keyword.to_markdown()}")
-        return "\n".join(lines)
+            lines.append(f"- {keyword.to_markdown()}\n")
+        lines.append("\n")
+        return "".join(lines)
 
     @model_validator(mode="before")
     @classmethod
@@ -42,3 +44,25 @@ class Keywords(BaseModel):
         for keyword in keyword_list:
             keywords[keyword["name"]] = Keyword.model_validate(keyword)
         return {"keywords": keywords}
+
+
+def _get_keywords(state, keywords: Keywords) -> Keywords:
+    """Get the keywords from the state."""
+    if isinstance(state, Keywords):
+        keywords += state
+    elif isinstance(state, BaseModel):
+        for value in state.model_dump().values():
+            keywords = _get_keywords(value, keywords)
+    elif isinstance(state, (list, tuple)):
+        for item in state:
+            keywords = _get_keywords(item, keywords)
+    elif isinstance(state, dict):
+        for item in state.values():
+            keywords = _get_keywords(item, keywords)
+    return keywords
+
+
+def collect_keywords(state: BaseModel) -> Keywords:
+    """Collect all keywords from the state."""
+    keywords = Keywords.model_construct(keywords=dict())
+    return _get_keywords(state, keywords)

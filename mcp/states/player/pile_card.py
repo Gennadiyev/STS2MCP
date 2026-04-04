@@ -11,7 +11,8 @@ class PileCard(BaseModel):
 
     def to_markdown(self) -> str:
         """Convert the pile card to a markdown string."""
-        pass
+        star_cost = f" + {self.star_cost} star" if self.star_cost is not None else ""
+        return f"{self.name} ({self.cost}{star_cost}): {self.description}"
 
 
 class PileCards(BaseModel):
@@ -23,9 +24,14 @@ class PileCards(BaseModel):
         """Calculate the difference between two pile card states."""
         pass
 
-    def to_markdown(self, is_diff = False) -> str:
+    def to_markdown(self) -> str:
         """Convert the pile cards to a markdown string."""
-        pass
+        if not self.pile_cards:
+            return "- *(empty)*\n"
+        lines = []
+        for markdown_key in self.pile_cards:
+            lines.append(f"- {markdown_key}\n")
+        return "".join(lines)
 
     @model_validator(mode="before")
     @classmethod

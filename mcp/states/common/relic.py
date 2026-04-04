@@ -37,9 +37,14 @@ class Relics(BaseModel):
         """Calculate the difference between two relic states."""
         pass
 
-    def to_markdown(self, is_diff = False) -> str:
+    def to_markdown(self) -> str:
         """Convert the relics to a markdown string."""
-        pass
+        if not self.relics:
+            return ""
+        lines = []
+        for markdown_key in self.relics:
+            lines.append(f"- {markdown_key}\n")
+        return "".join(lines)
 
     @model_validator(mode="before")
     @classmethod

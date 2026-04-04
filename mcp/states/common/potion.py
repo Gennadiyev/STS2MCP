@@ -1,4 +1,4 @@
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel
 
 from states.common.keyword import Keywords
 
@@ -16,4 +16,4 @@ class Potion(BaseModel):
 
     def to_markdown(self) -> str:
         """Convert the potion to a markdown string."""
-        pass
+        return f"[{self.slot}] **{self.name}**: {self.description}"

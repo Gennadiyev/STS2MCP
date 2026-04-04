@@ -8,3 +8,6 @@ class MenuState(BaseModel):
 
     state_type: Literal["menu"]
     message: str
+
+    def to_markdown(self) -> str:
+        return self.message + "\n"
