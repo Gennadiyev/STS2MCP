@@ -4,6 +4,7 @@ using System.Linq;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Players;
+using MegaCrit.Sts2.Core.Models.Events;
 using MegaCrit.Sts2.Core.Multiplayer.Game;
 using MegaCrit.Sts2.Core.Nodes.Combat;
 using MegaCrit.Sts2.Core.Nodes.Events;
@@ -153,6 +154,11 @@ public static partial class McpMod
             {
                 result["state_type"] = "map";
                 result["map"] = BuildMultiplayerMapState(runState);
+            }
+            else if (eventRoom.CanonicalEvent is FakeMerchant)
+            {
+                result["state_type"] = "fake_merchant";
+                result["fake_merchant"] = BuildFakeMerchantState(eventRoom, runState);
             }
             else
             {
