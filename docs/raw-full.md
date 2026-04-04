@@ -472,6 +472,45 @@ Shop inventory is auto-opened when state is queried.
 }
 ```
 
+### `fake_merchant` — Fake Merchant Event
+
+A relic-only shop disguised as an event. Uses `shop_purchase` and `proceed` actions (same as regular shop). If the player triggers a fight, the merchant disappears.
+
+```jsonc
+{
+  "state_type": "fake_merchant",
+  "fake_merchant": {
+    "event_id": "FAKE_MERCHANT",
+    "event_name": "Fake Merchant",
+    "started_fight": false,         // true after triggering the foul potion fight
+    "shop": {
+      "items": [
+        {
+          "index": 0,
+          "category": "relic",
+          "cost": 150,
+          "is_stocked": true,
+          "can_afford": true,
+          "relic_id": "VAJRA",
+          "relic_name": "Vajra",
+          "relic_description": "At the start of each combat, gain 1 Strength.",
+          "keywords": [ /* Keyword Objects */ ]
+        }
+      ],
+      "can_proceed": true
+    },
+    // After fight:
+    // "started_fight": true,
+    // "shop": { "items": [], "can_proceed": true },
+    // "message": "The fake merchant has been defeated. Proceed to map."
+  },
+  "run": { ... },
+  "player": { ... }
+}
+```
+
+**Note:** The fake merchant only sells relics — no cards, potions, or card removal. The `shop_purchase` action works the same as for a regular shop.
+
 ### `treasure` — Treasure Room
 
 Chest is auto-opened on first state query.
