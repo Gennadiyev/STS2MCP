@@ -7,10 +7,6 @@ class Keyword(BaseModel):
     name: str
     description: str
 
-    def to_markdown(self):
-        """Convert the keyword to a markdown string."""
-        return f"**{self.name}**: {self.description}"
-
 
 class Keywords(BaseModel):
     """The keywords object, which is a collection of keywords."""
@@ -24,16 +20,6 @@ class Keywords(BaseModel):
             if name not in combined_keywords:
                 combined_keywords[name] = keyword
         return Keywords.model_construct(keywords=combined_keywords)
-    
-    def to_markdown(self) -> str:
-        """Convert the keywords to a markdown string."""
-        if not self.keywords:
-            return ""
-        lines = []
-        lines.append("## Keyword Glossary\n")
-        for keyword in self.keywords.values():
-            lines.append(f"- {keyword.to_markdown()}\n")
-        return "".join(lines)
 
     @model_validator(mode="before")
     @classmethod

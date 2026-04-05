@@ -10,6 +10,3 @@ class UnknownState(BaseModel):
 
     # As the scenario is unknown, we allow any extra fields to be stored in the model.
     model_config = ConfigDict(extra="allow")
-
-    def to_markdown(self) -> str:
-        return ""

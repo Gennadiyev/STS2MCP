@@ -14,6 +14,3 @@ class Potion(BaseModel):
     target_type: str
     keywords: Keywords
 
-    def to_markdown(self) -> str:
-        """Convert the potion to a markdown string."""
-        return f"[{self.slot}] **{self.name}**: {self.description}"

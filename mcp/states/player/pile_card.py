@@ -9,11 +9,6 @@ class PileCard(BaseModel):
     cost: str | None = None
     star_cost: str | None = None
 
-    def to_markdown(self) -> str:
-        """Convert the pile card to a markdown string."""
-        star_cost = f" + {self.star_cost} star" if self.star_cost is not None else ""
-        return f"{self.name} ({self.cost}{star_cost}): {self.description}"
-
 
 class PileCards(BaseModel):
     """The state of the player's pile cards."""
@@ -23,15 +18,6 @@ class PileCards(BaseModel):
     def __sub__(self, old_pile_cards: "PileCards") -> "PileCards":
         """Calculate the difference between two pile card states."""
         pass
-
-    def to_markdown(self) -> str:
-        """Convert the pile cards to a markdown string."""
-        if not self.pile_cards:
-            return "- *(empty)*\n"
-        lines = []
-        for markdown_key in self.pile_cards:
-            lines.append(f"- {markdown_key}\n")
-        return "".join(lines)
 
     @model_validator(mode="before")
     @classmethod

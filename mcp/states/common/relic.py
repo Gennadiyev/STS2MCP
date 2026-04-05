@@ -12,20 +12,12 @@ class Relic(BaseModel):
     counter: int | None = None  # number if relic shows a counter, null otherwise
     keywords: Keywords
 
-    def to_markdown(self) -> str:
-        """Convert the relic to a markdown string."""
-        counter = f" [{self.counter}]" if self.counter is not None else ""
-        return f"**{self.name}**{counter}: {self.description}"
-
 
 class RewardRelic(Relic):
     """The relic in the reward screen."""
 
     index: int
     rarity: str
-
-    def to_markdown(self):
-        return super().to_markdown()
 
 
 class Relics(BaseModel):
@@ -36,15 +28,6 @@ class Relics(BaseModel):
     def __sub__(self, old_relics: "Relics") -> "Relics":
         """Calculate the difference between two relic states."""
         pass
-
-    def to_markdown(self) -> str:
-        """Convert the relics to a markdown string."""
-        if not self.relics:
-            return ""
-        lines = []
-        for markdown_key in self.relics:
-            lines.append(f"- {markdown_key}\n")
-        return "".join(lines)
 
     @model_validator(mode="before")
     @classmethod

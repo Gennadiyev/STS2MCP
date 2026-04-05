@@ -30,9 +30,6 @@ class RevealedItem(Coordinate):
     height: int
     is_good: bool
 
-    def to_markdown(self) -> str:
-        return f"**{self.item_type}** at ({self.x}, {self.y}) size {self.width}x{self.height}"
-
 
 class CrystalSphere(BaseModel):
     """The crystal sphere event state."""
@@ -50,37 +47,9 @@ class CrystalSphere(BaseModel):
     divinations_left_text: str
     can_proceed: bool
 
-    def to_markdown(self) -> str:
-        lines = ["## Crystal Sphere\n"]
-        lines.append(f"**{self.instructions_title}**\n")
-        lines.append(f"{self.instructions_description}\n\n")
-        lines.append(f"**Tool:** {self.tool} | **Divinations:** {self.divinations_left_text}\n\n")
-
-        if self.clickable_cells:
-            lines.append("### Clickable Cells\n")
-            for cell in self.clickable_cells:
-                lines.append(f"- ({cell.x}, {cell.y})\n")
-            lines.append("\n")
-
-        if self.revealed_items:
-            lines.append("### Revealed Items\n")
-            for item in self.revealed_items:
-                lines.append(f"- {item.to_markdown()}\n")
-            lines.append("\n")
-
-        if self.can_proceed:
-            lines.append("Use `crystal_sphere_proceed()` to continue.\n")
-        else:
-            lines.append("Use `crystal_sphere_set_tool(tool)` with `big` or `small`, then `crystal_sphere_click_cell(x, y)`.\n")
-        lines.append("\n")
-        return "".join(lines)
-
 
 class CrystalSphereState(BaseModel):
     """The state when the scenario is in the crystal sphere event."""
 
     state_type: Literal["crystal_sphere"]
     crystal_sphere: CrystalSphere
-
-    def to_markdown(self) -> str:
-        return self.crystal_sphere.to_markdown()
