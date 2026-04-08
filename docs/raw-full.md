@@ -63,6 +63,17 @@ Always present at the top level (except `menu`). Contains everything about the l
   "orbs": [ /* Orb Objects */ ],   // Defect only; omitted if orb capacity is 0
   "orb_slots": 3,
   "orb_empty_slots": 1,
+  "pets": [                        // Necrobinder only; omitted if no pets
+    {
+      "id": "OSTY",
+      "name": "Otsy",
+      "alive": true,
+      "hp": 12,
+      "max_hp": 12,
+      "block": 0,
+      "status": [ /* Power Objects */ ]
+    }
+  ],
 
   // --- Always present ---
   "status": [ /* Power Objects */ ],
@@ -1079,6 +1090,24 @@ Finish the Crystal Sphere minigame.
       "is_alive": true,
       "is_local": true,
       "is_ready_to_end_turn": false   // Only present during combat
+    },
+    {
+      "character": "The Necrobinder",
+      "hp": 60, "max_hp": 66,
+      "gold": 80,
+      "is_alive": true,
+      "is_local": false,
+      "is_ready_to_end_turn": false,
+      "pets": [                       // Omitted for local player (pets are under top-level "player")
+        {
+          "id": "OSTY",
+          "name": "Otsy",
+          "alive": true,
+          "hp": 12, "max_hp": 12,
+          "block": 0,
+          "status": [ /* Power Objects */ ]
+        }
+      ]
     }
   ]
 }

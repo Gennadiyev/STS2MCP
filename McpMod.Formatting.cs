@@ -42,6 +42,19 @@ public static partial class McpMod
                 string aliveTag = p["is_alive"] is false ? " [DEAD]" : "";
                 string readyTag = p.TryGetValue("is_ready_to_end_turn", out var rdy) && rdy is true ? " [READY]" : "";
                 sb.AppendLine($"- **{p["character"]}**{youTag}{aliveTag}{readyTag} - HP: {p["hp"]}/{p["max_hp"]} | Gold: {p["gold"]}");
+
+                // Show teammate pets inline
+                if (p.TryGetValue("pets", out var tPetsObj) && tPetsObj is List<Dictionary<string, object?>> tPets)
+                {
+                    foreach (var pet in tPets)
+                    {
+                        bool petAlive = pet.TryGetValue("alive", out var pa) && pa is true;
+                        string petStatus = petAlive
+                            ? $"HP: {pet["hp"]}/{pet["max_hp"]} | Block: {pet["block"]}"
+                            : "DEAD";
+                        sb.AppendLine($"  - Pet: **{pet["name"]}** - {petStatus}");
+                    }
+                }
             }
             sb.AppendLine();
         }
@@ -213,6 +226,8 @@ public static partial class McpMod
                     sb.AppendLine($"- *{empty} empty slot(s)*");
                 sb.AppendLine();
             }
+
+            FormatPetsMarkdown(sb, player);
         }
 
         if (battle.TryGetValue("enemies", out var enemiesObj) && enemiesObj is List<Dictionary<string, object?>> enemies && enemies.Count > 0)
@@ -250,6 +265,30 @@ public static partial class McpMod
         FormatPileMarkdown(sb, player, "draw_pile", "draw_pile_count", "Draw Pile", " sorted by rarity");
         FormatPileMarkdown(sb, player, "discard_pile", "discard_pile_count", "Discard Pile");
         FormatPileMarkdown(sb, player, "exhaust_pile", "exhaust_pile_count", "Exhaust Pile");
+    }
+
+    private static void FormatPetsMarkdown(StringBuilder sb, Dictionary<string, object?> player)
+    {
+        if (!player.TryGetValue("pets", out var petsObj)
+            || petsObj is not List<Dictionary<string, object?>> pets
+            || pets.Count == 0)
+            return;
+
+        sb.AppendLine("### Pets");
+        foreach (var pet in pets)
+        {
+            bool alive = pet.TryGetValue("alive", out var a) && a is true;
+            string status = alive
+                ? $"HP: {pet["hp"]}/{pet["max_hp"]} | Block: {pet["block"]}"
+                : "DEAD";
+            sb.AppendLine($"- **{pet["name"]}** (`{pet["id"]}`) - {status}");
+            if (alive)
+            {
+                FormatListSection(sb, "Status", pet, "status",
+                    p => $"  - **{p["name"]}** ({FormatStatusAmount(p["amount"])}): {p["description"]}");
+            }
+        }
+        sb.AppendLine();
     }
 
     private static void FormatPileMarkdown(StringBuilder sb, Dictionary<string, object?> player,
