@@ -76,8 +76,8 @@ public static partial class McpMod
     {
         try
         {
-            // Apply Harmony patches (settings UI injection, etc.)
-            new Harmony("com.sts2mcp").PatchAll();
+            // Optional settings UI patches should not block the HTTP bridge itself.
+            TryApplyHarmonyPatches();
 
             // Connect to main thread process frame for action execution
             var tree = (SceneTree)Engine.GetMainLoop();
@@ -102,6 +102,19 @@ public static partial class McpMod
         catch (Exception ex)
         {
             GD.PrintErr($"[STS2 MCP] Failed to start: {ex}");
+        }
+    }
+
+    private static void TryApplyHarmonyPatches()
+    {
+        try
+        {
+            new Harmony("com.sts2mcp").PatchAll();
+        }
+        catch (Exception ex)
+        {
+            GD.PrintErr(
+                $"[STS2 MCP] Harmony patches unavailable; continuing without optional UI injection: {ex}");
         }
     }
 
