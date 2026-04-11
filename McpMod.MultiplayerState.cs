@@ -414,6 +414,7 @@ public static partial class McpMod
             };
             if (inCombat)
             {
+                entry["block"] = player.Creature.Block;
                 entry["is_ready_to_end_turn"] = CombatManager.Instance.IsPlayerReadyToEndTurn(player);
 
                 // Include pets for teammates (local player's pets are under "player")
