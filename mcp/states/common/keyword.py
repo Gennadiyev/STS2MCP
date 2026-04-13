@@ -7,6 +7,10 @@ class Keyword(BaseModel):
     name: str
     description: str
 
+    def to_markdown(self):
+        """Convert the keyword to a markdown string."""
+        return f"**{self.name}**: {self.description}"
+
 
 class Keywords(BaseModel):
     """The keywords object, which is a collection of keywords."""
@@ -20,6 +24,22 @@ class Keywords(BaseModel):
             if name not in combined_keywords:
                 combined_keywords[name] = keyword
         return Keywords.model_construct(keywords=combined_keywords)
+
+    def get_keyword_names_str(self) -> str:
+        """Get the names of the keywords, separated by commas."""
+        if not self.keywords:
+            return ""
+        keyword_names = [name for name in self.keywords]
+        return f" [{', '.join(keyword_names)}]"
+
+    def to_markdown(self) -> str:
+        """Convert the keywords to a markdown string."""
+        if not self.keywords:
+            return ""
+        lines = []
+        for keyword in self.keywords.values():
+            lines.append(f"- {keyword.to_markdown()}\n")
+        return "".join(lines)
 
     @model_validator(mode="before")
     @classmethod
@@ -37,7 +57,7 @@ def _get_keywords(state, keywords: Keywords) -> Keywords:
         keywords += state
     elif isinstance(state, BaseModel):
         # iterate field values directly to preserve pydantic types
-        for _field_name, value in state:
+        for _, value in state:
             keywords = _get_keywords(value, keywords)
     elif isinstance(state, (list, tuple)):
         for item in state:

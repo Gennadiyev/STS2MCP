@@ -17,7 +17,6 @@ from states.scenario.shop import ShopState
 from states.scenario.treasure import TreasureState
 from states.scenario.unknown import UnknownState
 
-
 ScenarioState: TypeAlias = (
     BundleSelectState
     | CardRewardState

@@ -2,13 +2,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from states.common.keyword import collect_keywords
 from states.common.multiplayer import MultiplayerState
 from states.player import PlayerState
 from states.scenario import ScenarioState
-from states.scenario.combat import CombatState
-from states.scenario.hand_select import HandSelectState
-from states.scenario.menu import MenuState
 
 
 class RunState(BaseModel):
@@ -17,6 +13,10 @@ class RunState(BaseModel):
     act: int
     floor: int
     ascension: int
+
+    def to_markdown(self) -> str:
+        """Convert the run state to a markdown string."""
+        return f"**Act {self.act}** | Floor {self.floor} | Ascension {self.ascension}\n"
 
 
 class GameState(BaseModel):
@@ -34,6 +34,23 @@ class GameState(BaseModel):
 
     # scenario-specific fields
     scenario_state: ScenarioState = Field(discriminator="state_type")
+
+    def __sub__(self, old: "GameState") -> "GameState":
+        """Calculate the difference between two game states."""
+        pass
+
+    def to_markdown(self, *, is_diff: bool = False) -> str:
+        """Convert the game state to a markdown string."""
+        lines = [f"# {self.game_mode.capitalize()} Game State: {self.scenario_state.state_type}\n\n"]
+        # run state
+        if self.run:
+            lines.append(f"{self.run.to_markdown()}\n")
+        # multiplayer state
+        if self.multiplayer_state:
+            lines.append(f"## Party\n\n{self.multiplayer_state.to_markdown()}\n")
+        # player state
+        # scenario-specific state
+        # TODO
 
     @model_validator(mode="before")
     @classmethod

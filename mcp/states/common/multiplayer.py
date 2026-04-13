@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 
+from states.common.pet import Pet
+
 
 class PlayerSummary(BaseModel):
     """The summary of a player in multiplayer mode."""
@@ -7,10 +9,27 @@ class PlayerSummary(BaseModel):
     character: str
     hp: int
     max_hp: int
+    block: int
     gold: int
     is_local: bool
     is_alive: bool
     is_ready_to_end_turn: bool | None = None
+    pets: list[Pet] | None = None
+
+    def to_markdown(self) -> str:
+        """Convert the player summary to a markdown string."""
+        local_str = " **(YOU)**" if self.is_local else ""
+        alive_str = " [DEAD]" if not self.is_alive else ""
+        ready_str = " [READY]" if self.is_ready_to_end_turn else ""
+        detail_str = f"HP: {self.hp}/{self.max_hp} | Block: {self.block} | Gold: {self.gold}"
+
+        lines = [f"**{self.character}**{local_str}{alive_str}{ready_str} - {detail_str}\n"]
+        if self.pets:
+            lines.append("Pets:\n")
+            for pet in self.pets:
+                lines.append(f"  - {pet.to_markdown(indent=2)}\n")
+
+        return "".join(lines)
 
 
 class MultiplayerState(BaseModel):
@@ -20,6 +39,13 @@ class MultiplayerState(BaseModel):
     player_count: int
     local_player_slot: int
     players: list[PlayerSummary]
+
+    def to_markdown(self) -> str:
+        """Convert the multiplayer state to a markdown string."""
+        lines = []
+        for player in self.players:
+            lines.append(f"- {player.to_markdown()}\n")
+        return "".join(lines)
 
 
 class BaseVote(BaseModel):
