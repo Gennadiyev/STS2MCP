@@ -64,7 +64,7 @@ public static partial class McpMod
             {
                 // Check for tutorial FTUE popup
                 var tutorialFtue = FindFirst<MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue>(tree.Root);
-                if (tutorialFtue != null && tutorialFtue.Visible)
+                if (tutorialFtue != null && IsNodeVisible(tutorialFtue))
                 {
                     result["menu_screen"] = "tutorial_prompt";
                     result["message"] = "Enable Tutorials? Choose yes or no.";
@@ -79,7 +79,7 @@ public static partial class McpMod
                 if (!result.ContainsKey("menu_screen"))
                 {
                     var ftue = FindFirst<MegaCrit.Sts2.Core.Nodes.Ftue.NFtue>(tree.Root);
-                    if (ftue != null && ftue.Visible)
+                    if (ftue != null && IsNodeVisible(ftue))
                     {
                         result["menu_screen"] = "tutorial";
                         result["message"] = "Tutorial popup active. Use advance to dismiss.";
@@ -94,7 +94,7 @@ public static partial class McpMod
                 {
                 // Check for singleplayer submenu (Standard / Daily / Custom)
                 var spSubmenu = FindFirst<NSingleplayerSubmenu>(tree.Root);
-                if (spSubmenu != null && spSubmenu.Visible)
+                if (spSubmenu != null && IsNodeVisible(spSubmenu))
                 {
                     result["menu_screen"] = "singleplayer";
                     result["message"] = "Select game mode.";
@@ -106,7 +106,7 @@ public static partial class McpMod
                         try
                         {
                             var btn = GetInstanceFieldValue(spSubmenu, fieldName);
-                            if (btn is Control ctrl && ctrl.Visible)
+                            if (btn is Control ctrl && IsNodeVisible(ctrl))
                             {
                                 var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
                                 modeOptions.Add(new Dictionary<string, object?>
@@ -125,7 +125,7 @@ public static partial class McpMod
                 else
                 {
                     var mpHostSubmenu = FindFirst<NMultiplayerHostSubmenu>(tree.Root);
-                    if (mpHostSubmenu != null && mpHostSubmenu.Visible)
+                    if (mpHostSubmenu != null && IsNodeVisible(mpHostSubmenu))
                     {
                         result["menu_screen"] = "multiplayer_host";
                         result["message"] = "Multiplayer host: select game mode.";
@@ -137,7 +137,7 @@ public static partial class McpMod
                             try
                             {
                                 var btn = GetInstanceFieldValue(mpHostSubmenu, fieldName);
-                                if (btn is Control ctrl && ctrl.Visible)
+                                if (btn is Control ctrl && IsNodeVisible(ctrl))
                                 {
                                     var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
                                     modeOptions.Add(new Dictionary<string, object?>
@@ -156,7 +156,7 @@ public static partial class McpMod
                     {
                         // Check for multiplayer submenu (Host / Join / Load / Abandon)
                         var mpSubmenu = FindFirst<NMultiplayerSubmenu>(tree.Root);
-                        if (mpSubmenu != null && mpSubmenu.Visible)
+                        if (mpSubmenu != null && IsNodeVisible(mpSubmenu))
                         {
                             result["menu_screen"] = "multiplayer";
                             result["message"] = "Multiplayer menu.";
@@ -168,7 +168,7 @@ public static partial class McpMod
                                 try
                                 {
                                     var btn = GetInstanceFieldValue(mpSubmenu, fieldName);
-                                    if (btn is Control ctrl && ctrl.Visible)
+                                    if (btn is Control ctrl && IsNodeVisible(ctrl))
                                     {
                                         var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
                                         mpOptions.Add(new Dictionary<string, object?>
@@ -189,7 +189,7 @@ public static partial class McpMod
                 if (result.ContainsKey("menu_screen") == false)
                 {
                     var charSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
-                    if (charSelect != null && charSelect.Visible)
+                    if (charSelect != null && IsNodeVisible(charSelect))
                     {
                         result["menu_screen"] = "character_select";
                         result["message"] = "Select a character.";
@@ -341,12 +341,12 @@ public static partial class McpMod
                             }
                             catch { }
                         }
-                        else if (compendiumSubmenu != null && compendiumSubmenu.Visible)
+                        else if (compendiumSubmenu != null && IsNodeVisible(compendiumSubmenu))
                         {
                             result["menu_screen"] = "compendium";
                             result["message"] = "Compendium screen.";
                         }
-                        else if (settingsScreen != null && settingsScreen.Visible)
+                        else if (settingsScreen != null && IsNodeVisible(settingsScreen))
                         {
                             result["menu_screen"] = "settings";
                             result["message"] = "Settings screen.";

@@ -124,7 +124,7 @@ public static partial class McpMod
         try
         {
             var btn = GetInstanceFieldValue(owner, fieldName);
-            if (btn is Control ctrl && ctrl.Visible)
+            if (btn is Control ctrl && IsNodeVisible(ctrl))
             {
                 var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
                 options.Add(new Dictionary<string, object?>

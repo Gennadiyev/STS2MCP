@@ -1104,7 +1104,7 @@ public static partial class McpMod
 
         // Tutorial/FTUE popup - "Enable Tutorials?" dialog
         var tutorialFtue = FindFirst<MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue>(tree.Root);
-        if (tutorialFtue != null && tutorialFtue.Visible)
+        if (tutorialFtue != null && IsNodeVisible(tutorialFtue))
         {
             if (!string.Equals(option, "yes", System.StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(option, "no", System.StringComparison.OrdinalIgnoreCase))
@@ -1118,7 +1118,9 @@ public static partial class McpMod
                 var isYes = string.Equals(option, "yes", System.StringComparison.OrdinalIgnoreCase);
                 var btnField = isYes ? "<YesButton>k__BackingField" : "<NoButton>k__BackingField";
                 var btn = popup.GetType().GetField(btnField, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(popup);
-                if (btn is NClickableControl clickable && clickable.IsEnabled)
+                if (btn is NClickableControl clickable &&
+                    clickable.IsEnabled &&
+                    IsNodeVisible(clickable))
                 {
                     clickable.ForceClick();
                     return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = $"Tutorials: {(isYes ? "enabled" : "disabled")}" };
@@ -1129,7 +1131,7 @@ public static partial class McpMod
 
         // Any other FTUE/tutorial popup with a confirm button.
         var ftue = FindFirst<MegaCrit.Sts2.Core.Nodes.Ftue.NFtue>(tree.Root);
-        if (ftue != null && ftue.Visible)
+        if (ftue != null && IsNodeVisible(ftue))
         {
             if (!string.Equals(option, "advance", System.StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(option, "proceed", System.StringComparison.OrdinalIgnoreCase))
@@ -1159,10 +1161,12 @@ public static partial class McpMod
             {
                 // Check for timeline tutorial screen (first-time "Proceed" button).
                 var tutorial = FindFirst<NTimelineTutorial>(tree.Root);
-                if (tutorial != null && tutorial.Visible)
+                if (tutorial != null && IsNodeVisible(tutorial))
                 {
                     var ackBtn = tutorial.GetType().GetField("_acknowledgeButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(tutorial);
-                    if (ackBtn is NClickableControl ackClickable && ackClickable.IsEnabled)
+                    if (ackBtn is NClickableControl ackClickable &&
+                        ackClickable.IsEnabled &&
+                        IsNodeVisible(ackClickable))
                     {
                         ackClickable.ForceClick();
                         return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Clicked tutorial proceed button" };
@@ -1171,7 +1175,7 @@ public static partial class McpMod
 
                 // Check for confirm button
                 var confirmBtn = FindFirst<NConfirmButton>(tree.Root);
-                if (confirmBtn != null && confirmBtn.Visible && confirmBtn.IsEnabled)
+                if (confirmBtn != null && IsNodeVisible(confirmBtn) && confirmBtn.IsEnabled)
                 {
                     confirmBtn.ForceClick();
                     return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Clicked confirm button" };
@@ -1179,7 +1183,7 @@ public static partial class McpMod
 
                 // Check for any clickable proceed button
                 var proceedBtn = FindFirst<NProceedButton>(tree.Root);
-                if (proceedBtn != null && proceedBtn.Visible && proceedBtn.IsEnabled)
+                if (proceedBtn != null && IsNodeVisible(proceedBtn) && proceedBtn.IsEnabled)
                 {
                     proceedBtn.ForceClick();
                     return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Clicked proceed button" };
@@ -1187,10 +1191,12 @@ public static partial class McpMod
 
                 // Check for inspect screen (epoch detail view) - close it.
                 var inspectScreen = FindFirst<NEpochInspectScreen>(tree.Root);
-                if (inspectScreen != null && inspectScreen.Visible)
+                if (inspectScreen != null && IsNodeVisible(inspectScreen))
                 {
                     var closeBtn = inspectScreen.GetType().GetField("_closeButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(inspectScreen);
-                    if (closeBtn is NClickableControl closeClickable && closeClickable.IsEnabled)
+                    if (closeBtn is NClickableControl closeClickable &&
+                        closeClickable.IsEnabled &&
+                        IsNodeVisible(closeClickable))
                     {
                         closeClickable.ForceClick();
                         return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Closed epoch inspect screen" };
@@ -1256,7 +1262,7 @@ public static partial class McpMod
         {
             // Check if we're on singleplayer submenu
             var spSubmenu = FindFirst<NSingleplayerSubmenu>(tree.Root);
-            if (spSubmenu != null && spSubmenu.Visible)
+            if (spSubmenu != null && IsNodeVisible(spSubmenu))
             {
                 if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
                 {
@@ -1278,7 +1284,7 @@ public static partial class McpMod
 
             // Check if we're on multiplayer host submenu
             var mpHostSubmenu = FindFirst<NMultiplayerHostSubmenu>(tree.Root);
-            if (mpHostSubmenu != null && mpHostSubmenu.Visible)
+            if (mpHostSubmenu != null && IsNodeVisible(mpHostSubmenu))
             {
                 if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
                 {
@@ -1300,7 +1306,7 @@ public static partial class McpMod
 
             // Check if we're on multiplayer submenu
             var mpSubmenu = FindFirst<NMultiplayerSubmenu>(tree.Root);
-            if (mpSubmenu != null && mpSubmenu.Visible)
+            if (mpSubmenu != null && IsNodeVisible(mpSubmenu))
             {
                 if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
                 {
