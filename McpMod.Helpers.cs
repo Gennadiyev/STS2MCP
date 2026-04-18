@@ -258,7 +258,7 @@ public static partial class McpMod
     {
         try
         {
-            return node != null && IsLiveNode(node) && node.Visible;
+            return node != null && IsLiveNode(node) && node.Visible && node.IsVisibleInTree();
         }
         catch (ObjectDisposedException)
         {

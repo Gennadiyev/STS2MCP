@@ -1146,6 +1146,8 @@ public static partial class McpMod
                 ftueClickable.ForceClick();
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Dismissed tutorial popup" };
             }
+
+            return Error("Tutorial popup visible but confirm button is not available; retry after the next state poll");
         }
 
         // Timeline screen - advance through epoch reveals.
