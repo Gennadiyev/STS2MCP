@@ -84,6 +84,27 @@ async def get_game_state(format: str = "markdown") -> str:
 
 
 @mcp.tool()
+async def menu_select(option: str, seed: str | None = None) -> str:
+    """Select a visible menu option.
+
+    Use with state_type "menu" or "game_over". Supports main-menu navigation,
+    singleplayer and multiplayer submenus, character select, timeline controls,
+    tutorial prompts, and game-over main-menu return.
+
+    Args:
+        option: Option ID from the current menu state's options list.
+        seed: Optional seed for supported embark flows. Standard mode rejects seeds.
+    """
+    body: dict = {"action": "menu_select", "option": option}
+    if seed is not None:
+        body["seed"] = seed
+    try:
+        return await _post(body)
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
 async def use_potion(slot: int, target: str | None = None) -> str:
     """Use a potion from the player's potion slots.
 

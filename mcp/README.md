@@ -5,6 +5,7 @@
 | Tool | Scope | Description |
 |---|---|---|
 | `get_game_state(format?)` | General | Get current game state (`markdown` or `json`) |
+| `menu_select(option, seed?)` | General | Select a visible menu/game-over option |
 | `use_potion(slot, target?)` | General | Use a potion (works in and out of combat) |
 | `discard_potion(slot)` | General | Discard a potion to free up the slot |
 | `proceed_to_map()` | General | Proceed from rewards/rest site/shop/treasure to the map |
