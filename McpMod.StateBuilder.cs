@@ -196,16 +196,25 @@ public static partial class McpMod
 
                         var buttons = FindAll<NCharacterSelectButton>(charSelect);
                         var characters = new List<Dictionary<string, object?>>();
+                        var options = new List<Dictionary<string, object?>>();
                         foreach (var btn in buttons)
                         {
                             try
                             {
-                                if (btn.Character is { } cm)
+                                if (btn.Character is { } cm && IsNodeVisible(btn))
                                 {
+                                    var characterId = cm.Id.Entry;
+                                    var characterName = SafeGetText(() => cm.Title);
+                                    options.Add(new Dictionary<string, object?>
+                                    {
+                                        ["name"] = characterId,
+                                        ["enabled"] = !btn.IsLocked
+                                    });
+
                                     var charData = new Dictionary<string, object?>
                                     {
-                                        ["name"] = SafeGetText(() => cm.Title),
-                                        ["id"] = cm.Id.Entry,
+                                        ["name"] = characterName,
+                                        ["id"] = characterId,
                                         ["locked"] = btn.IsLocked,
                                         ["hp"] = cm.StartingHp,
                                         ["gold"] = cm.StartingGold,
@@ -267,6 +276,35 @@ public static partial class McpMod
                         }
                         if (characters.Count > 0)
                             result["characters"] = characters;
+
+                        var embarkBtn = GetInstanceFieldValue(charSelect, "_embarkButton");
+                        if (embarkBtn is NClickableControl embarkClickable && IsNodeVisible(embarkClickable))
+                        {
+                            options.Add(new Dictionary<string, object?>
+                            {
+                                ["name"] = "confirm",
+                                ["enabled"] = embarkClickable.IsEnabled
+                            });
+                            options.Add(new Dictionary<string, object?>
+                            {
+                                ["name"] = "embark",
+                                ["enabled"] = embarkClickable.IsEnabled
+                            });
+                        }
+
+                        var backBtn = GetInstanceFieldValue(charSelect, "_backButton")
+                            ?? GetInstanceFieldValue(charSelect, "_unreadyButton");
+                        if (backBtn is NClickableControl backClickable && IsNodeVisible(backClickable))
+                        {
+                            options.Add(new Dictionary<string, object?>
+                            {
+                                ["name"] = "back",
+                                ["enabled"] = backClickable.IsEnabled
+                            });
+                        }
+
+                        if (options.Count > 0)
+                            result["options"] = options;
                     }
                     else
                     {
