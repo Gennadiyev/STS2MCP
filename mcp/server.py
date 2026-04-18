@@ -5,8 +5,6 @@ as MCP tools for Claude Desktop / Claude Code.
 """
 
 import argparse
-import json
-import sys
 
 import httpx
 from mcp.server.fastmcp import FastMCP
