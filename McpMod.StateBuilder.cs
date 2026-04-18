@@ -53,43 +53,22 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildGameState()
     {
         var result = new Dictionary<string, object?>();
+        var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
+
+        if (tree?.Root != null)
+        {
+            var ftueState = BuildVisibleFtueState(tree.Root);
+            if (ftueState != null)
+                return ftueState;
+        }
 
         if (!RunManager.Instance.IsInProgress)
         {
             result["state_type"] = "menu";
 
             // Detect which menu screen is active
-            var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
             if (tree?.Root != null)
             {
-                // Check for tutorial FTUE popup
-                var tutorialFtue = FindFirst<MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue>(tree.Root);
-                if (tutorialFtue != null && IsNodeVisible(tutorialFtue))
-                {
-                    result["menu_screen"] = "tutorial_prompt";
-                    result["message"] = "Enable Tutorials? Choose yes or no.";
-                    result["options"] = new List<Dictionary<string, object?>>
-                    {
-                        new() { ["name"] = "no", ["enabled"] = true },
-                        new() { ["name"] = "yes", ["enabled"] = true }
-                    };
-                }
-
-                // Check for any other FTUE popup
-                if (!result.ContainsKey("menu_screen"))
-                {
-                    var ftue = FindFirst<MegaCrit.Sts2.Core.Nodes.Ftue.NFtue>(tree.Root);
-                    if (ftue != null && IsNodeVisible(ftue))
-                    {
-                        result["menu_screen"] = "tutorial";
-                        result["message"] = "Tutorial popup active. Use advance to dismiss.";
-                        result["options"] = new List<Dictionary<string, object?>>
-                        {
-                            new() { ["name"] = "advance", ["enabled"] = true }
-                        };
-                    }
-                }
-
                 if (!result.ContainsKey("menu_screen"))
                 {
                 // Check for singleplayer submenu (Standard / Daily / Custom)

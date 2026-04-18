@@ -53,6 +53,10 @@ public static partial class McpMod
         if (player == null)
             return Error("Could not find local player");
 
+        var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
+        if (tree?.Root != null && IsAnyFtueVisible(tree.Root))
+            return Error("Tutorial popup active. Use menu_select advance/proceed before gameplay actions.");
+
         return action switch
         {
             "play_card" => ExecutePlayCard(player, data),
@@ -1130,8 +1134,8 @@ public static partial class McpMod
         }
 
         // Any other FTUE/tutorial popup with a confirm button.
-        var ftue = FindFirst<MegaCrit.Sts2.Core.Nodes.Ftue.NFtue>(tree.Root);
-        if (ftue != null && IsNodeVisible(ftue))
+        var ftue = FindVisibleGenericFtue(tree.Root);
+        if (ftue != null)
         {
             if (!string.Equals(option, "advance", System.StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(option, "proceed", System.StringComparison.OrdinalIgnoreCase))

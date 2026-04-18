@@ -265,4 +265,80 @@ public static partial class McpMod
             return false;
         }
     }
+
+    private static Dictionary<string, object?>? BuildVisibleFtueState(Node root)
+    {
+        var tutorialFtue = FindFirst<MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue>(root);
+        if (tutorialFtue != null && IsNodeVisible(tutorialFtue))
+        {
+            return new Dictionary<string, object?>
+            {
+                ["state_type"] = "menu",
+                ["menu_screen"] = "tutorial_prompt",
+                ["message"] = "Enable Tutorials? Choose yes or no.",
+                ["options"] = new List<Dictionary<string, object?>>
+                {
+                    new() { ["name"] = "no", ["enabled"] = true },
+                    new() { ["name"] = "yes", ["enabled"] = true }
+                }
+            };
+        }
+
+        var ftue = FindVisibleGenericFtue(root);
+        if (ftue != null)
+        {
+            return new Dictionary<string, object?>
+            {
+                ["state_type"] = "menu",
+                ["menu_screen"] = "tutorial",
+                ["message"] = "Tutorial popup active. Use advance to dismiss.",
+                ["options"] = new List<Dictionary<string, object?>>
+                {
+                    new() { ["name"] = "advance", ["enabled"] = true },
+                    new() { ["name"] = "proceed", ["enabled"] = true }
+                }
+            };
+        }
+
+        return null;
+    }
+
+    private static bool IsAnyFtueVisible(Node root)
+    {
+        return BuildVisibleFtueState(root) != null;
+    }
+
+    private static Node? FindVisibleGenericFtue(Node start)
+    {
+        if (!IsLiveNode(start))
+            return null;
+
+        var typeName = start.GetType().FullName ?? "";
+        if (typeName.StartsWith("MegaCrit.Sts2.Core.Nodes.Ftue.", StringComparison.Ordinal) &&
+            !typeName.EndsWith(".NAcceptTutorialsFtue", StringComparison.Ordinal) &&
+            start is CanvasItem canvas &&
+            IsNodeVisible(canvas))
+        {
+            return start;
+        }
+
+        Godot.Collections.Array<Node> children;
+        try
+        {
+            children = start.GetChildren();
+        }
+        catch (ObjectDisposedException)
+        {
+            return null;
+        }
+
+        foreach (var child in children)
+        {
+            var val = FindVisibleGenericFtue(child);
+            if (val != null)
+                return val;
+        }
+
+        return null;
+    }
 }
