@@ -83,6 +83,10 @@ public static partial class McpMod
                     {
                         result["menu_screen"] = "tutorial";
                         result["message"] = "Tutorial popup active. Use advance to dismiss.";
+                        result["options"] = new List<Dictionary<string, object?>>
+                        {
+                            new() { ["name"] = "advance", ["enabled"] = true }
+                        };
                     }
                 }
 
@@ -362,9 +366,14 @@ public static partial class McpMod
                             {
                                 try
                                 {
-                                    var btn = mainMenu.GetType().GetField(fields[i], System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(mainMenu) as Control;
-                                    if (btn != null && btn.Visible)
+                                    var btn = GetInstanceFieldValue(mainMenu, fields[i]);
+                                    if (btn is NClickableControl clickable &&
+                                        clickable.IsEnabled &&
+                                        clickable.Visible &&
+                                        clickable.IsVisibleInTree())
+                                    {
                                         options.Add(labels[i]);
+                                    }
                                 }
                                 catch { }
                             }

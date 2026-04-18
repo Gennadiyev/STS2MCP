@@ -1131,8 +1131,17 @@ public static partial class McpMod
         var ftue = FindFirst<MegaCrit.Sts2.Core.Nodes.Ftue.NFtue>(tree.Root);
         if (ftue != null && ftue.Visible)
         {
+            if (!string.Equals(option, "advance", System.StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(option, "proceed", System.StringComparison.OrdinalIgnoreCase))
+            {
+                return Error($"Unknown tutorial option: {option}. Use: advance, proceed");
+            }
+
             var confirmBtn = ftue.GetType().GetField("_confirmButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(ftue);
-            if (confirmBtn is NClickableControl ftueClickable && ftueClickable.IsEnabled)
+            if (confirmBtn is NClickableControl ftueClickable &&
+                ftueClickable.IsEnabled &&
+                ftueClickable.Visible &&
+                ftueClickable.IsVisibleInTree())
             {
                 ftueClickable.ForceClick();
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Dismissed tutorial popup" };
@@ -1611,6 +1620,9 @@ public static partial class McpMod
         var btn = GetInstanceFieldValue(owner, fieldName);
         if (btn is NClickableControl clickable)
         {
+            if (!clickable.Visible || !clickable.IsVisibleInTree())
+                return Error(disabledMessage ?? $"Option '{fieldName}' is not available");
+
             if (!clickable.IsEnabled)
                 return Error(disabledMessage ?? $"Option '{fieldName}' is not available");
 
