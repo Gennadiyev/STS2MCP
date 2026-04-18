@@ -275,6 +275,11 @@ public static partial class McpMod
                         {
                             result["menu_screen"] = "timeline";
                             result["message"] = "Timeline screen.";
+                            result["options"] = new List<Dictionary<string, object?>>
+                            {
+                                new() { ["name"] = "advance", ["enabled"] = true },
+                                new() { ["name"] = "back", ["enabled"] = true }
+                            };
 
                             // Read epochs from ProgressState (stable, not hover-dependent)
                             try
