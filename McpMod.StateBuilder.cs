@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -41,6 +42,8 @@ using MegaCrit.Sts2.Core.Models.RelicPools;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen;
+using MegaCrit.Sts2.Core.Nodes.Screens.Timeline;
+using MegaCrit.Sts2.Core.Nodes.Screens.Settings;
 using Godot;
 
 namespace STS2_MCP;
@@ -113,8 +116,70 @@ public static partial class McpMod
                     }
                     result["options"] = modeOptions;
                 }
-                // Check for character select screen
+                // Check for multiplayer host submenu (Standard / Daily / Custom for multiplayer)
                 else
+                {
+                    var mpHostSubmenu = FindFirst<NMultiplayerHostSubmenu>(tree.Root);
+                    if (mpHostSubmenu != null && mpHostSubmenu.Visible)
+                    {
+                        result["menu_screen"] = "multiplayer_host";
+                        result["message"] = "Multiplayer host: select game mode.";
+
+                        var modeOptions = new List<Dictionary<string, object?>>();
+                        var modeFields = new[] { ("_standardButton", "standard"), ("_dailyButton", "daily"), ("_customButton", "custom") };
+                        foreach (var (fieldName, label) in modeFields)
+                        {
+                            try
+                            {
+                                var btn = mpHostSubmenu.GetType().GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(mpHostSubmenu);
+                                if (btn is Control ctrl && ctrl.Visible)
+                                {
+                                    var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
+                                    modeOptions.Add(new Dictionary<string, object?>
+                                    {
+                                        ["name"] = label,
+                                        ["enabled"] = isEnabled ?? true
+                                    });
+                                }
+                            }
+                            catch { }
+                        }
+                        result["options"] = modeOptions;
+                    }
+                    else
+                    {
+                        // Check for multiplayer submenu (Host / Join / Load / Abandon)
+                        var mpSubmenu = FindFirst<NMultiplayerSubmenu>(tree.Root);
+                        if (mpSubmenu != null && mpSubmenu.Visible)
+                        {
+                            result["menu_screen"] = "multiplayer";
+                            result["message"] = "Multiplayer menu.";
+
+                            var mpOptions = new List<Dictionary<string, object?>>();
+                            var mpFields = new[] { ("_hostButton", "host"), ("_joinButton", "join"), ("_loadButton", "load"), ("_abandonButton", "abandon") };
+                            foreach (var (fieldName, label) in mpFields)
+                            {
+                                try
+                                {
+                                    var btn = mpSubmenu.GetType().GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(mpSubmenu);
+                                    if (btn is Control ctrl && ctrl.Visible)
+                                    {
+                                        var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
+                                        mpOptions.Add(new Dictionary<string, object?>
+                                        {
+                                            ["name"] = label,
+                                            ["enabled"] = isEnabled ?? true
+                                        });
+                                    }
+                                }
+                                catch { }
+                            }
+                            result["options"] = mpOptions;
+                        }
+                    }
+                }
+                // Check for character select screen
+                if (result.ContainsKey("menu_screen") == false)
                 {
                     var charSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
                     if (charSelect != null && charSelect.Visible)
@@ -198,8 +263,66 @@ public static partial class McpMod
                     }
                     else
                     {
-                        result["menu_screen"] = "main";
-                        result["message"] = "Main menu.";
+                        // Check for other screens
+                        var timelineScreen = FindFirst<NTimelineScreen>(tree.Root);
+                        var compendiumSubmenu = FindFirst<NCompendiumSubmenu>(tree.Root);
+                        var settingsScreen = FindFirst<NSettingsScreen>(tree.Root);
+
+                        if (timelineScreen != null && timelineScreen.Visible)
+                        {
+                            result["menu_screen"] = "timeline";
+                            result["message"] = "Timeline screen.";
+
+                            // Read epochs from ProgressState (stable, not hover-dependent)
+                            try
+                            {
+                                var progress = SaveManager.Instance?.Progress;
+                                if (progress != null)
+                                {
+                                    var epochList = new List<Dictionary<string, object?>>();
+                                    foreach (var epoch in progress.Epochs)
+                                    {
+                                        var eraName = epoch.Id;
+                                        // Clean up ID to readable name
+                                        var name = System.Text.RegularExpressions.Regex.Replace(eraName, @"(\d+)$", "");
+                                        name = System.Text.RegularExpressions.Regex.Replace(name, @"(?<=[a-z])(?=[A-Z])", " ");
+
+                                        epochList.Add(new Dictionary<string, object?>
+                                        {
+                                            ["id"] = eraName,
+                                            ["name"] = name,
+                                            ["state"] = epoch.State.ToString(),
+                                            ["obtained"] = epoch.ObtainDate
+                                        });
+                                    }
+
+                                    // Count total slots from UI for hidden count
+                                    var allSlots = FindAll<NEpochSlot>(timelineScreen);
+                                    var completedCount = allSlots.Count(s => s.State.ToString() == "Complete" || s.State.ToString() == "Obtained");
+                                    var lockedVisible = allSlots.Count(s => s.State.ToString() == "NotObtained");
+
+                                    result["epochs"] = epochList;
+                                    result["total_slots"] = allSlots.Count;
+                                    result["completed_count"] = completedCount;
+                                    result["locked_count"] = lockedVisible;
+                                }
+                            }
+                            catch { }
+                        }
+                        else if (compendiumSubmenu != null && compendiumSubmenu.Visible)
+                        {
+                            result["menu_screen"] = "compendium";
+                            result["message"] = "Compendium screen.";
+                        }
+                        else if (settingsScreen != null && settingsScreen.Visible)
+                        {
+                            result["menu_screen"] = "settings";
+                            result["message"] = "Settings screen.";
+                        }
+                        else
+                        {
+                            result["menu_screen"] = "main";
+                            result["message"] = "Main menu.";
 
                         var mainMenu = FindFirst<NMainMenu>(tree.Root);
                         if (mainMenu != null)
@@ -219,6 +342,7 @@ public static partial class McpMod
                             }
                             if (options.Count > 0)
                                 result["options"] = options;
+                        }
                         }
                     }
                 }

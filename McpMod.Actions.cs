@@ -36,6 +36,7 @@ using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen;
+using MegaCrit.Sts2.Core.Nodes.Screens.Timeline;
 using Godot;
 
 namespace STS2_MCP;
@@ -1118,6 +1119,109 @@ public static partial class McpMod
                 ftueClickable.ForceClick();
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Dismissed tutorial popup" };
             }
+        }
+
+        // Timeline screen - advance through epoch reveals.
+        var timelineScreen = FindFirst<NTimelineScreen>(tree.Root);
+        if (timelineScreen != null && timelineScreen.Visible)
+        {
+            if (string.Equals(option, "advance", System.StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(option, "proceed", System.StringComparison.OrdinalIgnoreCase))
+            {
+                // Check for timeline tutorial screen (first-time "Proceed" button).
+                var tutorial = FindFirst<NTimelineTutorial>(tree.Root);
+                if (tutorial != null && tutorial.Visible)
+                {
+                    var ackBtn = tutorial.GetType().GetField("_acknowledgeButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(tutorial);
+                    if (ackBtn is NClickableControl ackClickable && ackClickable.IsEnabled)
+                    {
+                        ackClickable.ForceClick();
+                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Clicked tutorial proceed button" };
+                    }
+                }
+
+                // Check for confirm button
+                var confirmBtn = FindFirst<NConfirmButton>(tree.Root);
+                if (confirmBtn != null && confirmBtn.Visible && confirmBtn.IsEnabled)
+                {
+                    confirmBtn.ForceClick();
+                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Clicked confirm button" };
+                }
+
+                // Check for any clickable proceed button
+                var proceedBtn = FindFirst<NProceedButton>(tree.Root);
+                if (proceedBtn != null && proceedBtn.Visible && proceedBtn.IsEnabled)
+                {
+                    proceedBtn.ForceClick();
+                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Clicked proceed button" };
+                }
+
+                // Check for inspect screen (epoch detail view) - close it.
+                var inspectScreen = FindFirst<NEpochInspectScreen>(tree.Root);
+                if (inspectScreen != null && inspectScreen.Visible)
+                {
+                    var closeBtn = inspectScreen.GetType().GetField("_closeButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(inspectScreen);
+                    if (closeBtn is NClickableControl closeClickable && closeClickable.IsEnabled)
+                    {
+                        closeClickable.ForceClick();
+                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Closed epoch inspect screen" };
+                    }
+                    inspectScreen.Close();
+                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Closed epoch inspect screen" };
+                }
+
+                // Check for queued unlock screens.
+                if (timelineScreen.IsScreenQueued())
+                {
+                    timelineScreen.OpenQueuedScreen();
+                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Opening queued unlock screen" };
+                }
+
+                // Find an obtained epoch slot to click.
+                var slots = FindAll<NEpochSlot>(timelineScreen);
+                foreach (var slot in slots)
+                {
+                    if (slot.State.ToString() == "Obtained")
+                    {
+                        // Try RevealEpoch to properly transition the state.
+                        var revealMethod = slot.GetType().GetMethod("RevealEpoch", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                        if (revealMethod != null)
+                        {
+                            revealMethod.Invoke(slot, null);
+                            return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Revealing epoch" };
+                        }
+                        // Fallback: set state directly and open inspect.
+                        slot.SetState(EpochSlotState.Complete);
+                        timelineScreen.OpenInspectScreen(slot, true);
+                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Force-revealing epoch" };
+                    }
+                }
+
+                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "No more epochs to advance", ["done"] = true };
+            }
+            else if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
+            {
+                // Try NBackButton directly on NTimelineScreen
+                var backBtn = timelineScreen.GetType().GetField("_backButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
+                if (backBtn is NClickableControl backClickable)
+                {
+                    if (backClickable.IsEnabled)
+                    {
+                        backClickable.ForceClick();
+                        return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Going back from timeline" };
+                    }
+                }
+                // Try the submenu stack
+                var stack = timelineScreen.GetType().GetField("_stack", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(timelineScreen);
+                if (stack != null)
+                {
+                    var popMethod = stack.GetType().GetMethod("Pop");
+                    popMethod?.Invoke(stack, null);
+                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Popped timeline from stack" };
+                }
+                return Error("Back button not available on timeline");
+            }
+            return Error($"Unknown timeline option: {option}. Use: advance, back");
         }
 
         // Main menu — click a menu button
