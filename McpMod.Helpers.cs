@@ -97,10 +97,50 @@ public static partial class McpMod
         return new Dictionary<string, object?> { ["status"] = "error", ["error"] = message };
     }
 
+    private static object? GetInstanceFieldValue(object source, string fieldName)
+    {
+        const System.Reflection.BindingFlags Flags =
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.Public |
+            System.Reflection.BindingFlags.NonPublic |
+            System.Reflection.BindingFlags.DeclaredOnly;
+
+        for (var type = source.GetType(); type != null; type = type.BaseType)
+        {
+            var field = type.GetField(fieldName, Flags);
+            if (field != null)
+                return field.GetValue(source);
+        }
+
+        return null;
+    }
+
+    private static void AddMenuOptionIfVisible(
+        List<Dictionary<string, object?>> options,
+        object owner,
+        string fieldName,
+        string label)
+    {
+        try
+        {
+            var btn = GetInstanceFieldValue(owner, fieldName);
+            if (btn is Control ctrl && ctrl.Visible)
+            {
+                var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
+                options.Add(new Dictionary<string, object?>
+                {
+                    ["name"] = label,
+                    ["enabled"] = isEnabled ?? true
+                });
+            }
+        }
+        catch { }
+    }
+
     internal static List<T> FindAll<T>(Node start) where T : Node
     {
         var list = new List<T>();
-        if (GodotObject.IsInstanceValid(start))
+        if (IsLiveNode(start))
             FindAllRecursive(start, list);
         return list;
     }
@@ -124,12 +164,16 @@ public static partial class McpMod
 
     private static void FindAllRecursive<T>(Node node, List<T> found) where T : Node
     {
-        if (!GodotObject.IsInstanceValid(node))
+        if (!IsLiveNode(node))
             return;
         if (node is T item)
             found.Add(item);
-        foreach (var child in node.GetChildren())
-            FindAllRecursive(child, found);
+        try
+        {
+            foreach (var child in node.GetChildren())
+                FindAllRecursive(child, found);
+        }
+        catch (ObjectDisposedException) { }
     }
 
     private static List<Dictionary<string, object?>> BuildHoverTips(IEnumerable<IHoverTip> tips)
@@ -176,15 +220,49 @@ public static partial class McpMod
 
     internal static T? FindFirst<T>(Node start) where T : Node
     {
-        if (!GodotObject.IsInstanceValid(start))
+        if (!IsLiveNode(start))
             return null;
         if (start is T result)
             return result;
-        foreach (var child in start.GetChildren())
+        Godot.Collections.Array<Node> children;
+        try
+        {
+            children = start.GetChildren();
+        }
+        catch (ObjectDisposedException)
+        {
+            return null;
+        }
+
+        foreach (var child in children)
         {
             var val = FindFirst<T>(child);
             if (val != null) return val;
         }
         return null;
+    }
+
+    internal static bool IsLiveNode(Node? node)
+    {
+        try
+        {
+            return node != null && GodotObject.IsInstanceValid(node) && !node.IsQueuedForDeletion();
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
+    }
+
+    internal static bool IsNodeVisible(CanvasItem? node)
+    {
+        try
+        {
+            return node != null && IsLiveNode(node) && node.Visible;
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
     }
 }

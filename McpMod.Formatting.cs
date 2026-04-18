@@ -25,6 +25,18 @@ public static partial class McpMod
             sb.AppendLine();
         }
 
+        if (stateType == "menu")
+        {
+            FormatMenuMarkdown(sb, state);
+            return sb.ToString();
+        }
+
+        if (stateType == "game_over")
+        {
+            FormatGameOverMarkdown(sb, state);
+            return sb.ToString();
+        }
+
         if (state.TryGetValue("message", out var msg) && msg != null)
         {
             sb.AppendLine(msg.ToString());
@@ -173,6 +185,75 @@ public static partial class McpMod
         }
 
         return sb.ToString();
+    }
+
+    private static void FormatMenuMarkdown(StringBuilder sb, Dictionary<string, object?> state)
+    {
+        var screen = state.TryGetValue("menu_screen", out var ms) ? ms?.ToString() ?? "main" : "main";
+        sb.AppendLine($"## Menu: {screen}");
+
+        if (state.TryGetValue("message", out var msg) && msg != null)
+            sb.AppendLine(msg.ToString());
+        sb.AppendLine();
+
+        if (state.TryGetValue("options", out var optionsObj) && optionsObj != null)
+            FormatMenuOptionsMarkdown(sb, optionsObj);
+
+        if (state.TryGetValue("characters", out var charactersObj) &&
+            charactersObj is List<Dictionary<string, object?>> characters &&
+            characters.Count > 0)
+        {
+            sb.AppendLine("### Characters");
+            foreach (var character in characters)
+            {
+                var id = character.GetValueOrDefault("id")?.ToString() ?? "?";
+                var name = character.GetValueOrDefault("name")?.ToString() ?? id;
+                var locked = character.TryGetValue("locked", out var lockedObj) && lockedObj is true ? " (LOCKED)" : "";
+                var hp = character.GetValueOrDefault("hp")?.ToString() ?? "?";
+                var gold = character.GetValueOrDefault("gold")?.ToString() ?? "?";
+                var energy = character.GetValueOrDefault("energy")?.ToString() ?? "?";
+                sb.AppendLine($"- `{id}` **{name}**{locked} - HP: {hp} | Gold: {gold} | Energy: {energy}");
+            }
+            sb.AppendLine();
+            sb.AppendLine("Use `menu_select` with an unlocked character ID or name, then `confirm`/`embark`.");
+            sb.AppendLine();
+        }
+    }
+
+    private static void FormatGameOverMarkdown(StringBuilder sb, Dictionary<string, object?> state)
+    {
+        if (state.TryGetValue("game_over", out var gameOverObj) &&
+            gameOverObj is Dictionary<string, object?> gameOver)
+        {
+            if (gameOver.TryGetValue("message", out var msg) && msg != null)
+                sb.AppendLine(msg.ToString());
+            if (gameOver.TryGetValue("options", out var optionsObj) && optionsObj != null)
+                FormatMenuOptionsMarkdown(sb, optionsObj);
+        }
+    }
+
+    private static void FormatMenuOptionsMarkdown(StringBuilder sb, object optionsObj)
+    {
+        if (optionsObj is List<string> names && names.Count > 0)
+        {
+            sb.AppendLine("### Options");
+            foreach (var name in names)
+                sb.AppendLine($"- `{name}`");
+            sb.AppendLine();
+            return;
+        }
+
+        if (optionsObj is List<Dictionary<string, object?>> options && options.Count > 0)
+        {
+            sb.AppendLine("### Options");
+            foreach (var opt in options)
+            {
+                var name = opt.GetValueOrDefault("name")?.ToString() ?? "?";
+                var enabled = !opt.TryGetValue("enabled", out var enabledObj) || enabledObj is not false;
+                sb.AppendLine($"- `{name}`{(enabled ? "" : " (disabled)")}");
+            }
+            sb.AppendLine();
+        }
     }
 
     private static void FormatBattleMarkdown(StringBuilder sb, Dictionary<string, object?> battle, Dictionary<string, object?>? player)

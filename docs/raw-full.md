@@ -178,9 +178,22 @@ No run in progress.
 ```jsonc
 {
   "state_type": "menu",
-  "message": "No run in progress. Player is in the main menu."
+  "message": "No run in progress. Player is in the main menu.",
+  "menu_screen": "main",
+  "options": ["continue", "singleplayer", "multiplayer", "compendium", "timeline", "settings", "quit"]
 }
 ```
+
+Use `menu_select` with one of the advertised options. Options are accepted case-insensitively.
+
+Menu sub-screens expose their own options:
+
+- `singleplayer`: `standard`, `daily`, `custom`, `back`
+- `multiplayer`: `host`, `join`, `load`, `abandon`, `back`
+- `multiplayer_host`: `standard`, `daily`, `custom`, `back`
+- `character_select`: character IDs/names, `back`, `confirm`, `embark`
+- `tutorial_prompt`: `no`, `yes`
+- `timeline`: `advance`, `back`
 
 ### `unknown`
 
@@ -695,6 +708,24 @@ Boss relic selection. Pick is immediate.
 }
 ```
 
+### `game_over`
+
+Run has ended.
+
+```jsonc
+{
+  "state_type": "game_over",
+  "game_over": {
+    "message": "Run ended.",
+    "options": ["main_menu"]
+  },
+  "run": { ... },
+  "player": { ... }
+}
+```
+
+Use `menu_select` with `main_menu` to return to the main menu. `continue` is not advertised because it is not an actionable game-over option.
+
 ### `overlay` — Unhandled Overlay (catch-all)
 
 Prevents soft-locks when an unrecognized overlay is active.
@@ -728,6 +759,27 @@ All POST requests use a JSON body with an `"action"` field and action-specific p
 ```jsonc
 { "status": "error", "error": "Card requires a target. Provide 'target' with an entity_id." }
 ```
+
+---
+
+### `menu_select`
+
+Select an option from the main menu, a menu submenu, character select, tutorial prompt, timeline screen, or game-over screen.
+
+```json
+{ "action": "menu_select", "option": "singleplayer" }
+```
+
+```json
+{ "action": "menu_select", "option": "main_menu" }
+```
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `option` | string | Yes | One of the current state's advertised menu options. Matching is case-insensitive. |
+| `seed` | string | No | Only supported in menu contexts that expose a real seeded flow. Standard singleplayer character select currently returns an error without starting a run when `seed` is supplied. |
+
+`game_over` advertises only `main_menu`. `continue` is not actionable on that screen and returns an error.
 
 ---
 

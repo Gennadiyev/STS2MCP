@@ -24,7 +24,7 @@ Every JSON response includes:
 
 | `state_type` | Screen | Available Actions |
 |---|---|---|
-| `menu` | Main menu, no run in progress | None |
+| `menu` | Main menu or menu submenu, no run in progress | `menu_select` |
 | `unknown` | Unrecognized room or null state | None |
 | `monster` / `elite` / `boss` | In combat | `play_card`, `use_potion`, `end_turn` |
 | `hand_select` | In-combat card selection (exhaust, discard, upgrade) | `combat_select_card`, `combat_confirm_selection` |
@@ -40,6 +40,7 @@ Every JSON response includes:
 | `bundle_select` | Card bundle choice overlay | `select_bundle`, `confirm_bundle_selection`, `cancel_bundle_selection` |
 | `relic_select` | Relic choice overlay (boss relics) | `select_relic`, `skip_relic_selection` |
 | `crystal_sphere` | Crystal Sphere minigame | `crystal_sphere_set_tool`, `crystal_sphere_click_cell`, `crystal_sphere_proceed` |
+| `game_over` | Run ended | `menu_select` with `main_menu` |
 | `overlay` | Unhandled overlay (catch-all, prevents soft-lock) | None (manual interaction needed) |
 
 **Note:** `use_potion` and `discard_potion` work during any state where potions are accessible (combat, map, events, etc.).
@@ -47,6 +48,12 @@ Every JSON response includes:
 ## POST — Actions
 
 All POST requests use JSON body with `"action"` field. All responses include `{ "status": "ok" | "error", "message": "..." }`.
+
+### Menu / Game Over
+
+| Action | Parameters | When to Use |
+|---|---|---|
+| `menu_select` | `option`: string, `seed`?: string | Choose an advertised menu option. Options are case-insensitive. Submenus include `back` where visible. `game_over` supports `main_menu` only; `continue` returns an error. Supplying `seed` in unsupported contexts such as standard singleplayer character select returns an error and does not start a run. |
 
 ### Combat
 

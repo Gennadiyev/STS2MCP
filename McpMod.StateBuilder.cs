@@ -101,7 +101,7 @@ public static partial class McpMod
                     {
                         try
                         {
-                            var btn = spSubmenu.GetType().GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(spSubmenu);
+                            var btn = GetInstanceFieldValue(spSubmenu, fieldName);
                             if (btn is Control ctrl && ctrl.Visible)
                             {
                                 var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
@@ -114,6 +114,7 @@ public static partial class McpMod
                         }
                         catch { }
                     }
+                    AddMenuOptionIfVisible(modeOptions, spSubmenu, "_backButton", "back");
                     result["options"] = modeOptions;
                 }
                 // Check for multiplayer host submenu (Standard / Daily / Custom for multiplayer)
@@ -131,7 +132,7 @@ public static partial class McpMod
                         {
                             try
                             {
-                                var btn = mpHostSubmenu.GetType().GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(mpHostSubmenu);
+                                var btn = GetInstanceFieldValue(mpHostSubmenu, fieldName);
                                 if (btn is Control ctrl && ctrl.Visible)
                                 {
                                     var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
@@ -144,6 +145,7 @@ public static partial class McpMod
                             }
                             catch { }
                         }
+                        AddMenuOptionIfVisible(modeOptions, mpHostSubmenu, "_backButton", "back");
                         result["options"] = modeOptions;
                     }
                     else
@@ -161,7 +163,7 @@ public static partial class McpMod
                             {
                                 try
                                 {
-                                    var btn = mpSubmenu.GetType().GetField(fieldName, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(mpSubmenu);
+                                    var btn = GetInstanceFieldValue(mpSubmenu, fieldName);
                                     if (btn is Control ctrl && ctrl.Visible)
                                     {
                                         var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
@@ -174,6 +176,7 @@ public static partial class McpMod
                                 }
                                 catch { }
                             }
+                            AddMenuOptionIfVisible(mpOptions, mpSubmenu, "_backButton", "back");
                             result["options"] = mpOptions;
                         }
                     }
@@ -268,7 +271,7 @@ public static partial class McpMod
                         var compendiumSubmenu = FindFirst<NCompendiumSubmenu>(tree.Root);
                         var settingsScreen = FindFirst<NSettingsScreen>(tree.Root);
 
-                        if (timelineScreen != null && timelineScreen.Visible)
+                        if (timelineScreen != null && IsNodeVisible(timelineScreen))
                         {
                             result["menu_screen"] = "timeline";
                             result["message"] = "Timeline screen.";
@@ -280,31 +283,51 @@ public static partial class McpMod
                                 if (progress != null)
                                 {
                                     var epochList = new List<Dictionary<string, object?>>();
+                                    var revealedCount = 0;
+                                    var obtainedCount = 0;
+                                    var lockedCount = 0;
+                                    var noSlotCount = 0;
                                     foreach (var epoch in progress.Epochs)
                                     {
                                         var eraName = epoch.Id;
+                                        var state = epoch.State.ToString();
                                         // Clean up ID to readable name
                                         var name = System.Text.RegularExpressions.Regex.Replace(eraName, @"(\d+)$", "");
                                         name = System.Text.RegularExpressions.Regex.Replace(name, @"(?<=[a-z])(?=[A-Z])", " ");
+
+                                        switch (epoch.State)
+                                        {
+                                            case EpochState.Revealed:
+                                                revealedCount++;
+                                                break;
+                                            case EpochState.Obtained:
+                                            case EpochState.ObtainedNoSlot:
+                                                obtainedCount++;
+                                                break;
+                                            case EpochState.NotObtained:
+                                                lockedCount++;
+                                                break;
+                                            case EpochState.NoSlot:
+                                                noSlotCount++;
+                                                break;
+                                        }
 
                                         epochList.Add(new Dictionary<string, object?>
                                         {
                                             ["id"] = eraName,
                                             ["name"] = name,
-                                            ["state"] = epoch.State.ToString(),
+                                            ["state"] = state,
                                             ["obtained"] = epoch.ObtainDate
                                         });
                                     }
 
-                                    // Count total slots from UI for hidden count
-                                    var allSlots = FindAll<NEpochSlot>(timelineScreen);
-                                    var completedCount = allSlots.Count(s => s.State.ToString() == "Complete" || s.State.ToString() == "Obtained");
-                                    var lockedVisible = allSlots.Count(s => s.State.ToString() == "NotObtained");
-
                                     result["epochs"] = epochList;
-                                    result["total_slots"] = allSlots.Count;
-                                    result["completed_count"] = completedCount;
-                                    result["locked_count"] = lockedVisible;
+                                    result["total_slots"] = epochList.Count;
+                                    result["completed_count"] = revealedCount;
+                                    result["revealed_count"] = revealedCount;
+                                    result["obtained_unrevealed_count"] = obtainedCount;
+                                    result["locked_count"] = lockedCount;
+                                    result["no_slot_count"] = noSlotCount;
                                 }
                             }
                             catch { }
@@ -410,7 +433,7 @@ public static partial class McpMod
             result["game_over"] = new Dictionary<string, object?>
             {
                 ["message"] = "Run ended.",
-                ["options"] = new List<string> { "continue", "main_menu" }
+                ["options"] = new List<string> { "main_menu" }
             };
         }
         else if (topOverlay is IOverlayScreen
