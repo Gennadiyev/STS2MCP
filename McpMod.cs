@@ -45,11 +45,17 @@ public static partial class McpMod
             string configPath = Path.Combine(modDir, ConfigFileName);
             if (!File.Exists(configPath))
             {
-                // Create default config so the user knows it's configurable
-                var defaultConfig = new Dictionary<string, object> { ["port"] = DefaultPort };
-                string json = JsonSerializer.Serialize(defaultConfig, _jsonOptions);
-                File.WriteAllText(configPath, json);
-                GD.Print($"[STS2 MCP] Created default config at {configPath}");
+                try
+                {
+                    var defaultConfig = new Dictionary<string, object> { ["port"] = DefaultPort };
+                    string json = JsonSerializer.Serialize(defaultConfig, _jsonOptions);
+                    File.WriteAllText(configPath, json);
+                    GD.Print($"[STS2 MCP] Created default config at {configPath}");
+                }
+                catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+                {
+                    GD.Print($"[STS2 MCP] No config found at {configPath}; using default port {DefaultPort}");
+                }
                 return DefaultPort;
             }
 
@@ -221,6 +227,22 @@ public static partial class McpMod
                     HandleGetMultiplayerState(request, response);
                 else if (request.HttpMethod == "POST")
                     HandlePostMultiplayerAction(request, response);
+                else
+                    SendError(response, 405, "Method not allowed");
+            }
+            else if (path == "/api/v1/profiles")
+            {
+                if (request.HttpMethod == "GET")
+                    HandleGetProfiles(response);
+                else if (request.HttpMethod == "POST")
+                    HandlePostProfiles(request, response);
+                else
+                    SendError(response, 405, "Method not allowed");
+            }
+            else if (path == "/api/v1/profile")
+            {
+                if (request.HttpMethod == "GET")
+                    HandleGetProfile(response);
                 else
                     SendError(response, 405, "Method not allowed");
             }

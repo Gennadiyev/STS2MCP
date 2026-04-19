@@ -7,6 +7,9 @@ HTTP API served by the STS2_MCP mod on `localhost:15526`. No authentication. Loc
 - `POST /api/v1/singleplayer` — perform a game action
 - `GET  /api/v1/multiplayer` — read multiplayer game state
 - `POST /api/v1/multiplayer` — perform a multiplayer action
+- `GET  /api/v1/profile` — read current profile progress
+- `GET  /api/v1/profiles` — list profile slots
+- `POST /api/v1/profiles` — switch or delete profile slots
 
 The endpoints are mutually exclusive: calling singleplayer during a multiplayer run (or vice versa) returns HTTP 409.
 
@@ -191,6 +194,7 @@ Menu sub-screens expose their own options:
 - `singleplayer`: `standard`, `daily`, `custom`, `back`
 - `multiplayer`: `host`, `join`, `load`, `abandon`, `back`
 - `multiplayer_host`: `standard`, `daily`, `custom`, `back`
+- `profile_select`: `profile_1`, `profile_2`, `profile_3`, `back`
 - `character_select`: character IDs/names, `back`, `confirm`, `embark`
 - `tutorial_prompt`: `no`, `yes`
 - `timeline`: `advance`, `back`
@@ -744,6 +748,52 @@ Prevents soft-locks when an unrecognized overlay is active.
 
 ---
 
+## Profiles
+
+Profile endpoints are independent of the singleplayer and multiplayer run endpoints.
+
+### `GET /api/v1/profile`
+
+Returns the active profile's persistent progress summary, including character stats, card stats, encounter stats, discovered content, achievements, epochs, and global totals.
+
+### `GET /api/v1/profiles`
+
+Lists the three profile slots and identifies the active slot.
+
+```json
+{
+  "current_profile_id": 1,
+  "profiles": [
+    { "id": 1, "is_current": true, "has_data": true },
+    { "id": 2, "is_current": false, "has_data": false },
+    { "id": 3, "is_current": false, "has_data": true }
+  ]
+}
+```
+
+### `POST /api/v1/profiles`
+
+Switch to a profile slot through the game's profile UI:
+
+```json
+{ "action": "switch", "profile_id": 2 }
+```
+
+Delete an inactive profile slot:
+
+```json
+{ "action": "delete", "profile_id": 2 }
+```
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `action` | string | Yes | `switch` or `delete` |
+| `profile_id` | int | Yes | Profile slot, from 1 to 3 |
+
+Switching is rejected during a run. Deleting the active profile is rejected; switch away first if you need to remove a slot.
+
+---
+
 ## POST — Perform Actions
 
 All POST requests use a JSON body with an `"action"` field and action-specific parameters.
@@ -764,7 +814,7 @@ All POST requests use a JSON body with an `"action"` field and action-specific p
 
 ### `menu_select`
 
-Select an option from the main menu, a menu submenu, character select, tutorial prompt, timeline screen, or game-over screen.
+Select an option from the main menu, a menu submenu, profile select, character select, tutorial prompt, timeline screen, or game-over screen.
 
 ```json
 { "action": "menu_select", "option": "singleplayer" }

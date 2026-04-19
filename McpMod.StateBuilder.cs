@@ -44,6 +44,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen;
 using MegaCrit.Sts2.Core.Nodes.Screens.Timeline;
 using MegaCrit.Sts2.Core.Nodes.Screens.Settings;
+using MegaCrit.Sts2.Core.Nodes.Screens.ProfileScreen;
 using Godot;
 
 namespace STS2_MCP;
@@ -370,6 +371,49 @@ public static partial class McpMod
                         }
                         else
                         {
+                            var profileScreen = FindFirst<NProfileScreen>(tree.Root);
+                            if (profileScreen != null && IsNodeVisible(profileScreen))
+                            {
+                                result["menu_screen"] = "profile_select";
+                                result["message"] = "Profile select screen.";
+                                result["current_profile_id"] = SaveManager.Instance?.CurrentProfileId;
+
+                                var options = new List<Dictionary<string, object?>>();
+                                var buttons = GetInstanceFieldValue(profileScreen, "_profileButtons") as System.Collections.IEnumerable;
+                                if (buttons != null)
+                                {
+                                    foreach (var btn in buttons)
+                                    {
+                                        var btnId = GetInstanceFieldValue(btn, "_profileId");
+                                        if (btnId is int id)
+                                        {
+                                            var enabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
+                                            options.Add(new Dictionary<string, object?>
+                                            {
+                                                ["name"] = $"profile_{id}",
+                                                ["enabled"] = enabled ?? true
+                                            });
+                                        }
+                                    }
+                                }
+
+                                var backBtn = GetInstanceFieldValue(profileScreen, "_backButton")
+                                    ?? FindFirst<NBackButton>(profileScreen);
+                                if (backBtn is NClickableControl backClickable && IsNodeVisible(backClickable))
+                                {
+                                    options.Add(new Dictionary<string, object?>
+                                    {
+                                        ["name"] = "back",
+                                        ["enabled"] = backClickable.IsEnabled
+                                    });
+                                }
+
+                                if (options.Count > 0)
+                                    result["options"] = options;
+                            }
+                        }
+                        if (!result.ContainsKey("menu_screen"))
+                        {
                             result["menu_screen"] = "main";
                             result["message"] = "Main menu.";
 
@@ -478,6 +522,11 @@ public static partial class McpMod
                 ["screen_type"] = topOverlay.GetType().Name,
                 ["message"] = $"An overlay ({topOverlay.GetType().Name}) is active. It may require manual interaction in-game."
             };
+        }
+        else if (mapIsOpen)
+        {
+            result["state_type"] = "map";
+            result["map"] = BuildMapState(runState);
         }
         else if (currentRoom is CombatRoom combatRoom)
         {

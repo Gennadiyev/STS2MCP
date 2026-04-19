@@ -37,6 +37,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen;
 using MegaCrit.Sts2.Core.Nodes.Screens.Timeline;
+using MegaCrit.Sts2.Core.Nodes.Screens.ProfileScreen;
 using Godot;
 
 namespace STS2_MCP;
@@ -1260,6 +1261,12 @@ public static partial class McpMod
             return ExecuteCharacterSelectMenuOption(charSelect, option, seed);
         }
 
+        var profileScreen = FindFirst<NProfileScreen>(tree.Root);
+        if (profileScreen != null && IsNodeVisible(profileScreen))
+        {
+            return ExecuteProfileSelectMenuOption(profileScreen, option);
+        }
+
         // Main menu — click a menu button
         var mainMenu = FindFirst<NMainMenu>(tree.Root);
         if (mainMenu != null)
@@ -1350,6 +1357,36 @@ public static partial class McpMod
         }
 
         return Error("Not on a menu screen");
+    }
+
+    private static Dictionary<string, object?> ExecuteProfileSelectMenuOption(
+        NProfileScreen profileScreen,
+        string option)
+    {
+        if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
+        {
+            var backBtn = GetInstanceFieldValue(profileScreen, "_backButton")
+                ?? FindFirst<NBackButton>(profileScreen);
+            if (backBtn is NClickableControl backClickable &&
+                backClickable.IsEnabled &&
+                IsNodeVisible(backClickable))
+            {
+                backClickable.ForceClick();
+                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Going back from profile select" };
+            }
+            return Error("Back button not available on profile select");
+        }
+
+        var normalized = option.ToLowerInvariant();
+        if (normalized.StartsWith("profile_", System.StringComparison.Ordinal))
+            normalized = normalized["profile_".Length..];
+        else if (normalized.StartsWith("slot_", System.StringComparison.Ordinal))
+            normalized = normalized["slot_".Length..];
+
+        if (int.TryParse(normalized, out var profileId))
+            return ExecuteProfileAction("switch", profileId);
+
+        return Error($"Unknown profile select option: {option}. Use: profile_1, profile_2, profile_3, back");
     }
 
     private static Dictionary<string, object?> ExecuteCharacterSelectMenuOption(

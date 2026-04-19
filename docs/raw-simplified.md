@@ -6,6 +6,9 @@ HTTP API on `localhost:15526`. No authentication.
 - `POST /api/v1/singleplayer` — perform action
 - `GET /api/v1/multiplayer` — read multiplayer state
 - `POST /api/v1/multiplayer` — perform multiplayer action
+- `GET /api/v1/profile` — read current profile progress
+- `GET /api/v1/profiles` — list profile slots
+- `POST /api/v1/profiles` — switch or delete profile slots
 
 Singleplayer and multiplayer endpoints are mutually exclusive (HTTP 409 if mismatched).
 
@@ -53,7 +56,31 @@ All POST requests use JSON body with `"action"` field. All responses include `{ 
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `menu_select` | `option`: string, `seed`?: string | Choose an advertised menu option. Options are case-insensitive. Submenus include `back` where visible. `game_over` supports `main_menu` only; `continue` returns an error. Supplying `seed` in unsupported contexts such as standard singleplayer character select returns an error and does not start a run. |
+| `menu_select` | `option`: string, `seed`?: string | Choose an advertised menu option. Options are case-insensitive. Submenus include `back` where visible, including `profile_select` options `profile_1`, `profile_2`, `profile_3`, and `back`. `game_over` supports `main_menu` only; `continue` returns an error. Supplying `seed` in unsupported contexts such as standard singleplayer character select returns an error and does not start a run. |
+
+### Profiles
+
+`GET /api/v1/profile` returns persistent progress for the active profile, including character stats, discoveries, achievements, epochs, and global run totals.
+
+`GET /api/v1/profiles` returns the three profile slots:
+
+```json
+{
+  "current_profile_id": 1,
+  "profiles": [
+    { "id": 1, "is_current": true, "has_data": true },
+    { "id": 2, "is_current": false, "has_data": false },
+    { "id": 3, "is_current": false, "has_data": true }
+  ]
+}
+```
+
+`POST /api/v1/profiles` supports:
+
+| Action | Parameters | When to Use |
+|---|---|---|
+| `switch` | `profile_id`: 1-3 | Switch through the game profile UI. Empty slots can be used for fresh-profile testing. Cannot be used during a run. |
+| `delete` | `profile_id`: 1-3 | Delete an inactive profile slot. The active profile is rejected. |
 
 ### Combat
 
