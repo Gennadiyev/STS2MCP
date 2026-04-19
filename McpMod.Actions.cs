@@ -1143,15 +1143,14 @@ public static partial class McpMod
                 return Error($"Unknown tutorial option: {option}. Use: advance, proceed");
             }
 
-            var confirmBtn = ftue.GetType().GetField("_confirmButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(ftue);
-            if (confirmBtn is NClickableControl ftueClickable &&
-                IsPopupButtonActionable(ftueClickable))
+            var ftueClickable = FindFtueAdvanceButton(ftue);
+            if (ftueClickable != null)
             {
                 ftueClickable.ForceClick();
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Dismissed tutorial popup" };
             }
 
-            return Error("Tutorial popup visible but confirm button is not available; retry after the next state poll");
+            return Error("Tutorial popup visible but no actionable advance/proceed control is available; retry after the next state poll");
         }
 
         // Generic blocking menu popups, such as the first-run warning that appears

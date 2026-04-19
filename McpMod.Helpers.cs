@@ -387,6 +387,7 @@ public static partial class McpMod
         var ftue = FindVisibleGenericFtue(root);
         if (ftue != null)
         {
+            var canAdvance = FindFtueAdvanceButton(ftue) != null;
             return new Dictionary<string, object?>
             {
                 ["state_type"] = "menu",
@@ -394,8 +395,8 @@ public static partial class McpMod
                 ["message"] = "Tutorial popup active. Use advance to dismiss.",
                 ["options"] = new List<Dictionary<string, object?>>
                 {
-                    new() { ["name"] = "advance", ["enabled"] = true },
-                    new() { ["name"] = "proceed", ["enabled"] = true }
+                    new() { ["name"] = "advance", ["enabled"] = canAdvance },
+                    new() { ["name"] = "proceed", ["enabled"] = canAdvance }
                 }
             };
         }
@@ -696,6 +697,55 @@ public static partial class McpMod
             var val = FindVisibleGenericFtue(child);
             if (val != null)
                 return val;
+        }
+
+        return null;
+    }
+
+    private static NClickableControl? FindFtueAdvanceButton(Node ftue)
+    {
+        foreach (var fieldName in new[]
+        {
+            "_confirmButton",
+            "_advanceButton",
+            "_nextButton",
+            "_proceedButton",
+            "_acknowledgeButton",
+            "_arrowButton",
+            "_rightArrowButton",
+            "_rightButton"
+        })
+        {
+            if (GetInstanceFieldValue(ftue, fieldName) is NClickableControl fieldButton &&
+                IsPopupButtonActionable(fieldButton))
+            {
+                return fieldButton;
+            }
+        }
+
+        try
+        {
+            foreach (var field in ftue.GetType().GetFields(
+                         System.Reflection.BindingFlags.Public |
+                         System.Reflection.BindingFlags.NonPublic |
+                         System.Reflection.BindingFlags.Instance))
+            {
+                if (field.GetValue(ftue) is NClickableControl fieldButton &&
+                    IsPopupButtonActionable(fieldButton))
+                {
+                    return fieldButton;
+                }
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            return null;
+        }
+
+        foreach (var button in FindAll<NClickableControl>(ftue))
+        {
+            if (IsPopupButtonActionable(button))
+                return button;
         }
 
         return null;
