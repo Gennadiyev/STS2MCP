@@ -308,8 +308,10 @@ public static partial class McpMod
                         if (mainMenu != null)
                         {
                             var options = new List<string>();
+                            var blockedOptions = new List<Dictionary<string, object?>>();
                             var fields = new[] { "_continueButton", "_singleplayerButton", "_multiplayerButton", "_compendiumButton", "_timelineButton", "_settingsButton", "_quitButton" };
                             var labels = new[] { "continue", "singleplayer", "multiplayer", "compendium", "timeline", "settings", "quit" };
+                            var unrevealedEpochs = GetProgressEpochIdsByState("Obtained", "ObtainedNoSlot");
                             for (int i = 0; i < fields.Length; i++)
                             {
                                 try
@@ -320,6 +322,18 @@ public static partial class McpMod
                                         clickable.Visible &&
                                         clickable.IsVisibleInTree())
                                     {
+                                        if (labels[i] == "timeline" && unrevealedEpochs.Count > 0)
+                                        {
+                                            blockedOptions.Add(new Dictionary<string, object?>
+                                            {
+                                                ["name"] = "timeline",
+                                                ["enabled"] = false,
+                                                ["reason"] = "manual_epoch_reveal_required",
+                                                ["pending_epoch_ids"] = unrevealedEpochs
+                                            });
+                                            continue;
+                                        }
+
                                         options.Add(labels[i]);
                                     }
                                 }
@@ -327,6 +341,8 @@ public static partial class McpMod
                             }
                             if (options.Count > 0)
                                 result["options"] = options;
+                            if (blockedOptions.Count > 0)
+                                result["blocked_options"] = blockedOptions;
                         }
                         }
                     }

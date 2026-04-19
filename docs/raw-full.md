@@ -188,6 +188,7 @@ No run in progress.
 ```
 
 Use `menu_select` with one of the advertised options. Options are accepted case-insensitively.
+If a visible option is intentionally withheld from automation, the state may also include `blocked_options` with a reason. For example, Timeline can be blocked while obtained epochs still need manual reveal because opening that game state through automation can trigger invalid unlock-state errors.
 
 Menu sub-screens expose their own options:
 
@@ -831,6 +832,7 @@ Select an option from the main menu, a menu submenu, profile select, character s
 | `seed` | string | No | Only supported in menu contexts that expose a real seeded flow. Standard singleplayer character select currently returns an error without starting a run when `seed` is supplied. |
 
 `game_over` advertises only `main_menu`. `continue` is not actionable on that screen and returns an error.
+If `timeline` is blocked by pending obtained epochs, `menu_select` returns an error with `manual_action_required: true` and `pending_epoch_ids` instead of opening Timeline.
 
 ---
 

@@ -119,8 +119,8 @@ public static partial class McpMod
         }
         catch (Exception ex)
         {
-            GD.PrintErr(
-                $"[STS2 MCP] Harmony patches unavailable; continuing without optional UI injection: {ex}");
+            GD.Print(
+                $"[STS2 MCP] Optional Harmony settings UI injection skipped: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
