@@ -334,9 +334,18 @@ public static partial class McpMod
 
     private static bool IsPopupButtonActionable(NClickableControl? control)
     {
-        return control != null &&
-               control.IsEnabled &&
-               (IsControlVisibleInTree(control) || IsControlVisibleInOpenModal(control));
+        if (control == null || !IsLiveNode(control))
+            return false;
+
+        try
+        {
+            return control.IsEnabled &&
+                   (IsControlVisibleInTree(control) || IsControlVisibleInOpenModal(control));
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
     }
 
     private static bool IsControlVisibleOrActionable(NClickableControl? control)

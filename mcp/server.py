@@ -84,10 +84,12 @@ async def _profiles_post(body: dict) -> str:
 
 
 async def _wait_for_profile(profile_id: int, fallback: str) -> str:
+    last_profiles: dict | None = None
     for _ in range(30):
         await asyncio.sleep(0.1)
         profiles_text = await _profiles_get()
         profiles = json.loads(profiles_text)
+        last_profiles = profiles
         if profiles.get("current_profile_id") == profile_id:
             return json.dumps(
                 {
@@ -98,7 +100,25 @@ async def _wait_for_profile(profile_id: int, fallback: str) -> str:
                 },
                 indent=2,
             )
-    return fallback
+
+    return json.dumps(
+        {
+            "status": "error",
+            "error": f"Timed out waiting for profile {profile_id} to become active",
+            "current_profile_id": (
+                last_profiles.get("current_profile_id")
+                if isinstance(last_profiles, dict)
+                else None
+            ),
+            "profiles": (
+                last_profiles.get("profiles", [])
+                if isinstance(last_profiles, dict)
+                else []
+            ),
+            "initial_response": fallback,
+        },
+        indent=2,
+    )
 
 
 def _handle_error(e: Exception) -> str:
