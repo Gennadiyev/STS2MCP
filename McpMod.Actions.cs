@@ -1108,7 +1108,7 @@ public static partial class McpMod
         }
 
         // Tutorial/FTUE popup - "Enable Tutorials?" dialog
-        var tutorialFtue = FindFirst<MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue>(tree.Root);
+        var tutorialFtue = FindVisibleAcceptTutorialsFtue(tree.Root);
         if (tutorialFtue != null && IsNodeVisible(tutorialFtue))
         {
             if (!string.Equals(option, "yes", System.StringComparison.OrdinalIgnoreCase) &&

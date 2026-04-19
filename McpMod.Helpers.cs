@@ -268,7 +268,7 @@ public static partial class McpMod
 
     private static Dictionary<string, object?>? BuildVisibleFtueState(Node root)
     {
-        var tutorialFtue = FindFirst<MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue>(root);
+        var tutorialFtue = FindVisibleAcceptTutorialsFtue(root);
         if (tutorialFtue != null && IsNodeVisible(tutorialFtue))
         {
             return new Dictionary<string, object?>
@@ -300,6 +300,16 @@ public static partial class McpMod
             };
         }
 
+        return null;
+    }
+
+    private static MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue? FindVisibleAcceptTutorialsFtue(Node root)
+    {
+        foreach (var ftue in FindAll<MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue>(root))
+        {
+            if (IsNodeVisible(ftue))
+                return ftue;
+        }
         return null;
     }
 

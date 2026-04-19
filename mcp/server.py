@@ -192,6 +192,9 @@ async def switch_profile(profile_id: int) -> str:
         result = await _profiles_post(body)
         try:
             parsed = json.loads(result)
+            if parsed.get("status") == "error":
+                return result
+
             message = parsed.get("message", "")
             if isinstance(message, str) and message.startswith("Opened profile screen"):
                 for _ in range(20):
@@ -200,6 +203,9 @@ async def switch_profile(profile_id: int) -> str:
                     state = json.loads(state_text)
                     if state.get("menu_screen") == "profile_select":
                         result = await _profiles_post(body)
+                        parsed = json.loads(result)
+                        if parsed.get("status") == "error":
+                            return result
                         break
             result = await _wait_for_profile(profile_id, result)
         except json.JSONDecodeError:
