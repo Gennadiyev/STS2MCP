@@ -6,6 +6,9 @@ HTTP API on `localhost:15526`. No authentication.
 - `POST /api/v1/singleplayer` — perform action
 - `GET /api/v1/multiplayer` — read multiplayer state
 - `POST /api/v1/multiplayer` — perform multiplayer action
+- `GET /api/v1/profile` — read current profile progress
+- `GET /api/v1/profiles` — list profile slots
+- `POST /api/v1/profiles` — switch or delete profile slots
 
 Singleplayer and multiplayer endpoints are mutually exclusive (HTTP 409 if mismatched).
 
@@ -24,7 +27,7 @@ Every JSON response includes:
 
 | `state_type` | Screen | Available Actions |
 |---|---|---|
-| `menu` | Main menu, no run in progress | None |
+| `menu` | Main menu or menu submenu, no run in progress | `menu_select` |
 | `unknown` | Unrecognized room or null state | None |
 | `monster` / `elite` / `boss` | In combat | `play_card`, `use_potion`, `end_turn` |
 | `hand_select` | In-combat card selection (exhaust, discard, upgrade) | `combat_select_card`, `combat_confirm_selection` |
@@ -40,6 +43,7 @@ Every JSON response includes:
 | `bundle_select` | Card bundle choice overlay | `select_bundle`, `confirm_bundle_selection`, `cancel_bundle_selection` |
 | `relic_select` | Relic choice overlay (boss relics) | `select_relic`, `skip_relic_selection` |
 | `crystal_sphere` | Crystal Sphere minigame | `crystal_sphere_set_tool`, `crystal_sphere_click_cell`, `crystal_sphere_proceed` |
+| `game_over` | Run ended | `menu_select` with `main_menu` |
 | `overlay` | Unhandled overlay (catch-all, prevents soft-lock) | None (manual interaction needed) |
 
 **Note:** `use_potion` and `discard_potion` work during any state where potions are accessible (combat, map, events, etc.).
@@ -47,6 +51,36 @@ Every JSON response includes:
 ## POST — Actions
 
 All POST requests use JSON body with `"action"` field. All responses include `{ "status": "ok" | "error", "message": "..." }`.
+
+### Menu / Game Over
+
+| Action | Parameters | When to Use |
+|---|---|---|
+| `menu_select` | `option`: string, `seed`?: string | Choose an advertised menu option. Options are case-insensitive. Submenus include `back` where visible, including `profile_select` options `profile_1`, `profile_2`, `profile_3`, and `back`. Blocking popups expose normalized button labels such as `ignore` or `back`. `game_over` supports `main_menu` only; `continue` returns an error. Supplying `seed` in unsupported contexts such as standard singleplayer character select returns an error and does not start a run. If Timeline has pending obtained epochs that require manual reveal, it may appear in `blocked_options`; selecting `timeline` returns `manual_action_required: true` with `pending_epoch_ids` instead of opening Timeline. |
+
+### Profiles
+
+`GET /api/v1/profile` returns persistent progress for the active profile, including character stats, discoveries, achievements, epochs, and global run totals.
+
+`GET /api/v1/profiles` returns the three profile slots:
+
+```json
+{
+  "current_profile_id": 1,
+  "profiles": [
+    { "id": 1, "is_current": true, "has_data": true },
+    { "id": 2, "is_current": false, "has_data": false },
+    { "id": 3, "is_current": false, "has_data": true }
+  ]
+}
+```
+
+`POST /api/v1/profiles` supports:
+
+| Action | Parameters | When to Use |
+|---|---|---|
+| `switch` | `profile_id`: 1-3 | Switch through the game profile UI. Empty slots can be used for fresh-profile testing. Cannot be used during a run. |
+| `delete` | `profile_id`: 1-3 | Delete an inactive profile slot. The active profile is rejected. |
 
 ### Combat
 

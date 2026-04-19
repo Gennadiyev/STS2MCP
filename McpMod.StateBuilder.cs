@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.Cards;
@@ -37,6 +38,14 @@ using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Models.Monsters;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
+using MegaCrit.Sts2.Core.Models.RelicPools;
+using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
+using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
+using MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen;
+using MegaCrit.Sts2.Core.Nodes.Screens.Timeline;
+using MegaCrit.Sts2.Core.Nodes.Screens.Settings;
+using MegaCrit.Sts2.Core.Nodes.Screens.ProfileScreen;
+using Godot;
 
 namespace STS2_MCP;
 
@@ -45,17 +54,322 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildGameState()
     {
         var result = new Dictionary<string, object?>();
+        var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
+
+        if (tree?.Root != null)
+        {
+            var ftueState = BuildVisibleFtueState(tree.Root);
+            if (ftueState != null)
+                return ftueState;
+        }
 
         if (!RunManager.Instance.IsInProgress)
         {
             result["state_type"] = "menu";
-            result["message"] = "No run in progress. Player is in the main menu.";
+
+            // Detect which menu screen is active
+            if (tree?.Root != null)
+            {
+                if (!result.ContainsKey("menu_screen"))
+                {
+                // Check for singleplayer submenu (Standard / Daily / Custom)
+                var spSubmenu = FindFirst<NSingleplayerSubmenu>(tree.Root);
+                if (spSubmenu != null && IsNodeVisible(spSubmenu))
+                {
+                    result["menu_screen"] = "singleplayer";
+                    result["message"] = "Select game mode.";
+
+                    var modeOptions = new List<Dictionary<string, object?>>();
+                    var modeFields = new[] { ("_standardButton", "standard"), ("_dailyButton", "daily"), ("_customButton", "custom") };
+                    foreach (var (fieldName, label) in modeFields)
+                    {
+                        try
+                        {
+                            var btn = GetInstanceFieldValue(spSubmenu, fieldName);
+                            if (btn is Control ctrl && IsNodeVisible(ctrl))
+                            {
+                                var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
+                                modeOptions.Add(new Dictionary<string, object?>
+                                {
+                                    ["name"] = label,
+                                    ["enabled"] = isEnabled ?? true
+                                });
+                            }
+                        }
+                        catch { }
+                    }
+                    AddMenuOptionIfVisible(modeOptions, spSubmenu, "_backButton", "back");
+                    result["options"] = modeOptions;
+                }
+                // Check for multiplayer host submenu (Standard / Daily / Custom for multiplayer)
+                else
+                {
+                    var mpHostSubmenu = FindFirst<NMultiplayerHostSubmenu>(tree.Root);
+                    if (mpHostSubmenu != null && IsNodeVisible(mpHostSubmenu))
+                    {
+                        result["menu_screen"] = "multiplayer_host";
+                        result["message"] = "Multiplayer host: select game mode.";
+
+                        var modeOptions = new List<Dictionary<string, object?>>();
+                        var modeFields = new[] { ("_standardButton", "standard"), ("_dailyButton", "daily"), ("_customButton", "custom") };
+                        foreach (var (fieldName, label) in modeFields)
+                        {
+                            try
+                            {
+                                var btn = GetInstanceFieldValue(mpHostSubmenu, fieldName);
+                                if (btn is Control ctrl && IsNodeVisible(ctrl))
+                                {
+                                    var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
+                                    modeOptions.Add(new Dictionary<string, object?>
+                                    {
+                                        ["name"] = label,
+                                        ["enabled"] = isEnabled ?? true
+                                    });
+                                }
+                            }
+                            catch { }
+                        }
+                        AddMenuOptionIfVisible(modeOptions, mpHostSubmenu, "_backButton", "back");
+                        result["options"] = modeOptions;
+                    }
+                    else
+                    {
+                        // Check for multiplayer submenu (Host / Join / Load / Abandon)
+                        var mpSubmenu = FindFirst<NMultiplayerSubmenu>(tree.Root);
+                        if (mpSubmenu != null && IsNodeVisible(mpSubmenu))
+                        {
+                            result["menu_screen"] = "multiplayer";
+                            result["message"] = "Multiplayer menu.";
+
+                            var mpOptions = new List<Dictionary<string, object?>>();
+                            var mpFields = new[] { ("_hostButton", "host"), ("_joinButton", "join"), ("_loadButton", "load"), ("_abandonButton", "abandon") };
+                            foreach (var (fieldName, label) in mpFields)
+                            {
+                                try
+                                {
+                                    var btn = GetInstanceFieldValue(mpSubmenu, fieldName);
+                                    if (btn is Control ctrl && IsNodeVisible(ctrl))
+                                    {
+                                        var isEnabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
+                                        mpOptions.Add(new Dictionary<string, object?>
+                                        {
+                                            ["name"] = label,
+                                            ["enabled"] = isEnabled ?? true
+                                        });
+                                    }
+                                }
+                                catch { }
+                            }
+                            AddMenuOptionIfVisible(mpOptions, mpSubmenu, "_backButton", "back");
+                            result["options"] = mpOptions;
+                        }
+                    }
+                }
+                // Check for character select screen
+                if (result.ContainsKey("menu_screen") == false)
+                {
+                    var charSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
+                    if (charSelect != null && IsNodeVisible(charSelect))
+                    {
+                        AddCharacterSelectMenuState(result, charSelect);
+                    }
+                    else
+                    {
+                        // Check for other screens
+                        var timelineScreen = FindFirst<NTimelineScreen>(tree.Root);
+                        var compendiumSubmenu = FindFirst<NCompendiumSubmenu>(tree.Root);
+                        var settingsScreen = FindFirst<NSettingsScreen>(tree.Root);
+
+                        if (timelineScreen != null && IsNodeVisible(timelineScreen))
+                        {
+                            result["menu_screen"] = "timeline";
+                            result["message"] = "Timeline screen.";
+                            result["options"] = new List<Dictionary<string, object?>>
+                            {
+                                new() { ["name"] = "advance", ["enabled"] = true },
+                                new() { ["name"] = "back", ["enabled"] = true }
+                            };
+
+                            // Read epochs from ProgressState (stable, not hover-dependent)
+                            try
+                            {
+                                var progress = SaveManager.Instance?.Progress;
+                                if (progress != null)
+                                {
+                                    var epochList = new List<Dictionary<string, object?>>();
+                                    var revealedCount = 0;
+                                    var obtainedCount = 0;
+                                    var lockedCount = 0;
+                                    var noSlotCount = 0;
+                                    foreach (var epoch in progress.Epochs)
+                                    {
+                                        var eraName = epoch.Id;
+                                        var state = epoch.State.ToString();
+                                        // Clean up ID to readable name
+                                        var name = System.Text.RegularExpressions.Regex.Replace(eraName, @"(\d+)$", "");
+                                        name = System.Text.RegularExpressions.Regex.Replace(name, @"(?<=[a-z])(?=[A-Z])", " ");
+
+                                        switch (epoch.State)
+                                        {
+                                            case EpochState.Revealed:
+                                                revealedCount++;
+                                                break;
+                                            case EpochState.Obtained:
+                                            case EpochState.ObtainedNoSlot:
+                                                obtainedCount++;
+                                                break;
+                                            case EpochState.NotObtained:
+                                                lockedCount++;
+                                                break;
+                                            case EpochState.NoSlot:
+                                                noSlotCount++;
+                                                break;
+                                        }
+
+                                        epochList.Add(new Dictionary<string, object?>
+                                        {
+                                            ["id"] = eraName,
+                                            ["name"] = name,
+                                            ["state"] = state,
+                                            ["obtained"] = epoch.ObtainDate
+                                        });
+                                    }
+
+                                    result["epochs"] = epochList;
+                                    result["total_slots"] = epochList.Count;
+                                    result["completed_count"] = revealedCount;
+                                    result["revealed_count"] = revealedCount;
+                                    result["obtained_unrevealed_count"] = obtainedCount;
+                                    result["locked_count"] = lockedCount;
+                                    result["no_slot_count"] = noSlotCount;
+                                }
+                            }
+                            catch { }
+                        }
+                        else if (compendiumSubmenu != null && IsNodeVisible(compendiumSubmenu))
+                        {
+                            result["menu_screen"] = "compendium";
+                            result["message"] = "Compendium screen.";
+                        }
+                        else if (settingsScreen != null && IsNodeVisible(settingsScreen))
+                        {
+                            result["menu_screen"] = "settings";
+                            result["message"] = "Settings screen.";
+                        }
+                        else
+                        {
+                            var profileScreen = FindFirst<NProfileScreen>(tree.Root);
+                            if (profileScreen != null && IsNodeVisible(profileScreen))
+                            {
+                                result["menu_screen"] = "profile_select";
+                                result["message"] = "Profile select screen.";
+                                result["current_profile_id"] = SaveManager.Instance?.CurrentProfileId;
+
+                                var options = new List<Dictionary<string, object?>>();
+                                var buttons = GetInstanceFieldValue(profileScreen, "_profileButtons") as System.Collections.IEnumerable;
+                                if (buttons != null)
+                                {
+                                    foreach (var btn in buttons)
+                                    {
+                                        var btnId = GetInstanceFieldValue(btn, "_profileId");
+                                        if (btnId is int id)
+                                        {
+                                            var enabled = btn.GetType().GetProperty("IsEnabled")?.GetValue(btn) as bool?;
+                                            options.Add(new Dictionary<string, object?>
+                                            {
+                                                ["name"] = $"profile_{id}",
+                                                ["enabled"] = enabled ?? true
+                                            });
+                                        }
+                                    }
+                                }
+
+                                var backBtn = GetInstanceFieldValue(profileScreen, "_backButton")
+                                    ?? FindFirst<NBackButton>(profileScreen);
+                                if (backBtn is NClickableControl backClickable && IsNodeVisible(backClickable))
+                                {
+                                    options.Add(new Dictionary<string, object?>
+                                    {
+                                        ["name"] = "back",
+                                        ["enabled"] = backClickable.IsEnabled
+                                    });
+                                }
+
+                                if (options.Count > 0)
+                                    result["options"] = options;
+                            }
+                        }
+                        if (!result.ContainsKey("menu_screen"))
+                        {
+                            result["menu_screen"] = "main";
+                            result["message"] = "Main menu.";
+
+                        var mainMenu = FindFirst<NMainMenu>(tree.Root);
+                        if (mainMenu != null)
+                        {
+                            var options = new List<string>();
+                            var blockedOptions = new List<Dictionary<string, object?>>();
+                            var fields = new[] { "_continueButton", "_singleplayerButton", "_multiplayerButton", "_compendiumButton", "_timelineButton", "_settingsButton", "_quitButton" };
+                            var labels = new[] { "continue", "singleplayer", "multiplayer", "compendium", "timeline", "settings", "quit" };
+                            var unrevealedEpochs = GetProgressEpochIdsByState("Obtained", "ObtainedNoSlot");
+                            for (int i = 0; i < fields.Length; i++)
+                            {
+                                try
+                                {
+                                    var btn = GetInstanceFieldValue(mainMenu, fields[i]);
+                                    if (btn is NClickableControl clickable &&
+                                        clickable.IsEnabled &&
+                                        clickable.Visible &&
+                                        clickable.IsVisibleInTree())
+                                    {
+                                        if (labels[i] == "timeline" && unrevealedEpochs.Count > 0)
+                                        {
+                                            blockedOptions.Add(new Dictionary<string, object?>
+                                            {
+                                                ["name"] = "timeline",
+                                                ["enabled"] = false,
+                                                ["reason"] = "manual_epoch_reveal_required",
+                                                ["pending_epoch_ids"] = unrevealedEpochs
+                                            });
+                                            continue;
+                                        }
+
+                                        options.Add(labels[i]);
+                                    }
+                                }
+                                catch { }
+                            }
+                            if (options.Count > 0)
+                                result["options"] = options;
+                            if (blockedOptions.Count > 0)
+                                result["blocked_options"] = blockedOptions;
+                        }
+                        }
+                    }
+                }
+            }
+            } // close if (!result.ContainsKey("menu_screen"))
+            else
+            {
+                result["message"] = "No run in progress.";
+            }
+
             return result;
         }
 
         var runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
         {
+            if (tree?.Root != null)
+            {
+                var activeCharSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
+                if (activeCharSelect != null && IsNodeVisible(activeCharSelect))
+                {
+                    AddCharacterSelectMenuState(result, activeCharSelect);
+                    return result;
+                }
+            }
+
             result["state_type"] = "unknown";
             return result;
         }
@@ -65,7 +379,7 @@ public static partial class McpMod
         // overlay stack while the map opens after the player clicks proceed.
         var topOverlay = NOverlayStack.Instance?.Peek();
         var currentRoom = runState.CurrentRoom;
-        bool mapIsOpen = NMapScreen.Instance is { IsOpen: true };
+        bool mapIsOpen = IsMapScreenOpenOrVisible();
         if (topOverlay is NCardGridSelectionScreen cardSelectScreen)
         {
             result["state_type"] = "card_select";
@@ -101,6 +415,15 @@ public static partial class McpMod
             result["state_type"] = "rewards";
             result["rewards"] = BuildRewardsState(rewardsScreen, runState);
         }
+        else if (topOverlay is NGameOverScreen gameOverScreen)
+        {
+            result["state_type"] = "game_over";
+            result["game_over"] = new Dictionary<string, object?>
+            {
+                ["message"] = "Run ended.",
+                ["options"] = new List<string> { "main_menu" }
+            };
+        }
         else if (topOverlay is IOverlayScreen
                  && topOverlay is not NRewardsScreen
                  && topOverlay is not NCardRewardSelectionScreen)
@@ -112,6 +435,11 @@ public static partial class McpMod
                 ["screen_type"] = topOverlay.GetType().Name,
                 ["message"] = $"An overlay ({topOverlay.GetType().Name}) is active. It may require manual interaction in-game."
             };
+        }
+        else if (mapIsOpen)
+        {
+            result["state_type"] = "map";
+            result["map"] = BuildMapState(runState);
         }
         else if (currentRoom is CombatRoom combatRoom)
         {
@@ -135,7 +463,7 @@ public static partial class McpMod
             {
                 // After combat ends - reward/card overlays are caught by top-level checks above.
                 // Only handle map and the brief transition before rewards appear.
-                if (NMapScreen.Instance is { IsOpen: true })
+                if (IsMapScreenOpenOrVisible())
                 {
                     result["state_type"] = "map";
                     result["map"] = BuildMapState(runState);
@@ -149,7 +477,7 @@ public static partial class McpMod
         }
         else if (currentRoom is EventRoom eventRoom)
         {
-            if (NMapScreen.Instance is { IsOpen: true })
+            if (IsMapScreenOpenOrVisible())
             {
                 result["state_type"] = "map";
                 result["map"] = BuildMapState(runState);
@@ -172,7 +500,7 @@ public static partial class McpMod
         }
         else if (currentRoom is MerchantRoom merchantRoom)
         {
-            if (NMapScreen.Instance is { IsOpen: true })
+            if (IsMapScreenOpenOrVisible())
             {
                 result["state_type"] = "map";
                 result["map"] = BuildMapState(runState);
@@ -193,7 +521,7 @@ public static partial class McpMod
         }
         else if (currentRoom is RestSiteRoom restSiteRoom)
         {
-            if (NMapScreen.Instance is { IsOpen: true })
+            if (IsMapScreenOpenOrVisible())
             {
                 result["state_type"] = "map";
                 result["map"] = BuildMapState(runState);
@@ -206,7 +534,7 @@ public static partial class McpMod
         }
         else if (currentRoom is TreasureRoom treasureRoom)
         {
-            if (NMapScreen.Instance is { IsOpen: true })
+            if (IsMapScreenOpenOrVisible())
             {
                 result["state_type"] = "map";
                 result["map"] = BuildMapState(runState);
@@ -215,6 +543,19 @@ public static partial class McpMod
             {
                 result["state_type"] = "treasure";
                 result["treasure"] = BuildTreasureState(treasureRoom, runState);
+            }
+        }
+        else if (currentRoom == null && tree?.Root != null)
+        {
+            var activeCharSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
+            if (activeCharSelect != null && IsNodeVisible(activeCharSelect))
+            {
+                AddCharacterSelectMenuState(result, activeCharSelect);
+            }
+            else
+            {
+                result["state_type"] = "unknown";
+                result["room_type"] = currentRoom?.GetType().Name;
             }
         }
         else
@@ -239,6 +580,122 @@ public static partial class McpMod
         }
 
         return result;
+    }
+
+    private static void AddCharacterSelectMenuState(
+        Dictionary<string, object?> result,
+        NCharacterSelectScreen charSelect)
+    {
+        result["state_type"] = "menu";
+        result["menu_screen"] = "character_select";
+        result["message"] = "Select a character.";
+
+        var buttons = FindAll<NCharacterSelectButton>(charSelect);
+        var characters = new List<Dictionary<string, object?>>();
+        var options = new List<Dictionary<string, object?>>();
+        foreach (var btn in buttons)
+        {
+            try
+            {
+                if (btn.Character is { } cm && IsNodeVisible(btn))
+                {
+                    var characterId = cm.Id.Entry;
+                    var characterName = SafeGetText(() => cm.Title);
+                    options.Add(new Dictionary<string, object?>
+                    {
+                        ["name"] = characterId,
+                        ["enabled"] = !btn.IsLocked
+                    });
+
+                    var charData = new Dictionary<string, object?>
+                    {
+                        ["name"] = characterName,
+                        ["id"] = characterId,
+                        ["locked"] = btn.IsLocked,
+                        ["hp"] = cm.StartingHp,
+                        ["gold"] = cm.StartingGold,
+                        ["energy"] = cm.MaxEnergy,
+                        ["description"] = SafeGetText(() => cm.CardsModifierDescription),
+                    };
+
+                    var startRelics = new List<Dictionary<string, object?>>();
+                    foreach (var relic in cm.StartingRelics)
+                    {
+                        startRelics.Add(new Dictionary<string, object?>
+                        {
+                            ["name"] = SafeGetText(() => relic.Title),
+                            ["description"] = SafeGetText(() => relic.DynamicDescription)
+                        });
+                    }
+                    if (startRelics.Count > 0)
+                        charData["starting_relics"] = startRelics;
+
+                    var deckCards = new List<string>();
+                    foreach (var card in cm.StartingDeck)
+                        deckCards.Add(SafeGetText(() => card.Title) ?? "?");
+                    if (deckCards.Count > 0)
+                        charData["starting_deck"] = deckCards;
+
+                    try
+                    {
+                        var allCards = cm.CardPool?.AllCards;
+                        if (allCards != null)
+                            charData["total_cards"] = System.Linq.Enumerable.Count(allCards);
+                    }
+                    catch { }
+
+                    try
+                    {
+                        var allRelics = cm.RelicPool?.AllRelics;
+                        if (allRelics != null)
+                            charData["total_relics"] = System.Linq.Enumerable.Count(allRelics);
+                    }
+                    catch { }
+
+                    try
+                    {
+                        var allPotions = cm.PotionPool?.AllPotions;
+                        if (allPotions != null)
+                            charData["total_potions"] = System.Linq.Enumerable.Count(allPotions);
+                    }
+                    catch { }
+
+                    characters.Add(charData);
+                }
+            }
+            catch { }
+        }
+        if (characters.Count > 0)
+            result["characters"] = characters;
+
+        var embarkBtn = GetInstanceFieldValue(charSelect, "_embarkButton");
+        if (embarkBtn is NClickableControl embarkClickable && IsNodeVisible(embarkClickable))
+        {
+            options.Add(new Dictionary<string, object?>
+            {
+                ["name"] = "confirm",
+                ["enabled"] = embarkClickable.IsEnabled
+            });
+            options.Add(new Dictionary<string, object?>
+            {
+                ["name"] = "embark",
+                ["enabled"] = embarkClickable.IsEnabled
+            });
+        }
+
+        var backBtn = GetInstanceFieldValue(charSelect, "_backButton")
+            ?? GetInstanceFieldValue(charSelect, "_unreadyButton");
+        if (backBtn is NClickableControl backClickable && IsNodeVisible(backClickable))
+        {
+            options.Add(new Dictionary<string, object?>
+            {
+                ["name"] = "back",
+                ["enabled"] = backClickable.IsEnabled
+            });
+        }
+
+        if (options.Count > 0)
+            result["options"] = options;
     }
 
     private static Dictionary<string, object?> BuildBattleState(RunState runState, CombatRoom combatRoom)

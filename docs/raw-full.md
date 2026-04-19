@@ -7,6 +7,9 @@ HTTP API served by the STS2_MCP mod on `localhost:15526`. No authentication. Loc
 - `POST /api/v1/singleplayer` — perform a game action
 - `GET  /api/v1/multiplayer` — read multiplayer game state
 - `POST /api/v1/multiplayer` — perform a multiplayer action
+- `GET  /api/v1/profile` — read current profile progress
+- `GET  /api/v1/profiles` — list profile slots
+- `POST /api/v1/profiles` — switch or delete profile slots
 
 The endpoints are mutually exclusive: calling singleplayer during a multiplayer run (or vice versa) returns HTTP 409.
 
@@ -178,9 +181,25 @@ No run in progress.
 ```jsonc
 {
   "state_type": "menu",
-  "message": "No run in progress. Player is in the main menu."
+  "message": "No run in progress. Player is in the main menu.",
+  "menu_screen": "main",
+  "options": ["continue", "singleplayer", "multiplayer", "compendium", "timeline", "settings", "quit"]
 }
 ```
+
+Use `menu_select` with one of the advertised options. Options are accepted case-insensitively.
+If a visible option is intentionally withheld from automation, the state may also include `blocked_options` with a reason. For example, Timeline can be blocked while obtained epochs still need manual reveal because opening that game state through automation can trigger invalid unlock-state errors.
+
+Menu sub-screens expose their own options:
+
+- `singleplayer`: `standard`, `daily`, `custom`, `back`
+- `multiplayer`: `host`, `join`, `load`, `abandon`, `back`
+- `multiplayer_host`: `standard`, `daily`, `custom`, `back`
+- `profile_select`: `profile_1`, `profile_2`, `profile_3`, `back`
+- `character_select`: character IDs/names, `back`, `confirm`, `embark`
+- `tutorial_prompt`: `no`, `yes`
+- `popup`: advertised popup button labels, normalized to lowercase words such as `ignore` or `back`
+- `timeline`: `advance`, `back`
 
 ### `unknown`
 
@@ -695,6 +714,24 @@ Boss relic selection. Pick is immediate.
 }
 ```
 
+### `game_over`
+
+Run has ended.
+
+```jsonc
+{
+  "state_type": "game_over",
+  "game_over": {
+    "message": "Run ended.",
+    "options": ["main_menu"]
+  },
+  "run": { ... },
+  "player": { ... }
+}
+```
+
+Use `menu_select` with `main_menu` to return to the main menu. `continue` is not advertised because it is not an actionable game-over option.
+
 ### `overlay` — Unhandled Overlay (catch-all)
 
 Prevents soft-locks when an unrecognized overlay is active.
@@ -713,6 +750,52 @@ Prevents soft-locks when an unrecognized overlay is active.
 
 ---
 
+## Profiles
+
+Profile endpoints are independent of the singleplayer and multiplayer run endpoints.
+
+### `GET /api/v1/profile`
+
+Returns the active profile's persistent progress summary, including character stats, card stats, encounter stats, discovered content, achievements, epochs, and global totals.
+
+### `GET /api/v1/profiles`
+
+Lists the three profile slots and identifies the active slot.
+
+```json
+{
+  "current_profile_id": 1,
+  "profiles": [
+    { "id": 1, "is_current": true, "has_data": true },
+    { "id": 2, "is_current": false, "has_data": false },
+    { "id": 3, "is_current": false, "has_data": true }
+  ]
+}
+```
+
+### `POST /api/v1/profiles`
+
+Switch to a profile slot through the game's profile UI:
+
+```json
+{ "action": "switch", "profile_id": 2 }
+```
+
+Delete an inactive profile slot:
+
+```json
+{ "action": "delete", "profile_id": 2 }
+```
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `action` | string | Yes | `switch` or `delete` |
+| `profile_id` | int | Yes | Profile slot, from 1 to 3 |
+
+Switching is rejected during a run. Deleting the active profile is rejected; switch away first if you need to remove a slot.
+
+---
+
 ## POST — Perform Actions
 
 All POST requests use a JSON body with an `"action"` field and action-specific parameters.
@@ -728,6 +811,28 @@ All POST requests use a JSON body with an `"action"` field and action-specific p
 ```jsonc
 { "status": "error", "error": "Card requires a target. Provide 'target' with an entity_id." }
 ```
+
+---
+
+### `menu_select`
+
+Select an option from the main menu, a menu submenu, profile select, character select, tutorial prompt, blocking popup, timeline screen, or game-over screen.
+
+```json
+{ "action": "menu_select", "option": "singleplayer" }
+```
+
+```json
+{ "action": "menu_select", "option": "main_menu" }
+```
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `option` | string | Yes | One of the current state's advertised menu options. Matching is case-insensitive. |
+| `seed` | string | No | Only supported in menu contexts that expose a real seeded flow. Standard singleplayer character select currently returns an error without starting a run when `seed` is supplied. |
+
+`game_over` advertises only `main_menu`. `continue` is not actionable on that screen and returns an error.
+If `timeline` is blocked by pending obtained epochs, `menu_select` returns an error with `manual_action_required: true` and `pending_epoch_ids` instead of opening Timeline.
 
 ---
 
