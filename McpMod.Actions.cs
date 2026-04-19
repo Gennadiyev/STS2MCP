@@ -56,7 +56,7 @@ public static partial class McpMod
 
         var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
         if (tree?.Root != null && IsAnyFtueVisible(tree.Root))
-            return Error("Tutorial popup active. Use menu_select advance/proceed before gameplay actions.");
+            return Error("Blocking popup active. Use menu_select with one of the advertised popup options before gameplay actions.");
 
         return action switch
         {
@@ -425,7 +425,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> ExecuteChooseMapNode(Dictionary<string, JsonElement> data)
     {
         var mapScreen = NMapScreen.Instance;
-        if (mapScreen == null || !mapScreen.IsOpen)
+        if (mapScreen == null || (!mapScreen.IsOpen && !IsNodeVisible(mapScreen)))
             return Error("Map screen is not open");
 
         if (!data.TryGetValue("index", out var indexElem))
@@ -1124,8 +1124,7 @@ public static partial class McpMod
                 var btnField = isYes ? "<YesButton>k__BackingField" : "<NoButton>k__BackingField";
                 var btn = popup.GetType().GetField(btnField, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(popup);
                 if (btn is NClickableControl clickable &&
-                    clickable.IsEnabled &&
-                    IsNodeVisible(clickable))
+                    IsControlVisibleOrActionable(clickable))
                 {
                     clickable.ForceClick();
                     return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = $"Tutorials: {(isYes ? "enabled" : "disabled")}" };
@@ -1146,9 +1145,7 @@ public static partial class McpMod
 
             var confirmBtn = ftue.GetType().GetField("_confirmButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(ftue);
             if (confirmBtn is NClickableControl ftueClickable &&
-                ftueClickable.IsEnabled &&
-                ftueClickable.Visible &&
-                ftueClickable.IsVisibleInTree())
+                IsControlVisibleOrActionable(ftueClickable))
             {
                 ftueClickable.ForceClick();
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Dismissed tutorial popup" };
@@ -1156,6 +1153,12 @@ public static partial class McpMod
 
             return Error("Tutorial popup visible but confirm button is not available; retry after the next state poll");
         }
+
+        // Generic blocking menu popups, such as the first-run warning that appears
+        // over character select on fresh profiles.
+        var verticalPopup = FindVisibleVerticalPopup(tree.Root);
+        if (verticalPopup != null)
+            return ExecuteVisiblePopupOption(verticalPopup, option);
 
         // Timeline screen - advance through epoch reveals.
         var timelineScreen = FindFirst<NTimelineScreen>(tree.Root);
@@ -1357,6 +1360,28 @@ public static partial class McpMod
         }
 
         return Error("Not on a menu screen");
+    }
+
+    private static Dictionary<string, object?> ExecuteVisiblePopupOption(NVerticalPopup popup, string option)
+    {
+        var options = GetPopupOptions(popup);
+        foreach (var candidate in options)
+        {
+            if (!string.Equals(candidate.Name, option, System.StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (!IsControlVisibleOrActionable(candidate.Button))
+                return Error($"Popup option '{candidate.Name}' is disabled");
+
+            candidate.Button.ForceClick();
+            return new Dictionary<string, object?>
+            {
+                ["status"] = "ok",
+                ["message"] = $"Selected popup option: {candidate.Name}"
+            };
+        }
+
+        return Error($"Popup option '{option}' is not actionable. Use: {string.Join(", ", options.Select(candidate => candidate.Name))}");
     }
 
     private static Dictionary<string, object?> ExecuteProfileSelectMenuOption(

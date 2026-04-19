@@ -197,6 +197,7 @@ Menu sub-screens expose their own options:
 - `profile_select`: `profile_1`, `profile_2`, `profile_3`, `back`
 - `character_select`: character IDs/names, `back`, `confirm`, `embark`
 - `tutorial_prompt`: `no`, `yes`
+- `popup`: advertised popup button labels, normalized to lowercase words such as `ignore` or `back`
 - `timeline`: `advance`, `back`
 
 ### `unknown`
@@ -814,7 +815,7 @@ All POST requests use a JSON body with an `"action"` field and action-specific p
 
 ### `menu_select`
 
-Select an option from the main menu, a menu submenu, profile select, character select, tutorial prompt, timeline screen, or game-over screen.
+Select an option from the main menu, a menu submenu, profile select, character select, tutorial prompt, blocking popup, timeline screen, or game-over screen.
 
 ```json
 { "action": "menu_select", "option": "singleplayer" }

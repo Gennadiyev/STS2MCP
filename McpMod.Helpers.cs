@@ -7,6 +7,9 @@ using Godot;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Nodes.CommonUi;
+using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 
 namespace STS2_MCP;
 
@@ -266,6 +269,47 @@ public static partial class McpMod
         }
     }
 
+    private static bool IsMapScreenOpenOrVisible()
+    {
+        var mapScreen = NMapScreen.Instance;
+        return mapScreen != null && (mapScreen.IsOpen || IsNodeVisible(mapScreen));
+    }
+
+    private static bool IsControlVisibleOrActionable(NClickableControl? control)
+    {
+        try
+        {
+            return control != null &&
+                   IsLiveNode(control) &&
+                   control.IsEnabled &&
+                   (IsNodeVisible(control) || control.Visible);
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsFtueNodeActive(Node node)
+    {
+        if (node is not CanvasItem canvas || !IsLiveNode(node))
+            return false;
+
+        if (IsNodeVisible(canvas))
+            return true;
+
+        try
+        {
+            return canvas.Visible &&
+                   GetInstanceFieldValue(node, "_confirmButton") is NClickableControl confirmButton &&
+                   IsControlVisibleOrActionable(confirmButton);
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
+    }
+
     private static Dictionary<string, object?>? BuildVisibleFtueState(Node root)
     {
         var tutorialFtue = FindVisibleAcceptTutorialsFtue(root);
@@ -300,7 +344,40 @@ public static partial class McpMod
             };
         }
 
+        var popup = BuildVisiblePopupState(root);
+        if (popup != null)
+            return popup;
+
         return null;
+    }
+
+    private static Dictionary<string, object?>? BuildVisiblePopupState(Node root)
+    {
+        var popup = FindVisibleVerticalPopup(root);
+        if (popup == null)
+            return null;
+
+        var options = new List<Dictionary<string, object?>>();
+        foreach (var option in GetPopupOptions(popup))
+        {
+            options.Add(new Dictionary<string, object?>
+            {
+                ["name"] = option.Name,
+                ["enabled"] = option.Button.IsEnabled
+            });
+        }
+
+        if (options.Count == 0)
+            return null;
+
+        return new Dictionary<string, object?>
+        {
+            ["state_type"] = "menu",
+            ["menu_screen"] = "popup",
+            ["message"] = GetVerticalPopupText(popup, "TitleLabel") ?? "Popup active.",
+            ["body"] = GetVerticalPopupText(popup, "BodyLabel"),
+            ["options"] = options
+        };
     }
 
     private static MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue? FindVisibleAcceptTutorialsFtue(Node root)
@@ -318,6 +395,82 @@ public static partial class McpMod
         return BuildVisibleFtueState(root) != null;
     }
 
+    private static NVerticalPopup? FindVisibleVerticalPopup(Node root)
+    {
+        foreach (var popup in FindAll<NVerticalPopup>(root))
+        {
+            if ((IsNodeVisible(popup) || popup.Visible) && GetPopupOptions(popup).Count > 0)
+                return popup;
+        }
+        return null;
+    }
+
+    private static List<(string Name, NClickableControl Button)> GetPopupOptions(NVerticalPopup popup)
+    {
+        var options = new List<(string Name, NClickableControl Button)>();
+        AddPopupOption(options, popup.YesButton, "yes");
+        AddPopupOption(options, popup.NoButton, "no");
+        return options;
+    }
+
+    private static void AddPopupOption(
+        List<(string Name, NClickableControl Button)> options,
+        NPopupYesNoButton? button,
+        string fallback)
+    {
+        if (!IsControlVisibleOrActionable(button))
+            return;
+
+        var label = GetPopupButtonLabel(button!);
+        var name = NormalizeMenuOptionName(label) ?? fallback;
+        options.Add((name, button!));
+    }
+
+    private static string? GetVerticalPopupText(NVerticalPopup popup, string propertyName)
+    {
+        var label = popup.GetType().GetProperty(propertyName)?.GetValue(popup);
+        return GetNodeText(label);
+    }
+
+    private static string? GetPopupButtonLabel(NPopupYesNoButton button)
+    {
+        var label = GetInstanceFieldValue(button, "_label");
+        return GetNodeText(label);
+    }
+
+    private static string? GetNodeText(object? node)
+    {
+        if (node == null)
+            return null;
+
+        foreach (var propName in new[] { "Text", "BbcodeText" })
+        {
+            var text = SafeGetText(() => node.GetType().GetProperty(propName)?.GetValue(node));
+            if (!string.IsNullOrWhiteSpace(text))
+                return text;
+        }
+
+        return null;
+    }
+
+    private static string? NormalizeMenuOptionName(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return null;
+
+        var sb = new StringBuilder();
+        foreach (var ch in StripRichTextTags(text).Trim().ToLowerInvariant())
+        {
+            if (char.IsLetterOrDigit(ch))
+                sb.Append(ch);
+            else if (sb.Length > 0 && sb[^1] != '_')
+                sb.Append('_');
+        }
+
+        var normalized = sb.ToString().Trim('_');
+        return normalized.Length == 0 ? null : normalized;
+    }
+
     private static Node? FindVisibleGenericFtue(Node start)
     {
         if (!IsLiveNode(start))
@@ -326,8 +479,7 @@ public static partial class McpMod
         var typeName = start.GetType().FullName ?? "";
         if (typeName.StartsWith("MegaCrit.Sts2.Core.Nodes.Ftue.", StringComparison.Ordinal) &&
             !typeName.EndsWith(".NAcceptTutorialsFtue", StringComparison.Ordinal) &&
-            start is CanvasItem canvas &&
-            IsNodeVisible(canvas))
+            IsFtueNodeActive(start))
         {
             return start;
         }

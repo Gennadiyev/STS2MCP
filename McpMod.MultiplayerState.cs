@@ -68,7 +68,7 @@ public static partial class McpMod
         // Same overlay-first detection logic as singleplayer
         var topOverlay = NOverlayStack.Instance?.Peek();
         var currentRoom = runState.CurrentRoom;
-        bool mapIsOpen = NMapScreen.Instance is { IsOpen: true };
+        bool mapIsOpen = IsMapScreenOpenOrVisible();
 
         if (topOverlay is NCardGridSelectionScreen cardSelectScreen)
         {
@@ -136,7 +136,7 @@ public static partial class McpMod
             else
             {
                 // After combat ends - reward/card overlays are caught by top-level checks above.
-                if (NMapScreen.Instance is { IsOpen: true })
+                if (IsMapScreenOpenOrVisible())
                 {
                     result["state_type"] = "map";
                     result["map"] = BuildMultiplayerMapState(runState);
@@ -150,7 +150,7 @@ public static partial class McpMod
         }
         else if (currentRoom is EventRoom eventRoom)
         {
-            if (NMapScreen.Instance is { IsOpen: true })
+            if (IsMapScreenOpenOrVisible())
             {
                 result["state_type"] = "map";
                 result["map"] = BuildMultiplayerMapState(runState);
@@ -173,7 +173,7 @@ public static partial class McpMod
         }
         else if (currentRoom is MerchantRoom merchantRoom)
         {
-            if (NMapScreen.Instance is { IsOpen: true })
+            if (IsMapScreenOpenOrVisible())
             {
                 result["state_type"] = "map";
                 result["map"] = BuildMultiplayerMapState(runState);
@@ -192,7 +192,7 @@ public static partial class McpMod
         }
         else if (currentRoom is RestSiteRoom restSiteRoom)
         {
-            if (NMapScreen.Instance is { IsOpen: true })
+            if (IsMapScreenOpenOrVisible())
             {
                 result["state_type"] = "map";
                 result["map"] = BuildMultiplayerMapState(runState);
@@ -205,7 +205,7 @@ public static partial class McpMod
         }
         else if (currentRoom is TreasureRoom treasureRoom)
         {
-            if (NMapScreen.Instance is { IsOpen: true })
+            if (IsMapScreenOpenOrVisible())
             {
                 result["state_type"] = "map";
                 result["map"] = BuildMultiplayerMapState(runState);

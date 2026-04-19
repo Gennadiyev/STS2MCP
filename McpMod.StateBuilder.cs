@@ -466,7 +466,7 @@ public static partial class McpMod
         // overlay stack while the map opens after the player clicks proceed.
         var topOverlay = NOverlayStack.Instance?.Peek();
         var currentRoom = runState.CurrentRoom;
-        bool mapIsOpen = NMapScreen.Instance is { IsOpen: true };
+        bool mapIsOpen = IsMapScreenOpenOrVisible();
         if (topOverlay is NCardGridSelectionScreen cardSelectScreen)
         {
             result["state_type"] = "card_select";
@@ -550,7 +550,7 @@ public static partial class McpMod
             {
                 // After combat ends - reward/card overlays are caught by top-level checks above.
                 // Only handle map and the brief transition before rewards appear.
-                if (NMapScreen.Instance is { IsOpen: true })
+                if (IsMapScreenOpenOrVisible())
                 {
                     result["state_type"] = "map";
                     result["map"] = BuildMapState(runState);
@@ -564,7 +564,7 @@ public static partial class McpMod
         }
         else if (currentRoom is EventRoom eventRoom)
         {
-            if (NMapScreen.Instance is { IsOpen: true })
+            if (IsMapScreenOpenOrVisible())
             {
                 result["state_type"] = "map";
                 result["map"] = BuildMapState(runState);
@@ -587,7 +587,7 @@ public static partial class McpMod
         }
         else if (currentRoom is MerchantRoom merchantRoom)
         {
-            if (NMapScreen.Instance is { IsOpen: true })
+            if (IsMapScreenOpenOrVisible())
             {
                 result["state_type"] = "map";
                 result["map"] = BuildMapState(runState);
@@ -608,7 +608,7 @@ public static partial class McpMod
         }
         else if (currentRoom is RestSiteRoom restSiteRoom)
         {
-            if (NMapScreen.Instance is { IsOpen: true })
+            if (IsMapScreenOpenOrVisible())
             {
                 result["state_type"] = "map";
                 result["map"] = BuildMapState(runState);
@@ -621,7 +621,7 @@ public static partial class McpMod
         }
         else if (currentRoom is TreasureRoom treasureRoom)
         {
-            if (NMapScreen.Instance is { IsOpen: true })
+            if (IsMapScreenOpenOrVisible())
             {
                 result["state_type"] = "map";
                 result["map"] = BuildMapState(runState);
