@@ -275,19 +275,23 @@ public static partial class McpMod
         return mapScreen != null && (mapScreen.IsOpen || IsNodeVisible(mapScreen));
     }
 
-    private static bool IsControlVisibleOrActionable(NClickableControl? control)
+    private static bool IsControlVisibleInTree(NClickableControl? control)
     {
         try
         {
             return control != null &&
                    IsLiveNode(control) &&
-                   control.IsEnabled &&
-                   (IsNodeVisible(control) || control.Visible);
+                   IsNodeVisible(control);
         }
         catch (ObjectDisposedException)
         {
             return false;
         }
+    }
+
+    private static bool IsControlVisibleOrActionable(NClickableControl? control)
+    {
+        return IsControlVisibleInTree(control) && control!.IsEnabled;
     }
 
     private static bool IsFtueNodeActive(Node node)
@@ -300,9 +304,8 @@ public static partial class McpMod
 
         try
         {
-            return canvas.Visible &&
-                   GetInstanceFieldValue(node, "_confirmButton") is NClickableControl confirmButton &&
-                   IsControlVisibleOrActionable(confirmButton);
+            return GetInstanceFieldValue(node, "_confirmButton") is NClickableControl confirmButton &&
+                   IsControlVisibleInTree(confirmButton);
         }
         catch (ObjectDisposedException)
         {
@@ -399,7 +402,7 @@ public static partial class McpMod
     {
         foreach (var popup in FindAll<NVerticalPopup>(root))
         {
-            if ((IsNodeVisible(popup) || popup.Visible) && GetPopupOptions(popup).Count > 0)
+            if (IsNodeVisible(popup) && GetPopupOptions(popup).Count > 0)
                 return popup;
         }
         return null;
@@ -418,7 +421,7 @@ public static partial class McpMod
         NPopupYesNoButton? button,
         string fallback)
     {
-        if (!IsControlVisibleOrActionable(button))
+        if (!IsControlVisibleInTree(button))
             return;
 
         var label = GetPopupButtonLabel(button!);
