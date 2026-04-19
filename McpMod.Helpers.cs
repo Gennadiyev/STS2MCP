@@ -289,6 +289,56 @@ public static partial class McpMod
         }
     }
 
+    private static Node? GetOpenModalNode()
+    {
+        try
+        {
+            return NModalContainer.Instance?.OpenModal as Node;
+        }
+        catch (ObjectDisposedException)
+        {
+            return null;
+        }
+    }
+
+    private static bool IsDescendantOf(Node? node, Node ancestor)
+    {
+        try
+        {
+            for (var current = node; current != null && IsLiveNode(current); current = current.GetParent())
+            {
+                if (ReferenceEquals(current, ancestor))
+                    return true;
+            }
+        }
+        catch (ObjectDisposedException) { }
+
+        return false;
+    }
+
+    private static bool IsControlVisibleInOpenModal(NClickableControl? control, Node? openModal = null)
+    {
+        openModal ??= GetOpenModalNode();
+        if (control == null || openModal == null || !IsLiveNode(control) || !IsLiveNode(openModal))
+            return false;
+
+        try
+        {
+            return control.Visible && IsDescendantOf(control, openModal);
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsPopupButtonActionable(NClickableControl? control)
+    {
+        return control != null &&
+               control.IsEnabled &&
+               (IsControlVisibleInTree(control) || IsControlVisibleInOpenModal(control));
+    }
+
     private static bool IsControlVisibleOrActionable(NClickableControl? control)
     {
         return IsControlVisibleInTree(control) && control!.IsEnabled;
@@ -302,10 +352,13 @@ public static partial class McpMod
         if (IsNodeVisible(canvas))
             return true;
 
+        if (ReferenceEquals(GetOpenModalNode(), node))
+            return true;
+
         try
         {
             return GetInstanceFieldValue(node, "_confirmButton") is NClickableControl confirmButton &&
-                   IsControlVisibleInTree(confirmButton);
+                   (IsControlVisibleInTree(confirmButton) || IsControlVisibleInOpenModal(confirmButton));
         }
         catch (ObjectDisposedException)
         {
@@ -316,7 +369,7 @@ public static partial class McpMod
     private static Dictionary<string, object?>? BuildVisibleFtueState(Node root)
     {
         var tutorialFtue = FindVisibleAcceptTutorialsFtue(root);
-        if (tutorialFtue != null && IsNodeVisible(tutorialFtue))
+        if (tutorialFtue != null && IsFtueNodeActive(tutorialFtue))
         {
             return new Dictionary<string, object?>
             {
@@ -357,37 +410,45 @@ public static partial class McpMod
     private static Dictionary<string, object?>? BuildVisiblePopupState(Node root)
     {
         var popup = FindVisibleVerticalPopup(root);
-        if (popup == null)
-            return null;
+        var options = popup != null
+            ? GetPopupOptions(popup)
+            : GetVisiblePopupButtonOptions(root);
 
-        var options = new List<Dictionary<string, object?>>();
-        foreach (var option in GetPopupOptions(popup))
+        var stateOptions = new List<Dictionary<string, object?>>();
+        foreach (var option in options)
         {
-            options.Add(new Dictionary<string, object?>
+            stateOptions.Add(new Dictionary<string, object?>
             {
                 ["name"] = option.Name,
                 ["enabled"] = option.Button.IsEnabled
             });
         }
 
-        if (options.Count == 0)
+        if (stateOptions.Count == 0)
             return null;
 
         return new Dictionary<string, object?>
         {
             ["state_type"] = "menu",
             ["menu_screen"] = "popup",
-            ["message"] = GetVerticalPopupText(popup, "TitleLabel") ?? "Popup active.",
-            ["body"] = GetVerticalPopupText(popup, "BodyLabel"),
-            ["options"] = options
+            ["message"] = popup != null ? GetVerticalPopupText(popup, "TitleLabel") ?? "Popup active." : "Popup active.",
+            ["body"] = popup != null ? GetVerticalPopupText(popup, "BodyLabel") : null,
+            ["options"] = stateOptions
         };
     }
 
     private static MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue? FindVisibleAcceptTutorialsFtue(Node root)
     {
+        var openModal = GetOpenModalNode();
+        if (openModal is MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue openFtue &&
+            IsFtueNodeActive(openFtue))
+        {
+            return openFtue;
+        }
+
         foreach (var ftue in FindAll<MegaCrit.Sts2.Core.Nodes.Ftue.NAcceptTutorialsFtue>(root))
         {
-            if (IsNodeVisible(ftue))
+            if (IsFtueNodeActive(ftue) || ReferenceEquals(openModal, ftue))
                 return ftue;
         }
         return null;
@@ -400,10 +461,26 @@ public static partial class McpMod
 
     private static NVerticalPopup? FindVisibleVerticalPopup(Node root)
     {
+        var openModal = GetOpenModalNode();
+        if (openModal is NVerticalPopup openPopup && GetPopupOptions(openPopup).Count > 0)
+            return openPopup;
+
+        if (openModal != null)
+        {
+            foreach (var popup in FindAll<NVerticalPopup>(openModal))
+            {
+                if (GetPopupOptions(popup).Count > 0)
+                    return popup;
+            }
+        }
+
         foreach (var popup in FindAll<NVerticalPopup>(root))
         {
-            if (IsNodeVisible(popup) && GetPopupOptions(popup).Count > 0)
+            if ((IsNodeVisible(popup) || (openModal != null && IsDescendantOf(popup, openModal))) &&
+                GetPopupOptions(popup).Count > 0)
+            {
                 return popup;
+            }
         }
         return null;
     }
@@ -416,12 +493,60 @@ public static partial class McpMod
         return options;
     }
 
+    private static List<(string Name, NClickableControl Button)> GetVisiblePopupButtonOptions(Node root)
+    {
+        var options = new List<(string Name, NClickableControl Button)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var openModal = GetOpenModalNode();
+        if (openModal != null)
+        {
+            foreach (var button in FindAll<NClickableControl>(openModal))
+                AddVisiblePopupButtonOption(options, seen, button, null, openModal);
+        }
+
+        foreach (var button in FindAll<NPopupYesNoButton>(root))
+        {
+            AddVisiblePopupButtonOption(options, seen, button, button.IsYes ? "yes" : "no", null);
+        }
+
+        foreach (var modal in FindAll<NModalContainer>(root))
+        {
+            if (!IsNodeVisible(modal))
+                continue;
+
+            foreach (var button in FindAll<NClickableControl>(modal))
+                AddVisiblePopupButtonOption(options, seen, button, null, null);
+        }
+
+        return options;
+    }
+
+    private static void AddVisiblePopupButtonOption(
+        List<(string Name, NClickableControl Button)> options,
+        HashSet<string> seen,
+        NClickableControl? button,
+        string? fallback,
+        Node? openModal)
+    {
+        if (!(IsControlVisibleInTree(button) || IsControlVisibleInOpenModal(button, openModal)))
+            return;
+
+        var label = button is NPopupYesNoButton popupButton
+            ? GetPopupButtonLabel(popupButton)
+            : GetClickableControlLabel(button!);
+        var name = NormalizeMenuOptionName(label) ?? fallback;
+        if (string.IsNullOrWhiteSpace(name) || !seen.Add(name))
+            return;
+
+        options.Add((name, button!));
+    }
+
     private static void AddPopupOption(
         List<(string Name, NClickableControl Button)> options,
         NPopupYesNoButton? button,
         string fallback)
     {
-        if (!IsControlVisibleInTree(button))
+        if (!IsPopupButtonActionable(button))
             return;
 
         var label = GetPopupButtonLabel(button!);
@@ -439,6 +564,64 @@ public static partial class McpMod
     {
         var label = GetInstanceFieldValue(button, "_label");
         return GetNodeText(label);
+    }
+
+    private static string? GetClickableControlLabel(NClickableControl button)
+    {
+        foreach (var fieldName in new[] { "_label", "_textLabel", "_title", "_buttonLabel" })
+        {
+            var label = GetNodeText(GetInstanceFieldValue(button, fieldName));
+            if (!string.IsNullOrWhiteSpace(label))
+                return label;
+        }
+
+        foreach (var propName in new[] { "Text", "Label", "Title" })
+        {
+            var label = SafeGetText(() => button.GetType().GetProperty(propName)?.GetValue(button));
+            if (!string.IsNullOrWhiteSpace(label))
+                return label;
+        }
+
+        var childText = FindNodeTextRecursive(button);
+        if (!string.IsNullOrWhiteSpace(childText))
+            return childText;
+
+        var nodeName = button.Name.ToString();
+        if (!string.IsNullOrWhiteSpace(nodeName))
+            return nodeName.EndsWith("Button", StringComparison.OrdinalIgnoreCase)
+                ? nodeName[..^"Button".Length]
+                : nodeName;
+
+        return null;
+    }
+
+    private static string? FindNodeTextRecursive(Node start)
+    {
+        if (!IsLiveNode(start))
+            return null;
+
+        var text = GetNodeText(start);
+        if (!string.IsNullOrWhiteSpace(text))
+            return text;
+
+        Godot.Collections.Array<Node> children;
+        try
+        {
+            children = start.GetChildren();
+        }
+        catch (ObjectDisposedException)
+        {
+            return null;
+        }
+
+        foreach (var child in children)
+        {
+            text = FindNodeTextRecursive(child);
+            if (!string.IsNullOrWhiteSpace(text))
+                return text;
+        }
+
+        return null;
     }
 
     private static string? GetNodeText(object? node)
@@ -476,6 +659,17 @@ public static partial class McpMod
 
     private static Node? FindVisibleGenericFtue(Node start)
     {
+        if (ReferenceEquals(start, (Godot.Engine.GetMainLoop() as SceneTree)?.Root))
+        {
+            var openModal = GetOpenModalNode();
+            if (openModal != null)
+            {
+                var openFtue = FindVisibleGenericFtue(openModal);
+                if (openFtue != null)
+                    return openFtue;
+            }
+        }
+
         if (!IsLiveNode(start))
             return null;
 

@@ -171,120 +171,7 @@ public static partial class McpMod
                     var charSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
                     if (charSelect != null && IsNodeVisible(charSelect))
                     {
-                        result["menu_screen"] = "character_select";
-                        result["message"] = "Select a character.";
-
-                        var buttons = FindAll<NCharacterSelectButton>(charSelect);
-                        var characters = new List<Dictionary<string, object?>>();
-                        var options = new List<Dictionary<string, object?>>();
-                        foreach (var btn in buttons)
-                        {
-                            try
-                            {
-                                if (btn.Character is { } cm && IsNodeVisible(btn))
-                                {
-                                    var characterId = cm.Id.Entry;
-                                    var characterName = SafeGetText(() => cm.Title);
-                                    options.Add(new Dictionary<string, object?>
-                                    {
-                                        ["name"] = characterId,
-                                        ["enabled"] = !btn.IsLocked
-                                    });
-
-                                    var charData = new Dictionary<string, object?>
-                                    {
-                                        ["name"] = characterName,
-                                        ["id"] = characterId,
-                                        ["locked"] = btn.IsLocked,
-                                        ["hp"] = cm.StartingHp,
-                                        ["gold"] = cm.StartingGold,
-                                        ["energy"] = cm.MaxEnergy,
-                                        ["description"] = SafeGetText(() => cm.CardsModifierDescription),
-                                    };
-
-                                    // Starting relics
-                                    var startRelics = new List<Dictionary<string, object?>>();
-                                    foreach (var relic in cm.StartingRelics)
-                                    {
-                                        startRelics.Add(new Dictionary<string, object?>
-                                        {
-                                            ["name"] = SafeGetText(() => relic.Title),
-                                            ["description"] = SafeGetText(() => relic.DynamicDescription)
-                                        });
-                                    }
-                                    if (startRelics.Count > 0)
-                                        charData["starting_relics"] = startRelics;
-
-                                    // Starting deck summary
-                                    var deckCards = new List<string>();
-                                    foreach (var card in cm.StartingDeck)
-                                        deckCards.Add(SafeGetText(() => card.Title) ?? "?");
-                                    if (deckCards.Count > 0)
-                                        charData["starting_deck"] = deckCards;
-
-                                    // Known cards count from card pool
-                                    try
-                                    {
-                                        var allCards = cm.CardPool?.AllCards;
-                                        if (allCards != null)
-                                            charData["total_cards"] = System.Linq.Enumerable.Count(allCards);
-                                    }
-                                    catch { }
-
-                                    // Known relics count from relic pool
-                                    try
-                                    {
-                                        var allRelics = cm.RelicPool?.AllRelics;
-                                        if (allRelics != null)
-                                            charData["total_relics"] = System.Linq.Enumerable.Count(allRelics);
-                                    }
-                                    catch { }
-
-                                    // Known potions count from potion pool
-                                    try
-                                    {
-                                        var allPotions = cm.PotionPool?.AllPotions;
-                                        if (allPotions != null)
-                                            charData["total_potions"] = System.Linq.Enumerable.Count(allPotions);
-                                    }
-                                    catch { }
-
-                                    characters.Add(charData);
-                                }
-                            }
-                            catch { }
-                        }
-                        if (characters.Count > 0)
-                            result["characters"] = characters;
-
-                        var embarkBtn = GetInstanceFieldValue(charSelect, "_embarkButton");
-                        if (embarkBtn is NClickableControl embarkClickable && IsNodeVisible(embarkClickable))
-                        {
-                            options.Add(new Dictionary<string, object?>
-                            {
-                                ["name"] = "confirm",
-                                ["enabled"] = embarkClickable.IsEnabled
-                            });
-                            options.Add(new Dictionary<string, object?>
-                            {
-                                ["name"] = "embark",
-                                ["enabled"] = embarkClickable.IsEnabled
-                            });
-                        }
-
-                        var backBtn = GetInstanceFieldValue(charSelect, "_backButton")
-                            ?? GetInstanceFieldValue(charSelect, "_unreadyButton");
-                        if (backBtn is NClickableControl backClickable && IsNodeVisible(backClickable))
-                        {
-                            options.Add(new Dictionary<string, object?>
-                            {
-                                ["name"] = "back",
-                                ["enabled"] = backClickable.IsEnabled
-                            });
-                        }
-
-                        if (options.Count > 0)
-                            result["options"] = options;
+                        AddCharacterSelectMenuState(result, charSelect);
                     }
                     else
                     {
@@ -457,6 +344,16 @@ public static partial class McpMod
         var runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
         {
+            if (tree?.Root != null)
+            {
+                var activeCharSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
+                if (activeCharSelect != null && IsNodeVisible(activeCharSelect))
+                {
+                    AddCharacterSelectMenuState(result, activeCharSelect);
+                    return result;
+                }
+            }
+
             result["state_type"] = "unknown";
             return result;
         }
@@ -632,6 +529,19 @@ public static partial class McpMod
                 result["treasure"] = BuildTreasureState(treasureRoom, runState);
             }
         }
+        else if (currentRoom == null && tree?.Root != null)
+        {
+            var activeCharSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
+            if (activeCharSelect != null && IsNodeVisible(activeCharSelect))
+            {
+                AddCharacterSelectMenuState(result, activeCharSelect);
+            }
+            else
+            {
+                result["state_type"] = "unknown";
+                result["room_type"] = currentRoom?.GetType().Name;
+            }
+        }
         else
         {
             result["state_type"] = "unknown";
@@ -654,6 +564,122 @@ public static partial class McpMod
         }
 
         return result;
+    }
+
+    private static void AddCharacterSelectMenuState(
+        Dictionary<string, object?> result,
+        NCharacterSelectScreen charSelect)
+    {
+        result["state_type"] = "menu";
+        result["menu_screen"] = "character_select";
+        result["message"] = "Select a character.";
+
+        var buttons = FindAll<NCharacterSelectButton>(charSelect);
+        var characters = new List<Dictionary<string, object?>>();
+        var options = new List<Dictionary<string, object?>>();
+        foreach (var btn in buttons)
+        {
+            try
+            {
+                if (btn.Character is { } cm && IsNodeVisible(btn))
+                {
+                    var characterId = cm.Id.Entry;
+                    var characterName = SafeGetText(() => cm.Title);
+                    options.Add(new Dictionary<string, object?>
+                    {
+                        ["name"] = characterId,
+                        ["enabled"] = !btn.IsLocked
+                    });
+
+                    var charData = new Dictionary<string, object?>
+                    {
+                        ["name"] = characterName,
+                        ["id"] = characterId,
+                        ["locked"] = btn.IsLocked,
+                        ["hp"] = cm.StartingHp,
+                        ["gold"] = cm.StartingGold,
+                        ["energy"] = cm.MaxEnergy,
+                        ["description"] = SafeGetText(() => cm.CardsModifierDescription),
+                    };
+
+                    var startRelics = new List<Dictionary<string, object?>>();
+                    foreach (var relic in cm.StartingRelics)
+                    {
+                        startRelics.Add(new Dictionary<string, object?>
+                        {
+                            ["name"] = SafeGetText(() => relic.Title),
+                            ["description"] = SafeGetText(() => relic.DynamicDescription)
+                        });
+                    }
+                    if (startRelics.Count > 0)
+                        charData["starting_relics"] = startRelics;
+
+                    var deckCards = new List<string>();
+                    foreach (var card in cm.StartingDeck)
+                        deckCards.Add(SafeGetText(() => card.Title) ?? "?");
+                    if (deckCards.Count > 0)
+                        charData["starting_deck"] = deckCards;
+
+                    try
+                    {
+                        var allCards = cm.CardPool?.AllCards;
+                        if (allCards != null)
+                            charData["total_cards"] = System.Linq.Enumerable.Count(allCards);
+                    }
+                    catch { }
+
+                    try
+                    {
+                        var allRelics = cm.RelicPool?.AllRelics;
+                        if (allRelics != null)
+                            charData["total_relics"] = System.Linq.Enumerable.Count(allRelics);
+                    }
+                    catch { }
+
+                    try
+                    {
+                        var allPotions = cm.PotionPool?.AllPotions;
+                        if (allPotions != null)
+                            charData["total_potions"] = System.Linq.Enumerable.Count(allPotions);
+                    }
+                    catch { }
+
+                    characters.Add(charData);
+                }
+            }
+            catch { }
+        }
+        if (characters.Count > 0)
+            result["characters"] = characters;
+
+        var embarkBtn = GetInstanceFieldValue(charSelect, "_embarkButton");
+        if (embarkBtn is NClickableControl embarkClickable && IsNodeVisible(embarkClickable))
+        {
+            options.Add(new Dictionary<string, object?>
+            {
+                ["name"] = "confirm",
+                ["enabled"] = embarkClickable.IsEnabled
+            });
+            options.Add(new Dictionary<string, object?>
+            {
+                ["name"] = "embark",
+                ["enabled"] = embarkClickable.IsEnabled
+            });
+        }
+
+        var backBtn = GetInstanceFieldValue(charSelect, "_backButton")
+            ?? GetInstanceFieldValue(charSelect, "_unreadyButton");
+        if (backBtn is NClickableControl backClickable && IsNodeVisible(backClickable))
+        {
+            options.Add(new Dictionary<string, object?>
+            {
+                ["name"] = "back",
+                ["enabled"] = backClickable.IsEnabled
+            });
+        }
+
+        if (options.Count > 0)
+            result["options"] = options;
     }
 
     private static Dictionary<string, object?> BuildBattleState(RunState runState, CombatRoom combatRoom)

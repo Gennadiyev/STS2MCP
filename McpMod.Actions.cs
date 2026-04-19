@@ -1109,7 +1109,7 @@ public static partial class McpMod
 
         // Tutorial/FTUE popup - "Enable Tutorials?" dialog
         var tutorialFtue = FindVisibleAcceptTutorialsFtue(tree.Root);
-        if (tutorialFtue != null && IsNodeVisible(tutorialFtue))
+        if (tutorialFtue != null && IsFtueNodeActive(tutorialFtue))
         {
             if (!string.Equals(option, "yes", System.StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(option, "no", System.StringComparison.OrdinalIgnoreCase))
@@ -1124,7 +1124,7 @@ public static partial class McpMod
                 var btnField = isYes ? "<YesButton>k__BackingField" : "<NoButton>k__BackingField";
                 var btn = popup.GetType().GetField(btnField, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(popup);
                 if (btn is NClickableControl clickable &&
-                    IsControlVisibleOrActionable(clickable))
+                    IsPopupButtonActionable(clickable))
                 {
                     clickable.ForceClick();
                     return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = $"Tutorials: {(isYes ? "enabled" : "disabled")}" };
@@ -1145,7 +1145,7 @@ public static partial class McpMod
 
             var confirmBtn = ftue.GetType().GetField("_confirmButton", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(ftue);
             if (confirmBtn is NClickableControl ftueClickable &&
-                IsControlVisibleOrActionable(ftueClickable))
+                IsPopupButtonActionable(ftueClickable))
             {
                 ftueClickable.ForceClick();
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Dismissed tutorial popup" };
@@ -1158,7 +1158,11 @@ public static partial class McpMod
         // over character select on fresh profiles.
         var verticalPopup = FindVisibleVerticalPopup(tree.Root);
         if (verticalPopup != null)
-            return ExecuteVisiblePopupOption(verticalPopup, option);
+            return ExecutePopupOption(GetPopupOptions(verticalPopup), option);
+
+        var popupButtonOptions = GetVisiblePopupButtonOptions(tree.Root);
+        if (popupButtonOptions.Count > 0)
+            return ExecutePopupOption(popupButtonOptions, option);
 
         // Timeline screen - advance through epoch reveals.
         var timelineScreen = FindFirst<NTimelineScreen>(tree.Root);
@@ -1362,15 +1366,16 @@ public static partial class McpMod
         return Error("Not on a menu screen");
     }
 
-    private static Dictionary<string, object?> ExecuteVisiblePopupOption(NVerticalPopup popup, string option)
+    private static Dictionary<string, object?> ExecutePopupOption(
+        List<(string Name, NClickableControl Button)> options,
+        string option)
     {
-        var options = GetPopupOptions(popup);
         foreach (var candidate in options)
         {
             if (!string.Equals(candidate.Name, option, System.StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            if (!IsControlVisibleOrActionable(candidate.Button))
+            if (!IsPopupButtonActionable(candidate.Button))
                 return Error($"Popup option '{candidate.Name}' is disabled");
 
             candidate.Button.ForceClick();
@@ -1423,7 +1428,7 @@ public static partial class McpMod
         {
             var backBtn = GetInstanceFieldValue(charSelect, "_backButton")
                 ?? GetInstanceFieldValue(charSelect, "_unreadyButton");
-            if (backBtn is NClickableControl backClickable && backClickable.IsEnabled)
+            if (backBtn is NClickableControl backClickable && IsControlVisibleOrActionable(backClickable))
             {
                 backClickable.ForceClick();
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Going back" };
