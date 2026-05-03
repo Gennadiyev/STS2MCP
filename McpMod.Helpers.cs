@@ -4,7 +4,9 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Godot;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 
@@ -12,6 +14,29 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
+    // STS2 v0.104.0 removed CombatManager.IsPlayPhase. Reconstruct the same
+    // action-safe window from the current combat side and turn-ending flags.
+    private static bool IsCombatPlayPhase(Player? player = null)
+    {
+        try
+        {
+            var combatState = CombatManager.Instance.DebugOnlyGetState();
+            bool playerTurn = player != null
+                ? CombatManager.Instance.IsPartOfPlayerTurn(player)
+                : combatState?.CurrentSide.ToString().Equals("Player", StringComparison.OrdinalIgnoreCase) == true;
+
+            return CombatManager.Instance.IsInProgress
+                && playerTurn
+                && !CombatManager.Instance.EndingPlayerTurnPhaseOne
+                && !CombatManager.Instance.EndingPlayerTurnPhaseTwo
+                && !CombatManager.Instance.PlayerActionsDisabled;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static string? SafeGetCardDescription(CardModel card, PileType pile = PileType.Hand)
     {
         try { return StripRichTextTags(card.GetDescriptionForPile(pile)).Replace("\n", " "); }
