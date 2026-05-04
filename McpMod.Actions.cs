@@ -95,7 +95,7 @@ public static partial class McpMod
     {
         if (!CombatManager.Instance.IsInProgress)
             return Error("Not in combat");
-        if (!CombatManager.Instance.IsPlayPhase)
+        if (!IsCombatPlayPhase(player))
             return Error("Not in play phase - cannot act during enemy turn");
         if (CombatManager.Instance.PlayerActionsDisabled)
             return Error("Player actions are currently disabled");
@@ -150,7 +150,7 @@ public static partial class McpMod
     {
         if (!CombatManager.Instance.IsInProgress)
             return Error("Not in combat");
-        if (!CombatManager.Instance.IsPlayPhase)
+        if (!IsCombatPlayPhase(player))
             return Error("Not in play phase - cannot act during enemy turn");
         if (CombatManager.Instance.PlayerActionsDisabled)
             return Error("Player actions are currently disabled (turn may already be ending)");
@@ -193,7 +193,7 @@ public static partial class McpMod
         {
             if (!inCombat)
                 return Error($"Potion '{SafeGetText(() => potion.Title)}' can only be used in combat");
-            if (!CombatManager.Instance.IsPlayPhase)
+            if (!IsCombatPlayPhase(player))
                 return Error("Cannot use potions outside of play phase");
         }
         else if (potion.Usage == PotionUsage.Automatic)
@@ -1040,7 +1040,7 @@ public static partial class McpMod
         };
     }
 
-    private static Creature? ResolveTarget(CombatState combatState, string entityId)
+    private static Creature? ResolveTarget(ICombatState combatState, string entityId)
     {
         // Try to match by entity_id pattern: "model_entry_N"
         // First try matching by combat_id if it's a pure number
