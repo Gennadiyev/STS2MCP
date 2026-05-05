@@ -1375,6 +1375,7 @@ public static partial class McpMod
                 "timeline" => "_timelineButton",
                 "settings" => "_settingsButton",
                 "continue" => "_continueButton",
+                "abandon_run" => "_abandonRunButton",
                 "quit" => "_quitButton",
                 _ => null
             };

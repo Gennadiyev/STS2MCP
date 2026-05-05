@@ -338,8 +338,8 @@ public static partial class McpMod
                         {
                             var options = new List<string>();
                             var blockedOptions = new List<Dictionary<string, object?>>();
-                            var fields = new[] { "_continueButton", "_singleplayerButton", "_multiplayerButton", "_compendiumButton", "_timelineButton", "_settingsButton", "_quitButton" };
-                            var labels = new[] { "continue", "singleplayer", "multiplayer", "compendium", "timeline", "settings", "quit" };
+                            var fields = new[] { "_continueButton", "_abandonRunButton", "_singleplayerButton", "_multiplayerButton", "_compendiumButton", "_timelineButton", "_settingsButton", "_quitButton" };
+                            var labels = new[] { "continue", "abandon_run", "singleplayer", "multiplayer", "compendium", "timeline", "settings", "quit" };
                             var unrevealedEpochs = GetProgressEpochIdsByState("Obtained", "ObtainedNoSlot");
                             for (int i = 0; i < fields.Length; i++)
                             {
@@ -962,6 +962,15 @@ public static partial class McpMod
 
             info["expected_player_count"] = lobby.Run?.Players?.Count ?? 0;
             info["connected_player_count"] = lobby.ConnectedPlayerIds?.Count ?? 0;
+
+            // IsAboutToBeginGame == "no players still in handshake AND every connected player is ready".
+            // It's the literal trigger for the host's TryBeginRun, so it doubles as both "all_ready" (matches
+            // the StartRunLobby semantic of 'every joined player is ready') and "is_about_to_begin".
+            // Without these fields, FormatLobbyMarkdown printed "All ready: false" unconditionally for load lobbies.
+            bool aboutToBegin = false;
+            try { aboutToBegin = lobby.IsAboutToBeginGame(); } catch { }
+            info["all_ready"] = aboutToBegin;
+            info["is_about_to_begin"] = aboutToBegin;
 
             // Per-player ready/connected breakdown
             var players = new List<Dictionary<string, object?>>();
