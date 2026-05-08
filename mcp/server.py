@@ -16,6 +16,7 @@ mcp = FastMCP("sts2")
 
 _base_url: str = "http://localhost:15526"
 _trust_env: bool = True
+_http: httpx.AsyncClient | None = None
 
 
 def _sp_url() -> str:
@@ -34,53 +35,53 @@ def _profiles_url() -> str:
     return f"{_base_url}/api/v1/profiles"
 
 
+def _get_client() -> httpx.AsyncClient:
+    global _http
+    if _http is None:
+        _http = httpx.AsyncClient(timeout=httpx.Timeout(10), trust_env=_trust_env)
+    return _http
+
+
 async def _get(params: dict | None = None) -> str:
-    async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
-        r = await client.get(_sp_url(), params=params)
-        r.raise_for_status()
-        return r.text
+    r = await _get_client().get(_sp_url(), params=params)
+    r.raise_for_status()
+    return r.text
 
 
 async def _post(body: dict) -> str:
-    async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
-        r = await client.post(_sp_url(), json=body)
-        r.raise_for_status()
-        return r.text
+    r = await _get_client().post(_sp_url(), json=body)
+    r.raise_for_status()
+    return r.text
 
 
 async def _mp_get(params: dict | None = None) -> str:
-    async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
-        r = await client.get(_mp_url(), params=params)
-        r.raise_for_status()
-        return r.text
+    r = await _get_client().get(_mp_url(), params=params)
+    r.raise_for_status()
+    return r.text
 
 
 async def _mp_post(body: dict) -> str:
-    async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
-        r = await client.post(_mp_url(), json=body)
-        r.raise_for_status()
-        return r.text
+    r = await _get_client().post(_mp_url(), json=body)
+    r.raise_for_status()
+    return r.text
 
 
 async def _profile_get() -> str:
-    async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
-        r = await client.get(_profile_url())
-        r.raise_for_status()
-        return r.text
+    r = await _get_client().get(_profile_url())
+    r.raise_for_status()
+    return r.text
 
 
 async def _profiles_get() -> str:
-    async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
-        r = await client.get(_profiles_url())
-        r.raise_for_status()
-        return r.text
+    r = await _get_client().get(_profiles_url())
+    r.raise_for_status()
+    return r.text
 
 
 async def _profiles_post(body: dict) -> str:
-    async with httpx.AsyncClient(timeout=10, trust_env=_trust_env) as client:
-        r = await client.post(_profiles_url(), json=body)
-        r.raise_for_status()
-        return r.text
+    r = await _get_client().post(_profiles_url(), json=body)
+    r.raise_for_status()
+    return r.text
 
 
 async def _wait_for_profile(profile_id: int, fallback: str) -> str:
@@ -1079,6 +1080,9 @@ def main():
     global _base_url, _trust_env
     _base_url = f"http://{args.host}:{args.port}"
     _trust_env = not args.no_trust_env
+
+    # Eagerly initialize the shared httpx client so the first request is fast
+    _get_client()
 
     mcp.run(transport="stdio")
 
