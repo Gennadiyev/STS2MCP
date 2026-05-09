@@ -677,6 +677,21 @@ def audit_state_surface(repo: Path) -> None:
         if required_fragment not in map_action_body:
             fail(f"choose_map_node action missing visibility/travel guard: {required_fragment}")
 
+    enemy_state_match = re.search(
+        r"private static Dictionary<string, object\?> BuildEnemyState\(.*?\n    private static Dictionary<string, object\?> BuildEventState\(",
+        state_builder,
+        re.S,
+    )
+    if not enemy_state_match:
+        fail("could not locate BuildEnemyState for enemy target audit")
+    enemy_state_body = enemy_state_match.group(0)
+    docs_raw_full = (repo / "docs" / "raw-full.md").read_text(encoding="utf-8")
+    for required_fragment in ["is_alive", "is_visible", "can_target", "can_select"]:
+        if required_fragment not in enemy_state_body:
+            fail(f"enemy state missing targetability metadata: {required_fragment}")
+        if required_fragment not in docs_raw_full:
+            fail(f"docs missing enemy targetability metadata: {required_fragment}")
+
     print(f"states: {len(state_types)} documented, markdown coverage enforced")
 
 

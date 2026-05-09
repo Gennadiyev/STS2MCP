@@ -1495,6 +1495,10 @@ public static partial class McpMod
             ["hp"] = creature.CurrentHp,
             ["max_hp"] = creature.MaxHp,
             ["block"] = creature.Block,
+            ["is_alive"] = creature.IsAlive,
+            ["is_visible"] = creature.IsAlive,
+            ["can_target"] = creature.IsAlive,
+            ["can_select"] = creature.IsAlive,
             ["status"] = BuildPowersState(creature)
         };
 

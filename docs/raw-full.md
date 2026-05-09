@@ -391,6 +391,7 @@ Run state or room type not recognized.
         "hp": 44,
         "max_hp": 44,
         "block": 0,
+        "is_alive": true,
         "status": [ /* Power Objects */ ],
         "intents": [
           {
@@ -401,6 +402,7 @@ Run state or room type not recognized.
           }
         ],
         "is_visible": true,
+        "can_target": true,
         "can_select": true
       }
     ]
