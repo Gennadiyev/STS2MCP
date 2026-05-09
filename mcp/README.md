@@ -52,6 +52,8 @@
 
 Profile, profile-list, and Compendium tools include `status`, `kind`, `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, and `save_scope`; profile and Compendium responses also include `current_run` when a run is active, so callers can distinguish the active profile, save scope, local save location, and current run attempt.
 
+Save/path context fields are normalized with forward slashes, including Windows absolute paths.
+
 Profile switch/delete failures are surfaced as structured endpoint errors with HTTP 400 for invalid input and HTTP 409 for state conflicts such as deleting the active profile or switching during a run.
 
 Menu/action dispatch failures also use structured endpoint errors where available: missing or unknown main-menu selections and unknown actions return HTTP 400, gameplay actions sent without an active run return HTTP 409, and other failed actions return non-2xx structured error JSON instead of HTTP 200. MCP wrappers preserve those structured JSON error bodies and add `http_status` so callers can handle endpoint failures without parsing a flat text prefix.

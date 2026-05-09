@@ -22,6 +22,8 @@ HTTP error responses include `status: "error"` and `error`. Some route-specific 
 
 `GET /` returns the API index with `status: "ok"`, `kind: "api_index"`, `version`, `endpoint_count`, `bound_prefixes`, and the advertised endpoint list.
 
+Save/path context fields are normalized with forward slashes in JSON responses, including Windows absolute paths.
+
 The singleplayer and multiplayer endpoints are mutually exclusive: calling singleplayer during a multiplayer run (or vice versa) returns HTTP 409. The mismatch response includes `error_code`: `multiplayer_run_active` when singleplayer is called during a multiplayer run, or `not_multiplayer_run` when multiplayer is called outside one.
 
 ---
@@ -1037,15 +1039,15 @@ Returns the active profile's progress grouped by the in-game Compendium cards:
   "status": "ok",
   "kind": "compendium",
   "profile_id": 1,
-  "progress_path": "modded/profile1\\saves\\progress.save",
-  "resolved_progress_path": "C:\\Users\\timot\\AppData\\Roaming\\SlayTheSpire2\\steam\\76561197985806660\\modded/profile1\\saves\\progress.save",
+  "progress_path": "modded/profile1/saves/progress.save",
+  "resolved_progress_path": "C:/Users/timot/AppData/Roaming/SlayTheSpire2/steam/76561197985806660/modded/profile1/saves/progress.save",
   "profile_root": "modded/profile1",
   "save_scope": "modded",
   "current_run": {
     "is_in_progress": true,
     "profile_id": 1,
-    "progress_path": "modded/profile1\\saves\\progress.save",
-    "resolved_progress_path": "C:\\Users\\timot\\AppData\\Roaming\\SlayTheSpire2\\steam\\76561197985806660\\modded/profile1\\saves\\progress.save",
+    "progress_path": "modded/profile1/saves/progress.save",
+    "resolved_progress_path": "C:/Users/timot/AppData/Roaming/SlayTheSpire2/steam/76561197985806660/modded/profile1/saves/progress.save",
     "profile_root": "modded/profile1",
     "save_scope": "modded",
     "run_id": "modded:profile1:1778295706",
@@ -1101,8 +1103,8 @@ Example success shape:
   "scope": "active_run",
   "count": 87,
   "profile_id": 1,
-  "progress_path": "modded/profile1\\saves\\progress.save",
-  "resolved_progress_path": "C:\\Users\\timot\\AppData\\Roaming\\SlayTheSpire2\\steam\\76561197985806660\\modded/profile1\\saves\\progress.save",
+  "progress_path": "modded/profile1/saves/progress.save",
+  "resolved_progress_path": "C:/Users/timot/AppData/Roaming/SlayTheSpire2/steam/76561197985806660/modded/profile1/saves/progress.save",
   "profile_root": "modded/profile1",
   "save_scope": "modded",
   "current_run": {

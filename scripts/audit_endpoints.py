@@ -96,6 +96,20 @@ def assert_sorted_objects(path: str, field: str, values: object, key: str) -> No
         fail(f"{path} expected {field} to be sorted by {key}")
 
 
+def assert_context_paths_normalized(path: str, data: object) -> None:
+    if not isinstance(data, dict):
+        return
+
+    for field in ["progress_path", "resolved_progress_path", "profile_root", "save_path"]:
+        value = data.get(field)
+        if isinstance(value, str) and "\\" in value:
+            fail(f"{path} expected {field} to use forward slashes, got {value!r}")
+
+    current_run = data.get("current_run")
+    if isinstance(current_run, dict):
+        assert_context_paths_normalized(f"{path}.current_run", current_run)
+
+
 def audit_docs(repo: Path) -> None:
     raw_full = (repo / "docs" / "raw-full.md").read_text(encoding="utf-8")
     documented = set(re.findall(r"- `(GET|POST)\s+([^`]+)`", raw_full))
@@ -394,8 +408,24 @@ def audit_static_card_glossary_metadata(repo: Path) -> None:
 def audit_static_save_roots(repo: Path) -> None:
     compendium = (repo / "McpMod.Compendium.cs").read_text(encoding="utf-8")
     profile = (repo / "McpMod.Profile.cs").read_text(encoding="utf-8")
+    fork_endpoints = (repo / "McpMod.ForkEndpoints.cs").read_text(encoding="utf-8")
+    helpers = (repo / "McpMod.Helpers.cs").read_text(encoding="utf-8")
     mcp_server = (repo / "mcp" / "server.py").read_text(encoding="utf-8")
     mcp_readme = (repo / "mcp" / "README.md").read_text(encoding="utf-8")
+    raw_full = (repo / "docs" / "raw-full.md").read_text(encoding="utf-8")
+
+    if "NormalizePathForJson" not in helpers:
+        fail("profile/save context paths must be normalized at the JSON boundary")
+    for source_name, source in [
+        ("compendium", compendium),
+        ("profile", profile),
+        ("glossary", fork_endpoints),
+    ]:
+        if "NormalizePathForJson" not in source:
+            fail(f"{source_name} endpoint missing path normalization for profile/save context")
+    if "\\saves\\progress.save" in raw_full:
+        fail("docs/raw-full.md should show normalized profile/save paths with forward slashes")
+
     match = re.search(
         r"private static IEnumerable<string> EnumerateSaveRoots\(\).*?\n    private static IEnumerable<string> EnumerateSteamDataRoots\(\)",
         compendium,
@@ -1009,6 +1039,7 @@ def audit_live(base_url: str) -> None:
         if path in {"/api/v1/profile", "/api/v1/compendium"}:
             if not isinstance(data, dict):
                 fail(f"{path} expected structured profile context object, got {type(data).__name__}")
+            assert_context_paths_normalized(path, data)
             expected_kind = path.rsplit("/", 1)[-1]
             if data.get("status") != "ok" or data.get("kind") != expected_kind:
                 fail(f"{path} expected status ok and kind {expected_kind}, got {data}")
@@ -1047,6 +1078,7 @@ def audit_live(base_url: str) -> None:
             for profile_slot in profiles:
                 if not isinstance(profile_slot, dict):
                     fail(f"{path} expected profile slot objects, got {profile_slot}")
+                assert_context_paths_normalized(f"{path}.profiles[]", profile_slot)
                 for required_field in ["id", "profile_id", "is_current", "has_data", "progress_path", "resolved_progress_path", "profile_root", "save_scope"]:
                     if required_field not in profile_slot:
                         fail(f"{path} profile slot missing field {required_field}: {profile_slot}")
@@ -1069,6 +1101,7 @@ def audit_live(base_url: str) -> None:
         if path.startswith("/api/v1/glossary/") and status == 409:
             if not isinstance(data, dict) or data.get("error_code") != "run_not_in_progress":
                 fail(f"{path} expected run_not_in_progress glossary error, got {data}")
+            assert_context_paths_normalized(path, data)
             for required_field in ["kind", "profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope"]:
                 if required_field not in data:
                     fail(f"{path} glossary error missing profile/save context field: {required_field}")
@@ -1076,6 +1109,7 @@ def audit_live(base_url: str) -> None:
             expected_kind = path.rsplit("/", 1)[-1]
             if not isinstance(data, dict):
                 fail(f"{path} expected structured glossary object, got {type(data).__name__}")
+            assert_context_paths_normalized(path, data)
             if data.get("status") != "ok" or data.get("kind") != expected_kind:
                 fail(f"{path} expected status ok and kind {expected_kind}, got {data}")
             if not isinstance(data.get("items"), list) or data.get("count") != len(data["items"]):
@@ -1110,6 +1144,7 @@ def audit_live(base_url: str) -> None:
     status, data = load_json_url(base_url.rstrip("/") + "/api/v1/singleplayer?format=json")
     if status != 200 or not isinstance(data, dict) or "state_type" not in data:
         fail(f"/api/v1/singleplayer?format=json expected JSON state, got HTTP {status}: {data}")
+    assert_context_paths_normalized("/api/v1/singleplayer?format=json", data)
     if data.get("status") != "ok" or data.get("kind") != "singleplayer_state":
         fail(f"/api/v1/singleplayer?format=json expected status ok and kind singleplayer_state, got {data}")
 

@@ -120,9 +120,9 @@ public static partial class McpMod
             ["status"] = "ok",
             ["kind"] = "compendium",
             ["profile_id"] = snapshot.ProfileId,
-            ["progress_path"] = snapshot.ProgressPath,
-            ["resolved_progress_path"] = snapshot.ResolvedProgressPath,
-            ["profile_root"] = snapshot.ProfileRoot,
+            ["progress_path"] = NormalizePathForJson(snapshot.ProgressPath),
+            ["resolved_progress_path"] = NormalizePathForJson(snapshot.ResolvedProgressPath),
+            ["profile_root"] = NormalizePathForJson(snapshot.ProfileRoot),
             ["save_scope"] = snapshot.SaveScope,
             ["current_run"] = BuildCurrentRunContext(snapshot),
             ["source"] = "SaveManager.Progress plus model metadata endpoints",
@@ -421,9 +421,9 @@ public static partial class McpMod
         {
             ["is_in_progress"] = true,
             ["profile_id"] = profileId,
-            ["progress_path"] = progressPath,
-            ["resolved_progress_path"] = ResolveProfileProgressPath(profileId),
-            ["profile_root"] = profileRoot,
+            ["progress_path"] = NormalizePathForJson(progressPath),
+            ["resolved_progress_path"] = NormalizePathForJson(ResolveProfileProgressPath(profileId)),
+            ["profile_root"] = NormalizePathForJson(profileRoot),
             ["save_scope"] = saveScope,
             ["id_format"] = "{save_scope}:profile{profile_id}:{start_time}"
         };
@@ -435,7 +435,7 @@ public static partial class McpMod
             return result;
         }
 
-        result["save_path"] = currentRunPath;
+        result["save_path"] = NormalizePathForJson(currentRunPath);
 
         try
         {

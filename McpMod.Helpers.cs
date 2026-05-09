@@ -147,6 +147,9 @@ public static partial class McpMod
         return state;
     }
 
+    private static string? NormalizePathForJson(string? path)
+        => string.IsNullOrWhiteSpace(path) ? path : path.Replace('\\', '/');
+
     private static object? GetInstanceFieldValue(object source, string fieldName)
     {
         const System.Reflection.BindingFlags Flags =

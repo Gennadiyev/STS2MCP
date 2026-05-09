@@ -144,11 +144,11 @@ public static partial class McpMod
             {
             }
             profileData["has_data"] = resolvedPath != null && File.Exists(resolvedPath);
-            profileData["path"] = path;
-            profileData["resolved_path"] = resolvedPath;
-            profileData["progress_path"] = path;
-            profileData["resolved_progress_path"] = resolvedPath;
-            profileData["profile_root"] = profileRoot;
+            profileData["path"] = NormalizePathForJson(path);
+            profileData["resolved_path"] = NormalizePathForJson(resolvedPath);
+            profileData["progress_path"] = NormalizePathForJson(path);
+            profileData["resolved_progress_path"] = NormalizePathForJson(resolvedPath);
+            profileData["profile_root"] = NormalizePathForJson(profileRoot);
             profileData["save_scope"] = GetSaveScope(profileRoot);
 
             profiles.Add(profileData);
@@ -273,9 +273,9 @@ public static partial class McpMod
         result["status"] = "ok";
         result["kind"] = "profile";
         result["profile_id"] = profileId;
-        result["progress_path"] = progressPath;
-        result["resolved_progress_path"] = resolvedProgressPath;
-        result["profile_root"] = profileRoot;
+        result["progress_path"] = NormalizePathForJson(progressPath);
+        result["resolved_progress_path"] = NormalizePathForJson(resolvedProgressPath);
+        result["profile_root"] = NormalizePathForJson(profileRoot);
         result["save_scope"] = GetSaveScope(profileRoot);
         result["current_run"] = BuildActiveRunContext();
 

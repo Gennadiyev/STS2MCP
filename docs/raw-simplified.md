@@ -21,6 +21,8 @@ HTTP error responses include `status: "error"` and `error`. Some route-specific 
 
 `GET /` returns `status: "ok"`, `kind: "api_index"`, `version`, `endpoint_count`, `bound_prefixes`, and the advertised endpoint list.
 
+Save/path context fields are normalized with forward slashes in JSON responses, including Windows absolute paths.
+
 Singleplayer and multiplayer endpoints are mutually exclusive (HTTP 409 if mismatched). The mismatch response includes `error_code`: `multiplayer_run_active` when singleplayer is called during a multiplayer run, or `not_multiplayer_run` when multiplayer is called outside one.
 
 ## GET — Query Parameters

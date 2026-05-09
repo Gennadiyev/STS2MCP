@@ -236,9 +236,9 @@ public static partial class McpMod
             error["kind"] = payload.Kind;
             error["scope"] = "active_run";
             error["profile_id"] = payload.ProfileId;
-            error["progress_path"] = payload.ProgressPath;
-            error["resolved_progress_path"] = payload.ResolvedProgressPath;
-            error["profile_root"] = payload.ProfileRoot;
+            error["progress_path"] = NormalizePathForJson(payload.ProgressPath);
+            error["resolved_progress_path"] = NormalizePathForJson(payload.ResolvedProgressPath);
+            error["profile_root"] = NormalizePathForJson(payload.ProfileRoot);
             error["save_scope"] = payload.SaveScope;
             error["net_type"] = payload.NetType;
             SendJson(response, data);
@@ -258,9 +258,9 @@ public static partial class McpMod
             ["scope"] = "active_run",
             ["count"] = items.Count,
             ["profile_id"] = payload.ProfileId,
-            ["progress_path"] = payload.ProgressPath,
-            ["resolved_progress_path"] = payload.ResolvedProgressPath,
-            ["profile_root"] = payload.ProfileRoot,
+            ["progress_path"] = NormalizePathForJson(payload.ProgressPath),
+            ["resolved_progress_path"] = NormalizePathForJson(payload.ResolvedProgressPath),
+            ["profile_root"] = NormalizePathForJson(payload.ProfileRoot),
             ["save_scope"] = payload.SaveScope,
             ["current_run"] = BuildCurrentRunContext(
                 isRunInProgress: true,
