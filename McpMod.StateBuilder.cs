@@ -31,6 +31,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Relics;
+using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
@@ -1615,17 +1616,26 @@ public static partial class McpMod
     {
         var state = new Dictionary<string, object?>();
 
+        var optionButtons = NRestSiteRoom.Instance != null
+            ? FindAll<NRestSiteButton>(NRestSiteRoom.Instance)
+                .Where(button => button.Visible && button.IsVisibleInTree())
+                .ToList()
+            : new List<NRestSiteButton>();
         var options = new List<Dictionary<string, object?>>();
+
         int index = 0;
-        foreach (var opt in restSiteRoom.Options)
+        foreach (var button in optionButtons)
         {
+            var opt = button.Option;
             options.Add(new Dictionary<string, object?>
             {
                 ["index"] = index,
                 ["id"] = opt.OptionId,
                 ["name"] = SafeGetText(() => opt.Title),
                 ["description"] = SafeGetText(() => opt.Description),
-                ["is_enabled"] = opt.IsEnabled
+                ["is_enabled"] = opt.IsEnabled && button.IsEnabled,
+                ["is_visible"] = true,
+                ["can_choose"] = opt.IsEnabled && button.IsEnabled
             });
             index++;
         }

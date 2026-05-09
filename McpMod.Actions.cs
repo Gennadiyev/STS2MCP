@@ -336,7 +336,9 @@ public static partial class McpMod
         if (restRoom == null)
             return Error("Rest site room is not open");
 
-        var buttons = FindAll<NRestSiteButton>(restRoom);
+        var buttons = FindAll<NRestSiteButton>(restRoom)
+            .Where(button => button.Visible && button.IsVisibleInTree())
+            .ToList();
 
         if (buttons.Count == 0)
             return Error("No rest site options available");
@@ -345,6 +347,8 @@ public static partial class McpMod
 
         var button = buttons[index];
         if (!button.Option.IsEnabled)
+            return Error($"Rest option {index} ({button.Option.OptionId}) is disabled");
+        if (!button.IsEnabled)
             return Error($"Rest option {index} ({button.Option.OptionId}) is disabled");
         string optionName = SafeGetText(() => button.Option.Title) ?? button.Option.OptionId;
         button.ForceClick();

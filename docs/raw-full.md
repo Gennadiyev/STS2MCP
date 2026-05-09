@@ -613,7 +613,9 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
         "id": "rest",
         "name": "Rest",
         "description": "Heal 30% of max HP.",
-        "is_enabled": true
+        "is_enabled": true,
+        "is_visible": true,
+        "can_choose": true
       }
     ],
     "can_proceed": false

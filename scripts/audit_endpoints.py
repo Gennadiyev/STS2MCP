@@ -430,6 +430,29 @@ def audit_state_surface(repo: Path) -> None:
         if required_fragment not in event_action_body:
             fail(f"event option action missing visibility/enabled guard: {required_fragment}")
 
+    rest_state_match = re.search(
+        r"private static Dictionary<string, object\?> BuildRestSiteState\(.*?\n    private static Dictionary<string, object\?> BuildShopState\(",
+        state_builder,
+        re.S,
+    )
+    if not rest_state_match:
+        fail("could not locate BuildRestSiteState for rest-option audit")
+    rest_state_body = rest_state_match.group(0)
+    rest_action_match = re.search(
+        r"private static Dictionary<string, object\?> ExecuteChooseRestOption\(.*?\n    private static Dictionary<string, object\?> ExecuteShopPurchase\(",
+        actions,
+        re.S,
+    )
+    if not rest_action_match:
+        fail("could not locate ExecuteChooseRestOption for rest-option audit")
+    rest_action_body = rest_action_match.group(0)
+    for required_fragment in ["IsVisibleInTree", "is_visible", "can_choose"]:
+        if required_fragment not in rest_state_body:
+            fail(f"rest option state missing visibility/enabled metadata: {required_fragment}")
+    for required_fragment in ["IsVisibleInTree", "IsEnabled"]:
+        if required_fragment not in rest_action_body:
+            fail(f"rest option action missing visibility/enabled guard: {required_fragment}")
+
     print(f"states: {len(state_types)} documented, markdown coverage enforced")
 
 

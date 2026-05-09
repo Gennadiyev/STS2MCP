@@ -638,6 +638,8 @@ async def map_choose_node(node_index: int) -> str:
 async def rest_choose_option(option_index: int) -> str:
     """[Rest Site] Choose a rest site option (rest, smith, etc.).
 
+    Only visible enabled options are actionable.
+
     Args:
         option_index: 0-based index of the option from the rest site state.
     """
@@ -1025,6 +1027,8 @@ async def mp_event_advance_dialogue() -> str:
 @mcp.tool()
 async def mp_rest_choose_option(option_index: int) -> str:
     """[Multiplayer Rest Site] Choose a rest site option (rest, smith, etc.).
+
+    Only visible enabled options are actionable.
 
     Per-player choice — no voting needed.
 

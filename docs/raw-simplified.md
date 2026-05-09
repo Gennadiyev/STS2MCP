@@ -159,7 +159,7 @@ When a run is active, the response includes `current_run.run_id` in `{save_scope
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `choose_rest_option` | `index`: int | Choose rest, smith, or other option. |
+| `choose_rest_option` | `index`: int | Choose a visible enabled rest, smith, or other option. |
 | `proceed` | _(none)_ | Leave the rest site. |
 
 ### Shop (`shop`)
