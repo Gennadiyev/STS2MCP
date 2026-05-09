@@ -24,6 +24,14 @@ Grab the [latest release](https://github.com/Gennadiyev/STS2MCP/releases/latest)
 2. Launch the game and enable mods in settings (a consent dialog appears on first launch)
 3. The mod starts an HTTP server on port `15526` automatically. It first tries a wildcard bind, then explicit local IPv4 addresses, and finally loopback-only (`localhost`) if broader binds are unavailable.
 
+To use a different game API port on the next launch, set `STS2_PORT` in the game process environment or create a `.env` file next to the installed `STS2_MCP.dll`:
+
+```dotenv
+STS2_PORT=15527
+```
+
+Shell environment variables take precedence over `.env`, and the legacy `STS2_MCP.conf` port remains supported when `STS2_PORT` is unset.
+
 > [!note]
 > The release DLL is a platform-agnostic .NET assembly — the same `STS2_MCP.dll` and `STS2_MCP.json` work on Windows, Linux, and macOS. No separate builds are needed.
 

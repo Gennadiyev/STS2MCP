@@ -24,6 +24,8 @@ public static partial class McpMod
     public const string Version = "0.4.0";
     public const int DefaultPort = 15526;
     private const string ConfigFileName = "STS2_MCP.conf";
+    private const string DotEnvFileName = ".env";
+    private const string PortEnvVar = "STS2_PORT";
 
     private static HttpListener? _listener;
     private static Thread? _serverThread;
@@ -43,6 +45,13 @@ public static partial class McpMod
         {
             string? modDir = Path.GetDirectoryName(
                 System.Reflection.Assembly.GetExecutingAssembly().Location);
+
+            if (TryLoadPortFromEnvironment(out int envPort))
+                return envPort;
+
+            if (TryLoadPortFromDotEnv(modDir, out int dotEnvPort))
+                return dotEnvPort;
+
             if (modDir == null) return DefaultPort;
 
             string configPath = Path.Combine(modDir, ConfigFileName);
@@ -79,6 +88,94 @@ public static partial class McpMod
             GD.PrintErr($"[STS2 MCP] Failed to load config: {ex.Message}, using default port {DefaultPort}");
             return DefaultPort;
         }
+    }
+
+    private static bool TryLoadPortFromEnvironment(out int port)
+    {
+        var configured = System.Environment.GetEnvironmentVariable(PortEnvVar);
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            port = 0;
+            return false;
+        }
+
+        return TryParseConfiguredPort(configured, PortEnvVar, out port);
+    }
+
+    private static bool TryLoadPortFromDotEnv(string? modDir, out int port)
+    {
+        foreach (var envPath in GetDotEnvPaths(modDir))
+        {
+            try
+            {
+                if (!File.Exists(envPath))
+                    continue;
+
+                foreach (var line in File.ReadLines(envPath))
+                {
+                    var stripped = line.Trim();
+                    if (stripped.Length == 0 || stripped.StartsWith("#", StringComparison.Ordinal) || !stripped.Contains('='))
+                        continue;
+
+                    var separator = stripped.IndexOf('=');
+                    var key = stripped[..separator].Trim();
+                    if (key.StartsWith("export ", StringComparison.Ordinal))
+                        key = key["export ".Length..].Trim();
+
+                    if (!string.Equals(key, PortEnvVar, StringComparison.Ordinal))
+                        continue;
+
+                    var value = ParseDotEnvValue(stripped[(separator + 1)..]);
+                    return TryParseConfiguredPort(value, $"{envPath}:{PortEnvVar}", out port);
+                }
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                GD.PrintErr($"[STS2 MCP] Failed to read {envPath}: {ex.Message}");
+            }
+        }
+
+        port = 0;
+        return false;
+    }
+
+    private static IEnumerable<string> GetDotEnvPaths(string? modDir)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        if (!string.IsNullOrWhiteSpace(modDir))
+        {
+            var modEnvPath = Path.Combine(modDir, DotEnvFileName);
+            if (seen.Add(modEnvPath))
+                yield return modEnvPath;
+        }
+
+        var cwdEnvPath = Path.Combine(System.Environment.CurrentDirectory, DotEnvFileName);
+        if (seen.Add(cwdEnvPath))
+            yield return cwdEnvPath;
+    }
+
+    private static string ParseDotEnvValue(string rawValue)
+    {
+        var value = rawValue.Trim();
+        if (value.Length >= 2 && value[0] == value[^1] && (value[0] == '\'' || value[0] == '"'))
+            return value[1..^1];
+
+        var commentIndex = value.IndexOf('#');
+        if (commentIndex >= 0)
+            value = value[..commentIndex].TrimEnd();
+
+        return value;
+    }
+
+    private static bool TryParseConfiguredPort(string value, string source, out int port)
+    {
+        if (int.TryParse(value.Trim(), out port) && port is > 0 and <= 65535)
+            return true;
+
+        GD.PrintErr($"[STS2 MCP] Invalid port value from {source}: {value}; using next configured port source");
+        port = 0;
+        return false;
     }
 
     public static void Initialize()
