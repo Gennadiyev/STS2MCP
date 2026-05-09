@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Godot;
@@ -150,9 +151,18 @@ public static partial class McpMod
         SendJson(response, result);
     }
 
-    private static Dictionary<string, object?> Error(string message, string? errorCode = null)
+    private static Dictionary<string, object?> Error(
+        string message,
+        string? errorCode = null,
+        [CallerFilePath] string callerFilePath = "")
     {
         var data = new Dictionary<string, object?> { ["status"] = "error", ["error"] = message };
+        if (string.IsNullOrWhiteSpace(errorCode)
+            && (callerFilePath.EndsWith("McpMod.Actions.cs", StringComparison.Ordinal)
+                || callerFilePath.EndsWith("McpMod.MultiplayerActions.cs", StringComparison.Ordinal)))
+        {
+            errorCode = "action_error";
+        }
         if (!string.IsNullOrWhiteSpace(errorCode))
             data["error_code"] = errorCode;
         return data;

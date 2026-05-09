@@ -301,6 +301,9 @@ def audit_static_error_shapes(repo: Path) -> None:
     for required_fragment in ["SendActionResultJson", "unknown_action", "run_not_in_progress", "local_player_unavailable", "blocking_popup_active"]:
         if required_fragment not in mcp_mod + actions:
             fail(f"singleplayer actions missing structured dispatch error handling: {required_fragment}")
+    for required_fragment in ["CallerFilePath", "action_error", "McpMod.Actions.cs", "McpMod.MultiplayerActions.cs"]:
+        if required_fragment not in helpers:
+            fail(f"generic action failures must get fallback error_code values: {required_fragment}")
     if "response.StatusCode = 400;" not in mcp_mod:
         fail("action result sender must return non-2xx for uncoded action errors")
     for required_fragment in ["missing_menu_option", "unknown_menu_option", "not_on_menu"]:
@@ -325,6 +328,8 @@ def audit_static_error_shapes(repo: Path) -> None:
     )
     if "blocking_popup_active" not in docs:
         fail("docs must describe blocking popup action errors")
+    if "action_error" not in docs:
+        fail("docs must describe generic action error fallback code")
     for required_fragment in ["method_not_allowed", "not_found", "internal_error"]:
         if required_fragment not in docs:
             fail(f"docs must describe route-level error code: {required_fragment}")
