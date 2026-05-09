@@ -187,6 +187,18 @@ def assert_card_payload(path: str, field: str, values: object, *, hand: bool) ->
                 fail(f"{path} {field} playable targeted card missing valid targets: {item}")
 
 
+def assert_keyword_payload(path: str, field: str, values: object) -> None:
+    if not isinstance(values, list):
+        fail(f"{path} expected {field} to be a list, got {values}")
+    for keyword in values:
+        if not isinstance(keyword, dict):
+            fail(f"{path} expected {field} entries to be objects, got {keyword}")
+        for required_field in ["name", "description"]:
+            value = keyword.get(required_field)
+            if not isinstance(value, str) or not value.strip():
+                fail(f"{path} {field} entry missing non-empty {required_field}: {keyword}")
+
+
 def audit_docs(repo: Path) -> None:
     raw_full = (repo / "docs" / "raw-full.md").read_text(encoding="utf-8")
     readme = (repo / "README.md").read_text(encoding="utf-8")
@@ -1702,6 +1714,36 @@ def audit_live(base_url: str) -> None:
                 for required_field in required_item_fields:
                     if required_field not in item:
                         fail(f"{path} glossary item missing field {required_field}: {item}")
+                for required_field in ["name", "description"]:
+                    value = item.get(required_field)
+                    if not isinstance(value, str) or not value.strip():
+                        fail(f"{path} glossary item missing non-empty {required_field}: {item}")
+                if expected_kind != "keywords":
+                    for required_field in ["id", "rarity", "pool"]:
+                        value = item.get(required_field)
+                        if not isinstance(value, str) or not value.strip():
+                            fail(f"{path} glossary item missing non-empty {required_field}: {item}")
+                    assert_keyword_payload(path, "keywords", item.get("keywords"))
+                if expected_kind == "cards":
+                    for required_field in ["type", "cost", "upgrade_preview_type"]:
+                        value = item.get(required_field)
+                        if not isinstance(value, str) or not value.strip():
+                            fail(f"{path} card glossary item missing non-empty {required_field}: {item}")
+                    for required_field in ["is_upgraded", "is_upgradable"]:
+                        if not isinstance(item.get(required_field), bool):
+                            fail(f"{path} card glossary item expected bool {required_field}: {item}")
+                    for required_field in ["current_upgrade_level", "max_upgrade_level"]:
+                        if not isinstance(item.get(required_field), int):
+                            fail(f"{path} card glossary item expected int {required_field}: {item}")
+                    for nullable_string_field in ["star_cost", "upgrade_preview_cost", "upgrade_preview_star_cost"]:
+                        value = item.get(nullable_string_field)
+                        if value is not None and not isinstance(value, str):
+                            fail(f"{path} card glossary item expected nullable string {nullable_string_field}: {item}")
+                if expected_kind == "potions":
+                    for required_field in ["target_type", "usage"]:
+                        value = item.get(required_field)
+                        if not isinstance(value, str) or not value.strip():
+                            fail(f"{path} potion glossary item missing non-empty {required_field}: {item}")
                 if expected_kind == "cards" and item.get("is_upgradable") is True:
                     preview_description = item.get("upgrade_preview_description")
                     if not isinstance(preview_description, str) or not preview_description.strip():
