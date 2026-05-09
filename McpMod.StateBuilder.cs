@@ -1376,8 +1376,11 @@ public static partial class McpMod
                 };
                 if (opt.Relic != null)
                 {
+                    optData["relic_id"] = opt.Relic.Id.Entry;
                     optData["relic_name"] = SafeGetText(() => opt.Relic.Title);
                     optData["relic_description"] = SafeGetText(() => opt.Relic.DynamicDescription);
+                    optData["relic_rarity"] = opt.Relic.Rarity.ToString();
+                    optData["relic_keywords"] = BuildHoverTips(opt.Relic.HoverTipsExcludingRelic);
                 }
                 optData["keywords"] = BuildHoverTips(opt.HoverTips);
                 options.Add(optData);

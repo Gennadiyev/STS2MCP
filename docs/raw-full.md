@@ -547,8 +547,11 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
         "is_locked": false,
         "is_proceed": false,
         "was_chosen": false,
+        "relic_id": "RELIC_ID",             // Only if option has a relic
         "relic_name": "Relic Name",         // Only if option has a relic
         "relic_description": "Relic desc.",  // Only if option has a relic
+        "relic_rarity": "Common",           // Only if option has a relic
+        "relic_keywords": [ /* Keyword Objects */ ],
         "keywords": [ /* Keyword Objects */ ]
       }
     ]
