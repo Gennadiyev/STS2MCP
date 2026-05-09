@@ -127,6 +127,66 @@ def assert_context_paths_normalized(path: str, data: object) -> None:
             assert_context_paths_normalized(f"{path}.sections.run_history", run_history)
 
 
+def assert_target_refs(path: str, field: str, values: object) -> None:
+    if not isinstance(values, list):
+        fail(f"{path} expected {field} to be a list, got {values}")
+    for target in values:
+        if not isinstance(target, dict):
+            fail(f"{path} expected {field} entries to be objects, got {target}")
+        for required_field in ["entity_id", "combat_id", "name"]:
+            if required_field not in target:
+                fail(f"{path} {field} target missing {required_field}: {target}")
+
+
+def assert_card_payload(path: str, field: str, values: object, *, hand: bool) -> None:
+    if not isinstance(values, list):
+        fail(f"{path} expected {field} to be a list, got {values}")
+    required_fields = [
+        "id",
+        "name",
+        "type",
+        "cost",
+        "star_cost",
+        "description",
+        "rarity",
+        "is_upgraded",
+        "is_upgradable",
+        "current_upgrade_level",
+        "max_upgrade_level",
+        "upgrade_preview_type",
+        "upgrade_preview_cost",
+        "upgrade_preview_star_cost",
+        "upgrade_preview_description",
+        "keywords",
+        "index",
+    ]
+    if hand:
+        required_fields.extend(["target_type", "requires_target", "valid_targets", "can_play", "unplayable_reason"])
+    for item in values:
+        if not isinstance(item, dict):
+            fail(f"{path} expected {field} entries to be objects, got {item}")
+        for required_field in required_fields:
+            if required_field not in item:
+                fail(f"{path} {field} card missing {required_field}: {item}")
+        if item.get("is_upgradable") is True:
+            preview_description = item.get("upgrade_preview_description")
+            if not isinstance(preview_description, str) or not preview_description.strip():
+                fail(f"{path} {field} upgradable card missing upgrade preview description: {item}")
+            current_level = item.get("current_upgrade_level")
+            max_level = item.get("max_upgrade_level")
+            if not isinstance(current_level, int) or not isinstance(max_level, int) or current_level > max_level:
+                fail(f"{path} {field} upgradable card has invalid upgrade levels: {item}")
+        if hand:
+            assert_target_refs(path, f"{field}.valid_targets", item["valid_targets"])
+            if (
+                item.get("requires_target") is True
+                and item.get("target_type") == "AnyEnemy"
+                and item.get("can_play") is True
+                and not item["valid_targets"]
+            ):
+                fail(f"{path} {field} playable targeted card missing valid targets: {item}")
+
+
 def audit_docs(repo: Path) -> None:
     raw_full = (repo / "docs" / "raw-full.md").read_text(encoding="utf-8")
     readme = (repo / "README.md").read_text(encoding="utf-8")
@@ -1637,6 +1697,49 @@ def audit_live(base_url: str) -> None:
     assert_context_paths_normalized("/api/v1/singleplayer?format=json", data)
     if data.get("status") != "ok" or data.get("kind") != "singleplayer_state":
         fail(f"/api/v1/singleplayer?format=json expected status ok and kind singleplayer_state, got {data}")
+    battle = data.get("battle")
+    if isinstance(battle, dict):
+        for required_field in ["round", "turn", "is_play_phase", "player_actions_disabled", "can_end_turn", "end_turn_blocked_reason", "enemies"]:
+            if required_field not in battle:
+                fail(f"/api/v1/singleplayer?format=json battle missing {required_field}: {battle}")
+        enemies = battle.get("enemies")
+        if not isinstance(enemies, list):
+            fail(f"/api/v1/singleplayer?format=json battle.enemies expected list, got {enemies}")
+        for enemy in enemies:
+            if not isinstance(enemy, dict):
+                fail(f"/api/v1/singleplayer?format=json battle.enemies entry expected object, got {enemy}")
+            for required_field in ["entity_id", "combat_id", "name", "hp", "max_hp", "block", "is_alive", "is_visible", "can_target", "can_select", "status", "intents"]:
+                if required_field not in enemy:
+                    fail(f"/api/v1/singleplayer?format=json battle enemy missing {required_field}: {enemy}")
+    player = data.get("player")
+    if isinstance(player, dict):
+        for required_field in ["character", "hp", "max_hp", "block", "gold", "deck_count", "status", "relics", "potions", "max_potion_slots"]:
+            if required_field not in player:
+                fail(f"/api/v1/singleplayer?format=json player missing {required_field}: {player}")
+        if "hand" in player:
+            assert_card_payload("/api/v1/singleplayer?format=json", "player.hand", player["hand"], hand=True)
+            for count_field, list_field in [
+                ("draw_pile_count", "draw_pile"),
+                ("discard_pile_count", "discard_pile"),
+                ("exhaust_pile_count", "exhaust_pile"),
+            ]:
+                if count_field not in player or list_field not in player:
+                    fail(f"/api/v1/singleplayer?format=json player missing {count_field}/{list_field}: {player}")
+                if isinstance(player.get(count_field), int) and isinstance(player.get(list_field), list) and player[count_field] != len(player[list_field]):
+                    fail(f"/api/v1/singleplayer?format=json player {count_field} does not match {list_field}: {player[count_field]} vs {len(player[list_field])}")
+                assert_card_payload("/api/v1/singleplayer?format=json", f"player.{list_field}", player[list_field], hand=False)
+        potions = player.get("potions")
+        if not isinstance(potions, list):
+            fail(f"/api/v1/singleplayer?format=json player.potions expected list, got {potions}")
+        for potion in potions:
+            if not isinstance(potion, dict):
+                fail(f"/api/v1/singleplayer?format=json player.potions entry expected object, got {potion}")
+            for required_field in ["id", "name", "description", "rarity", "slot", "can_use_in_combat", "can_use", "use_blocked_reason", "can_discard", "discard_blocked_reason", "requires_target", "valid_targets", "target_type", "usage", "keywords"]:
+                if required_field not in potion:
+                    fail(f"/api/v1/singleplayer?format=json potion missing {required_field}: {potion}")
+            assert_target_refs("/api/v1/singleplayer?format=json", "player.potions.valid_targets", potion["valid_targets"])
+            if potion.get("requires_target") is True and potion.get("can_use") is True and not potion["valid_targets"]:
+                fail(f"/api/v1/singleplayer?format=json usable targeted potion missing valid targets: {potion}")
 
     markdown_status, markdown = load_text_url(base_url.rstrip("/") + "/api/v1/singleplayer?format=markdown")
     if markdown_status != 200 or "# Game State:" not in markdown:
