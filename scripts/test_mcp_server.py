@@ -83,6 +83,28 @@ def test_non_endpoint_http_error_stays_text(server) -> None:
     assert rendered.startswith("Error: HTTP 502")
 
 
+async def test_read_tool_preserves_structured_endpoint_error(server) -> None:
+    async def fake_glossary_get(kind: str) -> str:
+        assert kind == "cards"
+        raise _http_status_error(
+            503,
+            {
+                "status": "error",
+                "error": "Could not read run state.",
+                "error_code": "run_state_unavailable",
+                "kind": "cards",
+            },
+        )
+
+    server._glossary_get = fake_glossary_get
+    rendered = await server.get_glossary_cards()
+    payload = json.loads(rendered)
+    assert payload["status"] == "error"
+    assert payload["error_code"] == "run_state_unavailable"
+    assert payload["kind"] == "cards"
+    assert payload["http_status"] == 503
+
+
 async def test_menu_select_retries_multiplayer_conflict(server) -> None:
     calls: list[tuple[str, dict]] = []
 
@@ -146,6 +168,7 @@ def main() -> None:
     server = _load_server_module()
     test_structured_http_error_is_preserved(server)
     test_non_endpoint_http_error_stays_text(server)
+    asyncio.run(test_read_tool_preserves_structured_endpoint_error(server))
     asyncio.run(test_menu_select_retries_multiplayer_conflict(server))
     asyncio.run(test_menu_select_does_not_retry_other_409(server))
     print("mcp server tests passed")
