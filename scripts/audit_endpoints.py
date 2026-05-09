@@ -699,8 +699,10 @@ def audit_static_save_roots(repo: Path) -> None:
     ]:
         if "NormalizePathForJson" not in source:
             fail(f"{source_name} endpoint missing path normalization for profile/save context")
-    if "\\saves\\progress.save" in raw_full:
-        fail("docs/raw-full.md should show normalized profile/save paths with forward slashes")
+    for doc_path in [repo / "docs" / "raw-full.md", repo / "docs" / "raw-simplified.md", repo / "mcp" / "README.md"]:
+        doc_text = doc_path.read_text(encoding="utf-8")
+        if re.search(r"profile[0-9]\\+saves\\+progress\.save", doc_text, re.IGNORECASE):
+            fail(f"{doc_path.name} should show normalized profile/save paths with forward slashes")
 
     match = re.search(
         r"private static IEnumerable<string> EnumerateSaveRoots\(\).*?\n    private static IEnumerable<string> EnumerateSteamDataRoots\(\)",
