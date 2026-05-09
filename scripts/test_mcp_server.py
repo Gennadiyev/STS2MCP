@@ -164,6 +164,104 @@ async def test_menu_select_does_not_retry_other_409(server) -> None:
     assert calls == ["singleplayer"]
 
 
+async def test_switch_profile_reposts_from_profile_screen_and_waits(server) -> None:
+    calls: list[tuple[str, dict | None]] = []
+
+    async def fake_sleep(_seconds: float) -> None:
+        return None
+
+    async def fake_profiles_post(body: dict) -> str:
+        calls.append(("profiles_post", body))
+        if len([call for call in calls if call[0] == "profiles_post"]) == 1:
+            return json.dumps({"status": "ok", "message": "Opened profile screen"})
+        return json.dumps({"status": "ok", "message": "Switch requested"})
+
+    async def fake_get(params: dict | None = None) -> str:
+        calls.append(("get", params))
+        return json.dumps({"status": "ok", "menu_screen": "profile_select"})
+
+    async def fake_profiles_get() -> str:
+        calls.append(("profiles_get", None))
+        return json.dumps(
+            {
+                "status": "ok",
+                "current_profile_id": 2,
+                "profiles": [{"profile_id": 2, "is_current": True}],
+            }
+        )
+
+    original_sleep = asyncio.sleep
+    server.asyncio.sleep = fake_sleep
+    server._profiles_post = fake_profiles_post
+    server._get = fake_get
+    server._profiles_get = fake_profiles_get
+
+    try:
+        rendered = await server.switch_profile(2)
+        payload = json.loads(rendered)
+
+        assert payload["status"] == "ok"
+        assert payload["current_profile_id"] == 2
+        assert calls == [
+            ("profiles_post", {"action": "switch", "profile_id": 2}),
+            ("get", {"format": "json"}),
+            ("profiles_post", {"action": "switch", "profile_id": 2}),
+            ("profiles_get", None),
+        ]
+    finally:
+        server.asyncio.sleep = original_sleep
+
+
+async def test_wait_for_profile_timeout_keeps_initial_response(server) -> None:
+    async def fake_sleep(_seconds: float) -> None:
+        return None
+
+    async def fake_profiles_get() -> str:
+        return json.dumps(
+            {
+                "status": "ok",
+                "current_profile_id": 1,
+                "profiles": [{"profile_id": 1, "is_current": True}],
+            }
+        )
+
+    original_sleep = asyncio.sleep
+    server.asyncio.sleep = fake_sleep
+    server._profiles_get = fake_profiles_get
+
+    try:
+        rendered = await server._wait_for_profile(3, '{"status":"ok","message":"Switch requested"}')
+        payload = json.loads(rendered)
+
+        assert payload["status"] == "error"
+        assert payload["current_profile_id"] == 1
+        assert payload["profiles"] == [{"profile_id": 1, "is_current": True}]
+        assert payload["initial_response"] == '{"status":"ok","message":"Switch requested"}'
+    finally:
+        server.asyncio.sleep = original_sleep
+
+
+async def test_delete_profile_preserves_structured_endpoint_error(server) -> None:
+    async def fake_profiles_post(body: dict) -> str:
+        assert body == {"action": "delete", "profile_id": 1}
+        raise _http_status_error(
+            409,
+            {
+                "status": "error",
+                "error": "Cannot delete the active profile",
+                "error_code": "active_profile_delete",
+            },
+        )
+
+    server._profiles_post = fake_profiles_post
+    rendered = await server.delete_profile(1)
+    payload = json.loads(rendered)
+
+    assert payload["status"] == "error"
+    assert payload["error_code"] == "active_profile_delete"
+    assert payload["http_status"] == 409
+
+
 def main() -> None:
     server = _load_server_module()
     test_structured_http_error_is_preserved(server)
@@ -171,6 +269,9 @@ def main() -> None:
     asyncio.run(test_read_tool_preserves_structured_endpoint_error(server))
     asyncio.run(test_menu_select_retries_multiplayer_conflict(server))
     asyncio.run(test_menu_select_does_not_retry_other_409(server))
+    asyncio.run(test_switch_profile_reposts_from_profile_screen_and_waits(server))
+    asyncio.run(test_wait_for_profile_timeout_keeps_initial_response(server))
+    asyncio.run(test_delete_profile_preserves_structured_endpoint_error(server))
     print("mcp server tests passed")
 
 
