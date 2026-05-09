@@ -69,12 +69,14 @@ When a run is active, the response includes `current_run.run_id` in `{save_scope
 
 | Section | Status |
 |---|---|
-| `card_library` | Discovered cards and card stats; `/api/v1/glossary/cards` adds metadata when a run context exists. |
-| `relic_collection` | Discovered relic IDs; `/api/v1/glossary/relics` adds metadata when a run context exists. |
-| `potion_lab` | Discovered potion IDs; `/api/v1/glossary/potions` adds metadata when a run context exists. |
-| `bestiary` | Encounter/enemy profile stats plus `/api/v1/bestiary` model metadata. The game UI marks Bestiary as future/locked. |
+| `card_library` | Discovered cards plus pick/skip/win/loss stats. Card rules text is supplied by game state when cards are visible in a run. |
+| `relic_collection` | Discovered relic IDs. Profile data does not expose a typed per-relic description or obtained-count catalog. |
+| `potion_lab` | Discovered potion IDs. Profile data does not expose a typed per-potion rules text or lab metadata catalog. |
+| `bestiary` | Encounter/enemy profile fight stats. The game UI marks Bestiary as future/locked, so this is stats-only rather than a full enemy catalog. |
 | `character_stats` | Per-character and global totals. |
 | `run_history` | Summaries of the active profile's saved `saves/history/*.run` files, capped to the 20 most recent entries. |
+
+Run history is resolved from the active Steam account's profile save root. `current_run.run_id` identifies one concrete attempt; `seed` identifies generated run content and can repeat across attempts.
 
 `GET /api/v1/profiles` returns the three profile slots:
 

@@ -113,7 +113,7 @@ public static partial class McpMod
         {
             ["profile_id"] = snapshot.ProfileId,
             ["current_run"] = BuildCurrentRunContext(snapshot),
-            ["source"] = "SaveManager.Progress plus model metadata endpoints",
+            ["source"] = "SaveManager.Progress and active-profile save files",
             ["sections"] = new Dictionary<string, object?>
             {
                 ["card_library"] = new Dictionary<string, object?>
@@ -121,8 +121,7 @@ public static partial class McpMod
                     ["ui_label"] = "Card Library",
                     ["status"] = "exposed",
                     ["source"] = "/api/v1/profile card_stats and discovered_cards",
-                    ["detail_endpoint"] = "/api/v1/glossary/cards",
-                    ["detail_endpoint_requires_run"] = true,
+                    ["metadata_limitation"] = "This endpoint exposes profile-level discovery and aggregate card stats. Card rules text remains available through game state when cards are visible in a run.",
                     ["discovered_ids"] = snapshot.DiscoveredCards,
                     ["stats"] = snapshot.CardStats
                 },
@@ -131,30 +130,25 @@ public static partial class McpMod
                     ["ui_label"] = "Relic Collection",
                     ["status"] = "partially_exposed",
                     ["source"] = "/api/v1/profile discovered_relics",
-                    ["detail_endpoint"] = "/api/v1/glossary/relics",
-                    ["detail_endpoint_requires_run"] = true,
                     ["discovered_ids"] = snapshot.DiscoveredRelics,
-                    ["limitation"] = "Profile exposes discovered relic IDs; per-relic obtained counts are not exposed by a typed API here."
+                    ["limitation"] = "Profile exposes discovered relic IDs; per-relic descriptions and obtained counts are not exposed by a typed profile API here."
                 },
                 ["potion_lab"] = new Dictionary<string, object?>
                 {
                     ["ui_label"] = "Potion Lab",
                     ["status"] = "partially_exposed",
                     ["source"] = "/api/v1/profile discovered_potions",
-                    ["detail_endpoint"] = "/api/v1/glossary/potions",
-                    ["detail_endpoint_requires_run"] = true,
                     ["discovered_ids"] = snapshot.DiscoveredPotions,
-                    ["limitation"] = "Profile exposes discovered potion IDs; per-potion lab UI metadata is not exposed by a typed API here."
+                    ["limitation"] = "Profile exposes discovered potion IDs; per-potion rules text and lab UI metadata are not exposed by a typed profile API here."
                 },
                 ["bestiary"] = new Dictionary<string, object?>
                 {
                     ["ui_label"] = "Bestiary",
                     ["status"] = "locked_in_ui",
-                    ["source"] = "/api/v1/bestiary model metadata",
-                    ["detail_endpoint"] = "/api/v1/bestiary",
+                    ["source"] = "SaveManager.Progress encounter and enemy fight stats",
                     ["encounter_stats"] = snapshot.EncounterStats,
                     ["enemy_stats"] = snapshot.EnemyStats,
-                    ["limitation"] = "The current game UI labels Bestiary as future/locked; the endpoint exposes reflected model metadata and profile fight stats when available."
+                    ["limitation"] = "The current game UI labels Bestiary as future/locked; this endpoint exposes profile fight stats when available, not a full enemy metadata catalog."
                 },
                 ["character_stats"] = new Dictionary<string, object?>
                 {

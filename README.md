@@ -104,6 +104,19 @@ The MCP server accepts `--host` and `--port` options if you need non-default set
 
 Flag `--no-trust-env` can be used to disable `requests` from picking up proxy settings from the environment, which can cause connection issues if you are running the server in a container.
 
+### Profile and Compendium Data
+
+The HTTP API exposes profile-level progress separately from live run state:
+
+- `GET /api/v1/profile` returns the active profile's persistent progress summary, including discoveries, achievements, epochs, character totals, and global run totals.
+- `GET /api/v1/compendium` groups that progress into the same high-level sections as the in-game Compendium: Card Library, Relic Collection, Potion Lab, Bestiary, Character Stats, and Run History.
+- `GET /api/v1/profiles` lists the three profile slots and the active profile.
+- `POST /api/v1/profiles` switches or deletes profile slots through the game UI.
+
+The MCP server exposes the same profile data through `get_profile()`, `get_compendium()`, `list_profiles()`, `switch_profile(profile_id)`, and `delete_profile(profile_id)`.
+
+`get_compendium()` is intended for agents that need durable context outside the current room or current run. It works from the main menu, includes a `current_run` block while a run is active, and summarizes saved `saves/history/*.run` files for the active profile. Run history is capped to the 20 most recent files in the response so long-lived profiles do not create unbounded tool output.
+
 ## For Developers
 
 ### Build & Install

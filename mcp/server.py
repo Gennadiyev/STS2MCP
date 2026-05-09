@@ -214,9 +214,10 @@ async def get_compendium() -> str:
     """Get the active profile's Compendium-shaped progress summary.
 
     Mirrors the visible Compendium cards: Card Library, Relic Collection,
-    Potion Lab, Bestiary, Character Stats, and Run History. Some sections point
-    to detail endpoints such as glossary or bestiary when model-level metadata is
-    separate from profile discovery/progress data.
+    Potion Lab, Bestiary, Character Stats, and Run History. This is a
+    profile-level view, so it is useful at the main menu as well as during a run.
+    Card/relic/potion rules text is still supplied by game state when those
+    objects are visible in run-specific contexts.
     """
     try:
         return await _compendium_get()
