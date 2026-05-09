@@ -431,6 +431,7 @@ public static partial class McpMod
         sb.AppendLine("### Deck Information");
         sb.AppendLine();
 
+        FormatPileMarkdown(sb, player, "deck", "deck_count", "Run Deck");
         FormatPileMarkdown(sb, player, "draw_pile", "draw_pile_count", "Draw Pile", " sorted by rarity");
         FormatPileMarkdown(sb, player, "discard_pile", "discard_pile_count", "Discard Pile");
         FormatPileMarkdown(sb, player, "exhaust_pile", "exhaust_pile_count", "Exhaust Pile");
