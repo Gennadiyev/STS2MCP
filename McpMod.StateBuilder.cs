@@ -1239,6 +1239,8 @@ public static partial class McpMod
                     ["can_use_in_combat"] = potion.Usage == PotionUsage.CombatOnly || potion.Usage == PotionUsage.AnyTime,
                     ["can_use"] = blockedReason == null,
                     ["use_blocked_reason"] = blockedReason,
+                    ["can_discard"] = !potion.IsQueued,
+                    ["discard_blocked_reason"] = potion.IsQueued ? "AlreadyQueued" : null,
                     ["requires_target"] = potion.TargetType == TargetType.AnyEnemy,
                     ["valid_targets"] = validTargets,
                     ["target_type"] = potion.TargetType.ToString(),

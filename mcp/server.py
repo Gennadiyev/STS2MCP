@@ -474,7 +474,7 @@ async def discard_potion(slot: int) -> str:
     """Discard a potion from the player's potion slots to free up space.
 
     Use this when all potion slots are full and you need room for incoming potions
-    (e.g. before collecting a potion reward).
+    (e.g. before collecting a potion reward). Queued potions cannot be discarded.
 
     Args:
         slot: Potion slot index to discard (as shown in game state).
@@ -984,6 +984,8 @@ async def mp_use_potion(slot: int, target: str | None = None) -> str:
 @mcp.tool()
 async def mp_discard_potion(slot: int) -> str:
     """[Multiplayer] Discard a potion from the local player's potion slots to free up space.
+
+    Queued potions cannot be discarded.
 
     Args:
         slot: Potion slot index to discard (as shown in game state).

@@ -560,12 +560,29 @@ def audit_state_surface(repo: Path) -> None:
     if not potion_action_match:
         fail("could not locate ExecuteUsePotion for potion audit")
     potion_action_body = potion_action_match.group(0)
-    for required_fragment in ["can_use", "use_blocked_reason", "requires_target", "valid_targets", "GetPotionUseBlockedReason"]:
+    for required_fragment in [
+        "can_use",
+        "use_blocked_reason",
+        "can_discard",
+        "discard_blocked_reason",
+        "requires_target",
+        "valid_targets",
+        "GetPotionUseBlockedReason",
+    ]:
         if required_fragment not in player_state_body:
             fail(f"potion state missing use readiness metadata: {required_fragment}")
     for required_fragment in ["IsQueued", "PassesCustomUsabilityCheck", "PlayerActionsDisabled", "Enemy-targeted potions can only be used in combat"]:
         if required_fragment not in potion_action_body:
             fail(f"use_potion action missing readiness guard: {required_fragment}")
+    discard_action_match = re.search(
+        r"private static Dictionary<string, object\?> ExecuteDiscardPotion\(.*?\n    private static Dictionary<string, object\?> ExecuteChooseMapNode\(",
+        actions,
+        re.S,
+    )
+    if not discard_action_match:
+        fail("could not locate ExecuteDiscardPotion for potion audit")
+    if "IsQueued" not in discard_action_match.group(0):
+        fail("discard_potion action missing queued guard")
 
     battle_state_match = re.search(
         r"private static Dictionary<string, object\?> BuildBattleState\(.*?\n    private static Dictionary<string, object\?> BuildPlayerState\(",

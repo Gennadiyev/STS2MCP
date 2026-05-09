@@ -111,6 +111,8 @@ Always present at the top level (except `menu`). Contains everything about the l
       "can_use_in_combat": true,
       "can_use": true,       // true when use_potion can run now, assuming any required target is supplied
       "use_blocked_reason": null, // e.g. "CombatOnly", "Automatic", "AlreadyQueued", "PlayerDead", "CustomUsabilityCheckFailed", "NotInPlayPhase", "PlayerActionsDisabled", "NoValidTargets"
+      "can_discard": true,
+      "discard_blocked_reason": null, // e.g. "AlreadyQueued"
       "requires_target": false,
       "valid_targets": [],   // For AnyEnemy potions: [{ "entity_id": "JAW_WORM_0", "combat_id": 12, "name": "Jaw Worm" }]
       "target_type": "None", // None, Self, AnyEnemy, AnyAlly, AnyPlayer, etc.
@@ -1214,7 +1216,7 @@ Discard a potion to free up the slot. Use when potion slots are full and you nee
 |---|---|---|---|
 | `slot` | int | Yes | Potion slot index |
 
-**Errors:** Empty slot, out-of-range slot.
+**Errors:** Empty slot, out-of-range slot, potion already queued.
 
 ### `end_turn`
 

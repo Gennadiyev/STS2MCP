@@ -258,6 +258,8 @@ public static partial class McpMod
         var potion = player.GetPotionAtSlotIndex(slot);
         if (potion == null)
             return Error($"No potion in slot {slot}");
+        if (potion.IsQueued)
+            return Error($"Potion '{SafeGetText(() => potion.Title)}' is already queued and cannot be discarded");
 
         string potionName = SafeGetText(() => potion.Title) ?? "unknown";
         _ = PotionCmd.Discard(potion);
