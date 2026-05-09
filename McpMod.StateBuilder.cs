@@ -1283,6 +1283,9 @@ public static partial class McpMod
         if (inCombat && CombatManager.Instance.PlayerActionsDisabled)
             return "PlayerActionsDisabled";
 
+        if (potion.TargetType == TargetType.AnyEnemy && !inCombat)
+            return "EnemyTargetRequiresCombat";
+
         if (potion.TargetType == TargetType.AnyEnemy && validTargets.Count == 0)
             return "NoValidTargets";
 

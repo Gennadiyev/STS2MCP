@@ -568,6 +568,7 @@ def audit_state_surface(repo: Path) -> None:
         "requires_target",
         "valid_targets",
         "GetPotionUseBlockedReason",
+        "EnemyTargetRequiresCombat",
     ]:
         if required_fragment not in player_state_body:
             fail(f"potion state missing use readiness metadata: {required_fragment}")

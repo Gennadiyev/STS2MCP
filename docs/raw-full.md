@@ -110,7 +110,7 @@ Always present at the top level (except `menu`). Contains everything about the l
       "slot": 0,             // Potion slot index (use this for use_potion action)
       "can_use_in_combat": true,
       "can_use": true,       // true when use_potion can run now, assuming any required target is supplied
-      "use_blocked_reason": null, // e.g. "CombatOnly", "Automatic", "AlreadyQueued", "PlayerDead", "CustomUsabilityCheckFailed", "NotInPlayPhase", "PlayerActionsDisabled", "NoValidTargets"
+      "use_blocked_reason": null, // e.g. "CombatOnly", "EnemyTargetRequiresCombat", "Automatic", "AlreadyQueued", "PlayerDead", "CustomUsabilityCheckFailed", "NotInPlayPhase", "PlayerActionsDisabled", "NoValidTargets"
       "can_discard": true,
       "discard_blocked_reason": null, // e.g. "AlreadyQueued"
       "requires_target": false,
