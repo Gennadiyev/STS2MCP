@@ -388,6 +388,19 @@ def audit_static_error_shapes(repo: Path) -> None:
     for required_fragment in ["SendMethodNotAllowed", "method_not_allowed", "SendNotFound", "not_found", "internal_error"]:
         if required_fragment not in mcp_mod:
             fail(f"route errors missing structured error code: {required_fragment}")
+    for path in ["/api/v1/singleplayer", "/api/v1/multiplayer"]:
+        route_match = re.search(
+            rf'else if \(path == "{re.escape(path)}"\)\s*\{{(?P<body>.*?)\n\s*\}}\n\s*else if',
+            mcp_mod,
+            re.S,
+        )
+        if not route_match:
+            fail(f"could not locate route block for {path}")
+        route_body = route_match.group("body")
+        method_guard_index = route_body.find('request.HttpMethod != "GET" && request.HttpMethod != "POST"')
+        mode_guard_index = route_body.find("IsMultiplayerRun()")
+        if method_guard_index < 0 or mode_guard_index < 0 or method_guard_index > mode_guard_index:
+            fail(f"{path} must reject unsupported HTTP methods before run-mode guards")
     read_failure_codes = [
         "settings_read_failed",
         "bestiary_build_failed",

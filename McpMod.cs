@@ -292,6 +292,12 @@ public static partial class McpMod
             }
             else if (path == "/api/v1/singleplayer")
             {
+                if (request.HttpMethod != "GET" && request.HttpMethod != "POST")
+                {
+                    SendMethodNotAllowed(response);
+                    return;
+                }
+
                 // Hard-block singleplayer endpoint during multiplayer runs
                 // to prevent calling the non-sync-safe end_turn path
                 if (IsMultiplayerRun())
@@ -311,6 +317,12 @@ public static partial class McpMod
             }
             else if (path == "/api/v1/multiplayer")
             {
+                if (request.HttpMethod != "GET" && request.HttpMethod != "POST")
+                {
+                    SendMethodNotAllowed(response);
+                    return;
+                }
+
                 // Guard: reject multiplayer endpoint during singleplayer runs
                 if (!IsMultiplayerRun())
                 {
