@@ -915,6 +915,12 @@ def audit_live(base_url: str) -> None:
 
         if path.startswith("/api/v1/glossary/") and status not in {200, 409}:
             fail(f"{path} expected HTTP 200 or 409, got {status}: {data}")
+        if path.startswith("/api/v1/glossary/") and status == 409:
+            if not isinstance(data, dict) or data.get("error_code") != "run_not_in_progress":
+                fail(f"{path} expected run_not_in_progress glossary error, got {data}")
+            for required_field in ["kind", "profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope"]:
+                if required_field not in data:
+                    fail(f"{path} glossary error missing profile/save context field: {required_field}")
         if path.startswith("/api/v1/glossary/") and status == 200:
             expected_kind = path.rsplit("/", 1)[-1]
             if not isinstance(data, dict):

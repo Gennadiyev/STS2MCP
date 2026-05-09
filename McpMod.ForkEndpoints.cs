@@ -156,14 +156,27 @@ public static partial class McpMod
 
     private static GlossaryPayload BuildGlossaryPayload(string kind, Func<object> buildData)
     {
-        var data = buildData();
-        if (data is Dictionary<string, object?> error && error.TryGetValue("error_code", out _))
-            return new GlossaryPayload { Kind = kind, Data = error };
-
         var profileId = SaveManager.Instance?.CurrentProfileId ?? 0;
         var progressPath = GetProfileProgressPath(profileId);
         var resolvedProgressPath = ResolveProfileProgressPath(profileId);
         var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
+
+        var data = buildData();
+        if (data is Dictionary<string, object?> error && error.TryGetValue("error_code", out _))
+        {
+            return new GlossaryPayload
+            {
+                Kind = kind,
+                Data = error,
+                ProfileId = profileId,
+                ProgressPath = progressPath,
+                ResolvedProgressPath = resolvedProgressPath,
+                ProfileRoot = profileRoot,
+                SaveScope = GetSaveScope(profileRoot),
+                NetType = SafeGetNetTypeName()
+            };
+        }
+
         var runState = RunManager.Instance.DebugOnlyGetState();
         var players = runState?.Players.Select((player, index) => new Dictionary<string, object?>
         {
@@ -181,9 +194,21 @@ public static partial class McpMod
             ResolvedProgressPath = resolvedProgressPath,
             ProfileRoot = profileRoot,
             SaveScope = GetSaveScope(profileRoot),
-            NetType = RunManager.Instance.NetService.Type.ToString(),
+            NetType = SafeGetNetTypeName(),
             Players = players
         };
+    }
+
+    private static string SafeGetNetTypeName()
+    {
+        try
+        {
+            return RunManager.Instance?.NetService?.Type.ToString() ?? "";
+        }
+        catch
+        {
+            return "";
+        }
     }
 
     private static void SendGlossaryJson(HttpListenerResponse response, GlossaryPayload payload)
@@ -199,6 +224,14 @@ public static partial class McpMod
                 _ => 500
             };
 
+            error["kind"] = payload.Kind;
+            error["scope"] = "active_run";
+            error["profile_id"] = payload.ProfileId;
+            error["progress_path"] = payload.ProgressPath;
+            error["resolved_progress_path"] = payload.ResolvedProgressPath;
+            error["profile_root"] = payload.ProfileRoot;
+            error["save_scope"] = payload.SaveScope;
+            error["net_type"] = payload.NetType;
             SendJson(response, data);
             return;
         }
