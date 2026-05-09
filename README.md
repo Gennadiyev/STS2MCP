@@ -55,7 +55,15 @@ curl -s http://localhost:15526/
 A successful response looks like:
 
 ```json
-{"message": "Hello from STS2 MCP v0.3.4", "status": "ok"}
+{
+  "message": "Hello from STS2 MCP v0.4.0",
+  "status": "ok",
+  "bound_prefixes": ["http://localhost:15526/", "http://127.0.0.1:15526/"],
+  "endpoints": [
+    { "method": "GET", "path": "/api/v1/singleplayer" },
+    { "method": "POST", "path": "/api/v1/singleplayer" }
+  ]
+}
 ```
 
 If you get "Connection refused", the mod is not loaded — check that mods are enabled in the game's settings.

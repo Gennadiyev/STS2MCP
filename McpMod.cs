@@ -271,7 +271,13 @@ public static partial class McpMod
 
             if (path == "/")
             {
-                SendJson(response, new { message = $"Hello from STS2 MCP v{Version}", status = "ok", bound_prefixes = _boundPrefixes });
+                SendJson(response, new
+                {
+                    message = $"Hello from STS2 MCP v{Version}",
+                    status = "ok",
+                    bound_prefixes = _boundPrefixes,
+                    endpoints = BuildEndpointIndex()
+                });
             }
             else if (path == "/api/v1/singleplayer")
             {
@@ -388,6 +394,27 @@ public static partial class McpMod
             }
             catch { /* response may already be closed */ }
         }
+    }
+
+    private static List<Dictionary<string, object?>> BuildEndpointIndex()
+    {
+        return new List<Dictionary<string, object?>>
+        {
+            new() { ["method"] = "GET", ["path"] = "/api/v1/singleplayer", ["description"] = "Read singleplayer state" },
+            new() { ["method"] = "POST", ["path"] = "/api/v1/singleplayer", ["description"] = "Perform singleplayer action" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/multiplayer", ["description"] = "Read multiplayer state" },
+            new() { ["method"] = "POST", ["path"] = "/api/v1/multiplayer", ["description"] = "Perform multiplayer action" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/settings", ["description"] = "Read settings and preferences" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/profile", ["description"] = "Read active profile progress" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/compendium", ["description"] = "Read Compendium-shaped profile progress" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/bestiary", ["description"] = "Read monster and encounter metadata" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/glossary/cards", ["description"] = "Read active-run card pool metadata" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/glossary/relics", ["description"] = "Read active-run relic pool metadata" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/glossary/potions", ["description"] = "Read active-run potion pool metadata" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/glossary/keywords", ["description"] = "Read active-run keyword metadata" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/profiles", ["description"] = "List profile slots" },
+            new() { ["method"] = "POST", ["path"] = "/api/v1/profiles", ["description"] = "Switch or delete profile slots" }
+        };
     }
 
     // Called on HTTP thread (not main thread) as a best-effort guard.
