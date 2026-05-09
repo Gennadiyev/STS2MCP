@@ -390,7 +390,9 @@ Run state or room type not recognized.
             "title": "Attack",         // Hover tip title
             "description": "Deals 11 damage."  // Hover tip description
           }
-        ]
+        ],
+        "is_visible": true,
+        "can_select": true
       }
     ]
   },

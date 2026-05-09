@@ -809,7 +809,9 @@ public static partial class McpMod
         if (previewContainer?.Visible == true)
             return Error("A bundle preview is already open - confirm or cancel it first");
 
-        var bundles = FindAll<NCardBundle>(screen);
+        var bundles = FindAll<NCardBundle>(screen)
+            .Where(bundle => bundle.Visible && bundle.IsVisibleInTree() && bundle.Hitbox.IsEnabled)
+            .ToList();
         if (index < 0 || index >= bundles.Count)
             return Error($"Bundle index {index} out of range ({bundles.Count} bundles available)");
 

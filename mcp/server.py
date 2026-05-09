@@ -765,6 +765,8 @@ async def deck_cancel_selection() -> str:
 async def bundle_select(bundle_index: int) -> str:
     """[Bundle Selection] Open a bundle preview.
 
+    Only visible enabled bundles are actionable.
+
     Args:
         bundle_index: 0-based index of the bundle.
     """
@@ -1141,6 +1143,8 @@ async def mp_deck_cancel_selection() -> str:
 @mcp.tool()
 async def mp_bundle_select(bundle_index: int) -> str:
     """[Multiplayer Bundle Selection] Open a bundle preview.
+
+    Only visible enabled bundles are actionable.
 
     Args:
         bundle_index: 0-based index of the bundle.

@@ -188,7 +188,7 @@ When a run is active, the response includes `current_run.run_id` in `{save_scope
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `select_bundle` | `index`: int | Open a bundle preview. |
+| `select_bundle` | `index`: int | Open a visible enabled bundle preview. |
 | `confirm_bundle_selection` | _(none)_ | Confirm the previewed bundle. |
 | `cancel_bundle_selection` | _(none)_ | Cancel the bundle preview. |
 

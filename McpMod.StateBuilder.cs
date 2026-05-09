@@ -2164,7 +2164,8 @@ public static partial class McpMod
 
         var bundles = new List<Dictionary<string, object?>>();
         int index = 0;
-        foreach (var bundle in FindAll<NCardBundle>(screen))
+        foreach (var bundle in FindAll<NCardBundle>(screen)
+                     .Where(bundle => bundle.Visible && bundle.IsVisibleInTree()))
         {
             var cards = new List<Dictionary<string, object?>>();
             int cardIndex = 0;
@@ -2180,7 +2181,9 @@ public static partial class McpMod
             {
                 ["index"] = index,
                 ["card_count"] = cards.Count,
-                ["cards"] = cards
+                ["cards"] = cards,
+                ["is_visible"] = true,
+                ["can_select"] = bundle.Hitbox.IsEnabled
             });
             index++;
         }

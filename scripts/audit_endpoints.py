@@ -476,6 +476,29 @@ def audit_state_surface(repo: Path) -> None:
         if required_fragment not in relic_action_body:
             fail(f"relic_select action missing visibility/enabled guard: {required_fragment}")
 
+    bundle_state_match = re.search(
+        r"private static Dictionary<string, object\?> BuildBundleSelectState\(.*?\n    private static Dictionary<string, object\?> BuildHandSelectState\(",
+        state_builder,
+        re.S,
+    )
+    if not bundle_state_match:
+        fail("could not locate BuildBundleSelectState for bundle-select audit")
+    bundle_state_body = bundle_state_match.group(0)
+    bundle_action_match = re.search(
+        r"private static Dictionary<string, object\?> ExecuteSelectBundle\(.*?\n    private static Dictionary<string, object\?> ExecuteConfirmBundleSelection\(",
+        actions,
+        re.S,
+    )
+    if not bundle_action_match:
+        fail("could not locate ExecuteSelectBundle for bundle-select audit")
+    bundle_action_body = bundle_action_match.group(0)
+    for required_fragment in ["IsVisibleInTree", "is_visible", "can_select"]:
+        if required_fragment not in bundle_state_body:
+            fail(f"bundle_select state missing visibility/enabled metadata: {required_fragment}")
+    for required_fragment in ["IsVisibleInTree", "Hitbox.IsEnabled"]:
+        if required_fragment not in bundle_action_body:
+            fail(f"bundle_select action missing visibility/enabled guard: {required_fragment}")
+
     print(f"states: {len(state_types)} documented, markdown coverage enforced")
 
 
