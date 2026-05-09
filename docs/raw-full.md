@@ -444,7 +444,12 @@ Appears after combat ends or when triggered by events (e.g. TheFutureOfPotions, 
         "type": "potion",
         "description": "Obtain a potion.",
         "potion_id": "SWIFT_POTION", // Only for potion rewards
-        "potion_name": "Swift Potion"
+        "potion_name": "Swift Potion",
+        "potion_description": "Draw 3 cards.",
+        "potion_rarity": "Common",
+        "potion_target_type": "None",
+        "potion_usage": "Manual",
+        "keywords": [ /* Keyword Objects */ ]
       },
       {
         "index": 2,

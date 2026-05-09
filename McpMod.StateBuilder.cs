@@ -1772,6 +1772,10 @@ public static partial class McpMod
                 item["potion_id"] = potionReward.Potion.Id.Entry;
                 item["potion_name"] = SafeGetText(() => potionReward.Potion.Title);
                 item["potion_description"] = SafeGetText(() => potionReward.Potion.DynamicDescription);
+                item["potion_rarity"] = potionReward.Potion.Rarity.ToString();
+                item["potion_target_type"] = potionReward.Potion.TargetType.ToString();
+                item["potion_usage"] = potionReward.Potion.Usage.ToString();
+                item["keywords"] = BuildHoverTips(potionReward.Potion.ExtraHoverTips);
             }
 
             items.Add(item);
