@@ -211,6 +211,30 @@ def audit_static_glossary_scope(repo: Path) -> None:
     print("glossary: active-run shared/scoped pools enforced")
 
 
+def audit_static_card_glossary_metadata(repo: Path) -> None:
+    fork_endpoints = (repo / "McpMod.ForkEndpoints.cs").read_text(encoding="utf-8")
+    match = re.search(
+        r"private static void AddCardsFromPool\(.*?\n    internal static object BuildGlossaryRelics\(\)",
+        fork_endpoints,
+        re.S,
+    )
+    if not match:
+        fail("could not locate AddCardsFromPool for card glossary audit")
+    body = match.group(0)
+    required = [
+        "is_upgradable",
+        "current_upgrade_level",
+        "max_upgrade_level",
+        "upgrade_preview_type",
+        "upgrade_preview_description",
+        "GetDescriptionForUpgradePreview",
+    ]
+    missing = [field for field in required if field not in body]
+    if missing:
+        fail(f"card glossary missing upgrade metadata: {missing}")
+    print("glossary: card upgrade metadata enforced")
+
+
 def audit_static_save_roots(repo: Path) -> None:
     compendium = (repo / "McpMod.Compendium.cs").read_text(encoding="utf-8")
     match = re.search(
@@ -395,6 +419,7 @@ def main() -> None:
     audit_static_formatters(repo)
     audit_static_error_shapes(repo)
     audit_static_glossary_scope(repo)
+    audit_static_card_glossary_metadata(repo)
     audit_static_save_roots(repo)
     audit_state_surface(repo)
     if not args.skip_live:
