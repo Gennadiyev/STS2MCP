@@ -22,6 +22,41 @@ The index includes:
 
 Each endpoint row advertises a `method`, `path`, and description. The audit script checks that the index has no duplicate method/path pairs and that documented routes stay aligned with the live API surface.
 
+## Game Listener Port Configuration
+
+The C# game mod chooses its HTTP listener port during startup. Changing the port requires restarting the game; it does not rebind an already-running listener.
+
+Port resolution order:
+
+1. `STS2_PORT` from the game process environment.
+2. `STS2_PORT` from `.env` next to the installed `STS2_MCP.dll`.
+3. `STS2_PORT` from `.env` in the game working directory.
+4. `STS2_MCP.conf` next to the installed mod DLL.
+5. `DefaultPort`, currently `15526`.
+
+The environment variable and `.env` value must parse as an integer from 1 through 65535. Invalid values are logged and the loader continues to the next configured source.
+
+The game-side `.env` parser supports:
+
+- blank lines
+- full-line comments
+- `KEY=value`
+- `export KEY=value`
+- single-quoted values
+- double-quoted values
+- inline comments for unquoted values
+
+Examples:
+
+```dotenv
+STS2_PORT=15527
+export STS2_PORT="15527" # local testing port
+```
+
+The game/mod listener and Python MCP bridge are configured separately. If the mod binds a custom port, the MCP bridge must use the same port through `--port`, `STS2_PORT`, or its own `mcp/.env` configuration.
+
+Local `.env` files are ignored by git because they may contain machine-specific listener settings or bridge secrets.
+
 ## Response Envelopes
 
 JSON read endpoints use explicit envelopes so clients can branch on `status` and `kind` without inferring response type from route names.

@@ -30,7 +30,7 @@ To use a different game API port on the next launch, set `STS2_PORT` in the game
 STS2_PORT=15527
 ```
 
-Shell environment variables take precedence over `.env`, and the legacy `STS2_MCP.conf` port remains supported when `STS2_PORT` is unset.
+Shell environment variables take precedence over `.env`, and the legacy `STS2_MCP.conf` port remains supported when `STS2_PORT` is unset. The mod also checks a `.env` file in the game working directory. Restart the game after changing any port setting; the listener reads the port only during startup.
 
 > [!note]
 > The release DLL is a platform-agnostic .NET assembly — the same `STS2_MCP.dll` and `STS2_MCP.json` work on Windows, Linux, and macOS. No separate builds are needed.
@@ -148,7 +148,7 @@ Add the server to your AI client's MCP config:
 
 Restart your Claude session after adding the config. To verify the MCP server is working, ask Claude to call `get_game_state` — with the game running, it should return the current game state.
 
-The MCP server accepts `--host` and `--port` options if you need non-default settings.
+The MCP server accepts `--host` and `--port` options if you need non-default settings. If the game mod is launched with a custom `STS2_PORT`, configure the MCP bridge to use the same port, for example `uv run --directory /path/to/STS2_MCP/mcp python server.py --port 15527`.
 
 Flag `--no-trust-env` can be used to disable `requests` from picking up proxy settings from the environment, which can cause connection issues if you are running the server in a container.
 

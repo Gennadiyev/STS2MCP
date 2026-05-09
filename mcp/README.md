@@ -72,6 +72,8 @@ Glossary tools require an active run. They include the current character context
 
 All multiplayer tools are prefixed with `mp_`. They route through `/api/v1/multiplayer` and are only available during multiplayer (co-op) runs. The endpoints automatically guard against cross-mode calls.
 
+If the game mod is launched on a non-default port with `STS2_PORT`, start the MCP bridge with the same port, for example `python server.py --port 15527`. The game listener reads its port at game startup; the MCP bridge reads its own connection settings when the bridge process starts.
+
 | Tool | Scope | Description |
 |---|---|---|
 | `mp_get_game_state(format?)` | General | Get multiplayer game state (all players, votes, bids) |
