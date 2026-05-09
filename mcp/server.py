@@ -412,7 +412,8 @@ async def switch_profile(profile_id: int) -> str:
     """Switch to a profile slot through the game's profile UI.
 
     Use an empty slot to create or enter a fresh profile for testing. This cannot
-    be used while a run is in progress.
+    be used while a run is in progress. HTTP validation errors include
+    structured error_code values from the profile endpoint.
 
     Args:
         profile_id: Profile slot to switch to. Must be 1, 2, or 3.
@@ -450,7 +451,8 @@ async def delete_profile(profile_id: int) -> str:
     """Delete an inactive profile slot.
 
     The active profile cannot be deleted through this tool. Switch away first if
-    you intend to remove a slot after backing up any data you need.
+    you intend to remove a slot after backing up any data you need. Attempting to
+    delete the active profile returns the endpoint's active_profile_delete error.
 
     Args:
         profile_id: Profile slot to delete. Must be 1, 2, or 3.

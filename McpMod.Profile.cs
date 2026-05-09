@@ -90,12 +90,29 @@ public static partial class McpMod
         try
         {
             var resultTask = RunOnMainThread(() => ExecuteProfileAction(action, profileId));
-            SendJson(response, resultTask.GetAwaiter().GetResult());
+            SendProfileActionJson(response, resultTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
         {
             SendActionError(response, "Profile action failed", ex);
         }
+    }
+
+    private static void SendProfileActionJson(HttpListenerResponse response, Dictionary<string, object?> result)
+    {
+        if (result.TryGetValue("status", out var status) && status as string == "error")
+        {
+            response.StatusCode = result.TryGetValue("error_code", out var errorCode)
+                ? (errorCode as string) switch
+                {
+                    "invalid_profile_id" or "unknown_profile_action" => 400,
+                    "run_in_progress" or "active_profile_delete" => 409,
+                    "save_manager_unavailable" => 503,
+                    _ => 400
+                }
+                : 400;
+        }
+        SendJson(response, result);
     }
 
     private static Dictionary<string, object?> BuildProfilesSummary()
@@ -151,16 +168,16 @@ public static partial class McpMod
     {
         var sm = SaveManager.Instance;
         if (sm == null)
-            return Error("Save manager is not available");
+            return Error("Save manager is not available", "save_manager_unavailable");
         if (profileId is < 1 or > 3)
-            return Error("profile_id must be 1-3");
+            return Error("profile_id must be 1-3", "invalid_profile_id");
 
         var normalizedAction = action.Trim().ToLowerInvariant();
 
         if (normalizedAction == "switch")
         {
             if (RunManager.Instance?.IsInProgress == true)
-                return Error("Cannot switch profiles during a run");
+                return Error("Cannot switch profiles during a run", "run_in_progress");
 
             var tree = Engine.GetMainLoop() as SceneTree;
             if (tree?.Root != null)
@@ -200,7 +217,7 @@ public static partial class McpMod
         if (normalizedAction == "delete")
         {
             if (profileId == sm.CurrentProfileId)
-                return Error("Cannot delete the active profile");
+                return Error("Cannot delete the active profile", "active_profile_delete");
 
             sm.DeleteProfile(profileId);
             return new Dictionary<string, object?>
@@ -210,7 +227,7 @@ public static partial class McpMod
             };
         }
 
-        return Error($"Unknown action: {action}. Use: switch, delete");
+        return Error($"Unknown action: {action}. Use: switch, delete", "unknown_profile_action");
     }
 
     private static bool TrySwitchProfileViaOpenScreen(Node root, int profileId)

@@ -48,6 +48,8 @@
 
 Profile, profile-list, and Compendium tools include `status`, `kind`, `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, and `save_scope`; profile and Compendium responses also include `current_run` when a run is active, so callers can distinguish the active profile, save scope, local save location, and current run attempt.
 
+Profile switch/delete failures are surfaced as structured endpoint errors with HTTP 400 for invalid input and HTTP 409 for state conflicts such as deleting the active profile or switching during a run.
+
 Glossary tools require an active run. They include the current character context plus shared run pools such as Colorless cards, shared relics, and shared potions. Card glossary items include energy/star costs, upgrade availability, plus upgraded-preview cost and description. Successful responses include `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`, `current_run.run_id`, `current_run.seed`, `kind`, `count`, and `items`. The HTTP endpoints return `run_not_in_progress` with HTTP 409 when called from the main menu, while still including the active profile/save context fields.
 
 ## Multiplayer

@@ -420,6 +420,16 @@ def audit_static_save_roots(repo: Path) -> None:
     for required_fragment in ["status", "kind", "count", "profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope"]:
         if required_fragment not in profiles_body:
             fail(f"profiles endpoint missing structured slot context: {required_fragment}")
+    for required_fragment in [
+        "SendProfileActionJson",
+        "invalid_profile_id",
+        "unknown_profile_action",
+        "run_in_progress",
+        "active_profile_delete",
+        "save_manager_unavailable",
+    ]:
+        if required_fragment not in profile:
+            fail(f"profiles POST missing structured HTTP error handling: {required_fragment}")
 
     for doc_name, doc_text in [("mcp/server.py", mcp_server), ("mcp/README.md", mcp_readme)]:
         for required_fragment in ["progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run"]:
@@ -1080,12 +1090,28 @@ def audit_live(base_url: str) -> None:
         ("/api/v1/profiles", b'{"action": "switch", "profile_id": "1"}', 400),
         ("/api/v1/profiles", b'{"action": "switch", "profile_id": 1.5}', 400),
         ("/api/v1/profiles", b'{"action": "switch", "profile_id": 999999999999}', 400),
+        ("/api/v1/profiles", b'{"action": "switch", "profile_id": 4}', 400),
+        ("/api/v1/profiles", b'{"action": "unknown", "profile_id": 1}', 400),
     ]
     for path, body, expected_status in post_validation_checks:
         status, data = load_json_url(base_url.rstrip("/") + path, "POST", body)
         assert_error_body(path, status, data)
         if status != expected_status:
             fail(f"{path} expected HTTP {expected_status} for validation check, got {status}: {data}")
+
+    status, profiles_data = load_json_url(base_url.rstrip("/") + "/api/v1/profiles")
+    if status != 200 or not isinstance(profiles_data, dict):
+        fail(f"/api/v1/profiles expected profile data before active-delete validation, got HTTP {status}: {profiles_data}")
+    current_profile_id = profiles_data.get("current_profile_id")
+    if isinstance(current_profile_id, int):
+        status, data = load_json_url(
+            base_url.rstrip("/") + "/api/v1/profiles",
+            "POST",
+            json.dumps({"action": "delete", "profile_id": current_profile_id}).encode("utf-8"),
+        )
+        assert_error_body("/api/v1/profiles", status, data)
+        if status != 409 or data.get("error_code") != "active_profile_delete":
+            fail(f"/api/v1/profiles expected HTTP 409 active_profile_delete, got HTTP {status}: {data}")
 
     for body in (b"{", b"{}"):
         status, data = load_json_url(base_url.rstrip("/") + "/api/v1/multiplayer", "POST", body)

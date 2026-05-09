@@ -132,9 +132,12 @@ public static partial class McpMod
         SendJson(response, data);
     }
 
-    private static Dictionary<string, object?> Error(string message)
+    private static Dictionary<string, object?> Error(string message, string? errorCode = null)
     {
-        return new Dictionary<string, object?> { ["status"] = "error", ["error"] = message };
+        var data = new Dictionary<string, object?> { ["status"] = "error", ["error"] = message };
+        if (!string.IsNullOrWhiteSpace(errorCode))
+            data["error_code"] = errorCode;
+        return data;
     }
 
     private static object? GetInstanceFieldValue(object source, string fieldName)

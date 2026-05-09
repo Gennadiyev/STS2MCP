@@ -1190,6 +1190,7 @@ Delete an inactive profile slot:
 | `profile_id` | int | Yes | Profile slot, from 1 to 3 |
 
 Switching is rejected during a run. Deleting the active profile is rejected; switch away first if you need to remove a slot.
+Profile action validation returns structured HTTP errors: invalid profile IDs and unknown actions return HTTP 400, deleting the active profile returns HTTP 409 with `error_code: "active_profile_delete"`, and switching profiles during a run returns HTTP 409 with `error_code: "run_in_progress"`.
 
 ---
 

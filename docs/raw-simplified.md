@@ -122,6 +122,8 @@ When a run is active, the response includes `current_run.run_id` in `{save_scope
 | `switch` | `profile_id`: 1-3 | Switch through the game profile UI. Empty slots can be used for fresh-profile testing. Cannot be used during a run. |
 | `delete` | `profile_id`: 1-3 | Delete an inactive profile slot. The active profile is rejected. |
 
+Profile action validation uses non-2xx HTTP status codes: invalid profile IDs and unknown actions return HTTP 400; deleting the active profile and switching during a run return HTTP 409 with an `error_code`.
+
 ### Combat
 
 | Action | Parameters | When to Use |
