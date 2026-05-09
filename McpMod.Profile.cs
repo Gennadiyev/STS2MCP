@@ -63,9 +63,21 @@ public static partial class McpMod
             SendError(response, 400, "Missing 'action' field. Use: switch, delete");
             return;
         }
+        if (actionElem.ValueKind != JsonValueKind.String)
+        {
+            SendError(response, 400, "'action' field must be a string");
+            return;
+        }
 
         string action = actionElem.GetString() ?? "";
-        int profileId = parsed.TryGetValue("profile_id", out var idElem) && idElem.ValueKind == JsonValueKind.Number
+        JsonElement idElem;
+        if (parsed.TryGetValue("profile_id", out idElem) && idElem.ValueKind != JsonValueKind.Number)
+        {
+            SendError(response, 400, "'profile_id' field must be a number");
+            return;
+        }
+
+        int profileId = parsed.TryGetValue("profile_id", out idElem) && idElem.ValueKind == JsonValueKind.Number
             ? idElem.GetInt32()
             : 0;
 
@@ -76,7 +88,7 @@ public static partial class McpMod
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Profile action failed: {ex.Message}");
+            SendActionError(response, "Profile action failed", ex);
         }
     }
 

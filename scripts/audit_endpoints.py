@@ -206,8 +206,12 @@ def audit_live(base_url: str) -> None:
     post_validation_checks = [
         ("/api/v1/singleplayer", b"{", 400),
         ("/api/v1/singleplayer", b"{}", 400),
+        ("/api/v1/singleplayer", b'{"action": 1}', 400),
+        ("/api/v1/singleplayer", b'{"action": "menu_select", "option": 1}', 400),
         ("/api/v1/profiles", b"{", 400),
         ("/api/v1/profiles", b"{}", 400),
+        ("/api/v1/profiles", b'{"action": 1}', 400),
+        ("/api/v1/profiles", b'{"action": "switch", "profile_id": "1"}', 400),
     ]
     for path, body, expected_status in post_validation_checks:
         status, data = load_json_url(base_url.rstrip("/") + path, "POST", body)

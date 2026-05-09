@@ -489,6 +489,11 @@ public static partial class McpMod
             SendError(response, 400, "Missing 'action' field");
             return;
         }
+        if (actionElem.ValueKind != JsonValueKind.String)
+        {
+            SendError(response, 400, "'action' field must be a string");
+            return;
+        }
 
         string action = actionElem.GetString() ?? "";
 
@@ -508,7 +513,7 @@ public static partial class McpMod
             }
             catch (Exception ex)
             {
-                SendError(response, 500, $"Menu action failed: {ex.Message}");
+                SendActionError(response, "Menu action failed", ex);
             }
             return;
         }
@@ -521,7 +526,7 @@ public static partial class McpMod
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Multiplayer action failed: {ex.Message}");
+            SendActionError(response, "Multiplayer action failed", ex);
         }
     }
 
@@ -584,6 +589,11 @@ public static partial class McpMod
             SendError(response, 400, "Missing 'action' field");
             return;
         }
+        if (actionElem.ValueKind != JsonValueKind.String)
+        {
+            SendError(response, 400, "'action' field must be a string");
+            return;
+        }
 
         string action = actionElem.GetString() ?? "";
 
@@ -600,7 +610,7 @@ public static partial class McpMod
             }
             catch (Exception ex)
             {
-                SendError(response, 500, $"Menu action failed: {ex.Message}");
+                SendActionError(response, "Menu action failed", ex);
             }
             return;
         }
@@ -613,7 +623,15 @@ public static partial class McpMod
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Action failed: {ex.Message}");
+            SendActionError(response, "Action failed", ex);
         }
+    }
+
+    private static void SendActionError(HttpListenerResponse response, string prefix, Exception ex)
+    {
+        var statusCode = ex is InvalidOperationException or FormatException or OverflowException
+            ? 400
+            : 500;
+        SendError(response, statusCode, $"{prefix}: {ex.Message}");
     }
 }
