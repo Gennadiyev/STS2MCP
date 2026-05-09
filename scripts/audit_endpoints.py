@@ -225,15 +225,27 @@ def audit_live(base_url: str) -> None:
         if status not in {400, 409}:
             fail(f"/api/v1/multiplayer expected HTTP 400 in MP or 409 outside MP, got {status}: {data}")
 
-    status, data = load_json_url(base_url.rstrip("/") + "/api/v1/settings", "POST", b"{}")
-    assert_error_body("/api/v1/settings", status, data)
-    if status != 405:
-        fail(f"/api/v1/settings expected HTTP 405 for POST, got {status}: {data}")
+    get_only_paths = [
+        "/",
+        "/api/v1/settings",
+        "/api/v1/profile",
+        "/api/v1/compendium",
+        "/api/v1/bestiary",
+        "/api/v1/glossary/cards",
+        "/api/v1/glossary/relics",
+        "/api/v1/glossary/potions",
+        "/api/v1/glossary/keywords",
+    ]
+    for path in get_only_paths:
+        status, data = load_json_url(base_url.rstrip("/") + path, "POST", b"{}")
+        assert_error_body(path, status, data)
+        if status != 405:
+            fail(f"{path} expected HTTP 405 for POST, got {status}: {data}")
 
-    status, data = load_json_url(base_url.rstrip("/") + "/", "POST", b"{}")
-    assert_error_body("/", status, data)
-    if status != 405:
-        fail(f"/ expected HTTP 405 for POST, got {status}: {data}")
+    status, data = load_json_url(base_url.rstrip("/") + "/api/v1/does-not-exist")
+    assert_error_body("/api/v1/does-not-exist", status, data)
+    if status != 404:
+        fail(f"/api/v1/does-not-exist expected HTTP 404, got {status}: {data}")
 
     print("live: GET endpoint smoke checks passed")
     print("live: state format checks passed")
