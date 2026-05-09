@@ -1951,6 +1951,21 @@ def audit_live(base_url: str) -> None:
     if status not in {400, 409} or data.get("error_code") not in {"unknown_action", "run_not_in_progress", "local_player_unavailable"}:
         fail(f"/api/v1/singleplayer expected structured unknown/no-run action error, got HTTP {status}: {data}")
 
+    safe_gameplay_payload_checks = [
+        (b'{"action": "play_card"}', "Missing 'card_index'"),
+        (b'{"action": "use_potion"}', "Missing 'slot'"),
+        (b'{"action": "discard_potion"}', "Missing 'slot'"),
+    ]
+    for body, expected_error_fragment in safe_gameplay_payload_checks:
+        status, data = load_json_url(base_url.rstrip() + "/api/v1/singleplayer", "POST", body)
+        assert_error_body("/api/v1/singleplayer", status, data)
+        if status not in {400, 409}:
+            fail(f"/api/v1/singleplayer expected non-2xx safe gameplay validation error, got HTTP {status}: {data}")
+        if not isinstance(data, dict) or data.get("error_code") not in {"action_error", "run_not_in_progress", "local_player_unavailable", "blocking_popup_active", "multiplayer_run_active"}:
+            fail(f"/api/v1/singleplayer expected structured safe gameplay validation error, got HTTP {status}: {data}")
+        if data.get("error_code") == "action_error" and expected_error_fragment not in str(data.get("error", "")):
+            fail(f"/api/v1/singleplayer expected safe gameplay validation message containing {expected_error_fragment!r}, got {data}")
+
     status, profiles_data = load_json_url(base_url.rstrip("/") + "/api/v1/profiles")
     if status != 200 or not isinstance(profiles_data, dict):
         fail(f"/api/v1/profiles expected profile data before active-delete validation, got HTTP {status}: {profiles_data}")
