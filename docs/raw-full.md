@@ -134,10 +134,16 @@ Always present at the top level (except `menu`). Contains everything about the l
 
 ```jsonc
 {
+  "index": 0,
+  "id": "STRIKE_R",
   "name": "Strike",
+  "type": "Attack",
   "cost": "1",               // Energy cost as string ("X" for X-cost)
   "star_cost": null,          // Regent star cost as string, null if N/A
-  "description": "Deal 6 damage."
+  "description": "Deal 6 damage.",
+  "rarity": "Basic",
+  "is_upgraded": false,
+  "keywords": [ /* Keyword Objects */ ]
 }
 ```
 
