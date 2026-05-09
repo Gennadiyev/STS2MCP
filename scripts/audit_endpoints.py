@@ -741,9 +741,20 @@ def audit_static_save_roots(repo: Path) -> None:
     if not compendium_response_match:
         fail("could not locate BuildCompendiumResponse for profile context audit")
     compendium_response = compendium_response_match.group(0)
-    for required_fragment in ["status", "kind", "profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run"]:
+    for required_fragment in ["status", "kind", "profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run", "run_history"]:
         if required_fragment not in compendium_response:
             fail(f"compendium endpoint missing profile/save context: {required_fragment}")
+    run_history_match = re.search(
+        r"private static Dictionary<string, object\?> BuildRunHistorySection\(.*?\n    private static Dictionary<string, object\?> BuildRunHistoryEntry",
+        compendium,
+        re.S,
+    )
+    if not run_history_match:
+        fail("could not locate BuildRunHistorySection for compendium audit")
+    run_history_body = run_history_match.group(0)
+    for required_fragment in ["ui_label", "Run History", "status", "source", "entries", "limitation", "history_path", "entry_count"]:
+        if required_fragment not in run_history_body:
+            fail(f"compendium run_history missing field: {required_fragment}")
 
     profile_match = re.search(
         r"internal static object BuildProfile\(\).*?\n    \}",
@@ -1396,7 +1407,8 @@ def audit_live(base_url: str) -> None:
                 potion_lab = sections.get("potion_lab")
                 bestiary = sections.get("bestiary")
                 character_stats = sections.get("character_stats")
-                if not all(isinstance(section, dict) for section in [card_library, relic_collection, potion_lab, bestiary, character_stats]):
+                run_history = sections.get("run_history")
+                if not all(isinstance(section, dict) for section in [card_library, relic_collection, potion_lab, bestiary, character_stats, run_history]):
                     fail(f"{path} expected structured compendium sections, got {sections}")
                 assert_sorted_strings(path, "card_library.discovered_ids", card_library.get("discovered_ids"))
                 assert_sorted_objects(path, "card_library.stats", card_library.get("stats"), "id")
@@ -1405,6 +1417,16 @@ def audit_live(base_url: str) -> None:
                 assert_sorted_objects(path, "bestiary.encounter_stats", bestiary.get("encounter_stats"), "id")
                 assert_sorted_objects(path, "bestiary.enemy_stats", bestiary.get("enemy_stats"), "id")
                 assert_sorted_objects(path, "character_stats.characters", character_stats.get("characters"), "id")
+                for required_field in ["ui_label", "status", "source", "entries", "limitation"]:
+                    if required_field not in run_history:
+                        fail(f"{path} run_history missing field {required_field}: {run_history}")
+                if run_history.get("ui_label") != "Run History":
+                    fail(f"{path} run_history expected UI label, got {run_history}")
+                entries = run_history.get("entries")
+                if not isinstance(entries, (list, dict)):
+                    fail(f"{path} run_history entries should be list or object, got {entries}")
+                if "entry_count" in run_history and isinstance(entries, list) and not isinstance(run_history.get("entry_count"), int):
+                    fail(f"{path} run_history entry_count should be int, got {run_history}")
         if path == "/api/v1/profiles":
             if not isinstance(data, dict) or data.get("status") != "ok" or data.get("kind") != "profiles":
                 fail(f"{path} expected structured profiles status/kind, got {data}")
