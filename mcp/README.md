@@ -48,6 +48,8 @@
 
 `get_api_index()` returns `status`, `kind: api_index`, `version`, `endpoint_count`, bound listener prefixes, and the advertised HTTP routes.
 
+`get_game_state()` and `mp_get_game_state()` JSON responses include `status: ok`, `kind` (`singleplayer_state` or `multiplayer_state`), `state_type`, and the active-run context fields when a run is in progress.
+
 Profile, profile-list, and Compendium tools include `status`, `kind`, `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, and `save_scope`; profile and Compendium responses also include `current_run` when a run is active, so callers can distinguish the active profile, save scope, local save location, and current run attempt.
 
 Profile switch/delete failures are surfaced as structured endpoint errors with HTTP 400 for invalid input and HTTP 409 for state conflicts such as deleting the active profile or switching during a run.

@@ -61,14 +61,18 @@ public static partial class McpMod
 {
     private static Dictionary<string, object?> BuildGameState()
     {
-        var result = new Dictionary<string, object?>();
+        var result = new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["kind"] = "singleplayer_state"
+        };
         var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
 
         if (tree?.Root != null)
         {
             var ftueState = BuildVisibleFtueState(tree.Root);
             if (ftueState != null)
-                return ftueState;
+                return WithStateEnvelope(ftueState, "singleplayer_state");
         }
 
         if (!RunManager.Instance.IsInProgress)

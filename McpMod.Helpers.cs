@@ -140,6 +140,13 @@ public static partial class McpMod
         return data;
     }
 
+    private static Dictionary<string, object?> WithStateEnvelope(Dictionary<string, object?> state, string kind)
+    {
+        state.TryAdd("status", "ok");
+        state.TryAdd("kind", kind);
+        return state;
+    }
+
     private static object? GetInstanceFieldValue(object source, string fieldName)
     {
         const System.Reflection.BindingFlags Flags =

@@ -34,6 +34,7 @@ Unsupported `format` values return HTTP 400 with `error_code: "invalid_format"`.
 ## GET — State Types
 
 Every JSON response includes:
+- `status: "ok"` and `kind` — `singleplayer_state` or `multiplayer_state`
 - `state_type` — which screen the game is on (see below)
 - `run` — `{ act, floor, ascension }` (absent for `menu`)
 - `current_run` — run identity and save context when a run is active, including `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`, `run_id`, and `seed` when the save file exposes it

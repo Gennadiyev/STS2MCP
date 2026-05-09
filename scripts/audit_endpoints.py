@@ -484,6 +484,13 @@ def audit_state_surface(repo: Path) -> None:
     for source_name, source in [("singleplayer", state_builder), ("multiplayer", multiplayer_state)]:
         if '["current_run"] = BuildActiveRunContext()' not in source:
             fail(f"{source_name} state missing current_run identity context")
+    if '["kind"] = "singleplayer_state"' not in state_builder:
+        fail("singleplayer state missing status/kind response envelope")
+    if '["kind"] = "multiplayer_state"' not in multiplayer_state:
+        fail("multiplayer state missing status/kind response envelope")
+    for required_fragment in ['status: "ok"', "singleplayer_state", "multiplayer_state"]:
+        if required_fragment not in docs:
+            fail(f"docs missing state response envelope detail: {required_fragment}")
     for required_fragment in ["run_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope"]:
         if required_fragment not in docs:
             fail(f"docs missing current_run context: {required_fragment}")
@@ -1103,6 +1110,8 @@ def audit_live(base_url: str) -> None:
     status, data = load_json_url(base_url.rstrip("/") + "/api/v1/singleplayer?format=json")
     if status != 200 or not isinstance(data, dict) or "state_type" not in data:
         fail(f"/api/v1/singleplayer?format=json expected JSON state, got HTTP {status}: {data}")
+    if data.get("status") != "ok" or data.get("kind") != "singleplayer_state":
+        fail(f"/api/v1/singleplayer?format=json expected status ok and kind singleplayer_state, got {data}")
 
     markdown_status, markdown = load_text_url(base_url.rstrip("/") + "/api/v1/singleplayer?format=markdown")
     if markdown_status != 200 or "# Game State:" not in markdown:

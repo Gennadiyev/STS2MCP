@@ -38,10 +38,12 @@ Unsupported `format` values return HTTP 400 with `error_code: "invalid_format"` 
 
 ### Common Top-Level Fields
 
-Every response (except `menu`) includes these top-level fields alongside the state-specific data:
+Every state JSON response includes `status: "ok"`, `kind` (`singleplayer_state` or `multiplayer_state`), and `state_type` alongside the state-specific data. Active-run states also include run, current-run, and local-player context:
 
 ```jsonc
 {
+  "status": "ok",
+  "kind": "singleplayer_state",
   "state_type": "...",      // Screen identifier (see sections below)
   "run": {
     "act": 1,               // Current act (1-indexed)

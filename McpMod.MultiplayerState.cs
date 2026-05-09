@@ -27,7 +27,11 @@ public static partial class McpMod
 {
     private static Dictionary<string, object?> BuildMultiplayerGameState()
     {
-        var result = new Dictionary<string, object?>();
+        var result = new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["kind"] = "multiplayer_state"
+        };
         var tree = Engine.GetMainLoop() as SceneTree;
 
         // Surface blocking FTUE/tutorial/popup prompts before normal run state, so MP
@@ -38,7 +42,7 @@ public static partial class McpMod
         {
             var ftueState = BuildVisibleFtueState(tree.Root);
             if (ftueState != null)
-                return ftueState;
+                return WithStateEnvelope(ftueState, "multiplayer_state");
         }
 
         if (!RunManager.Instance.IsInProgress)
