@@ -465,6 +465,8 @@ Appears after combat ends or when triggered by events (e.g. TheFutureOfPotions, 
         "index": 0,
         "type": "gold",              // gold, potion, relic, card, special_card, card_removal
         "description": "Obtain 25 gold.",
+        "is_visible": true,
+        "can_claim": true,
         "gold_amount": 25            // Only for gold rewards
       },
       {

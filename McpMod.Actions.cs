@@ -476,7 +476,7 @@ public static partial class McpMod
         int index = indexElem.GetInt32();
 
         var enabledButtons = FindAll<NRewardButton>(rewardsScreen)
-            .Where(b => b.IsEnabled && b.Reward != null)
+            .Where(b => b.IsEnabled && b.Visible && b.IsVisibleInTree() && b.Reward != null)
             .ToList();
 
         if (index < 0 || index >= enabledButtons.Count)

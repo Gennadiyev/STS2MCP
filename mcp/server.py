@@ -577,6 +577,7 @@ async def rewards_claim(reward_index: int) -> str:
 
     Gold, potion, and relic rewards are claimed immediately.
     Card rewards open the card selection screen (state changes to card_reward).
+    Only visible enabled rewards are actionable.
 
     Args:
         reward_index: 0-based index of the reward on the rewards screen.
@@ -1068,6 +1069,8 @@ async def mp_shop_purchase(item_index: int) -> str:
 @mcp.tool()
 async def mp_rewards_claim(reward_index: int) -> str:
     """[Multiplayer Rewards] Claim a reward from the post-combat rewards screen.
+
+    Only visible enabled rewards are actionable.
 
     Args:
         reward_index: 0-based index of the reward.

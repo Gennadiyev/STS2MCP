@@ -614,6 +614,29 @@ def audit_state_surface(repo: Path) -> None:
         if required_fragment not in mp_actions:
             fail(f"multiplayer end-turn action missing readiness guard: {required_fragment}")
 
+    rewards_state_match = re.search(
+        r"private static Dictionary<string, object\?> BuildRewardsState\(.*?\n    private static RelicModel\? GetRelicRewardModel\(",
+        state_builder,
+        re.S,
+    )
+    if not rewards_state_match:
+        fail("could not locate BuildRewardsState for rewards audit")
+    rewards_state_body = rewards_state_match.group(0)
+    rewards_action_match = re.search(
+        r"private static Dictionary<string, object\?> ExecuteClaimReward\(.*?\n    private static Dictionary<string, object\?> ExecuteSelectCardReward\(",
+        actions,
+        re.S,
+    )
+    if not rewards_action_match:
+        fail("could not locate ExecuteClaimReward for rewards audit")
+    rewards_action_body = rewards_action_match.group(0)
+    for required_fragment in ["IsVisibleInTree", "is_visible", "can_claim"]:
+        if required_fragment not in rewards_state_body:
+            fail(f"rewards state missing visibility/claim metadata: {required_fragment}")
+    for required_fragment in ["IsVisibleInTree", "IsEnabled"]:
+        if required_fragment not in rewards_action_body:
+            fail(f"claim_reward action missing visibility/enabled guard: {required_fragment}")
+
     print(f"states: {len(state_types)} documented, markdown coverage enforced")
 
 

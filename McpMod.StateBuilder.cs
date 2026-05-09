@@ -1991,19 +1991,22 @@ public static partial class McpMod
         var state = new Dictionary<string, object?>();
 
         // Reward items
-        var rewardButtons = FindAll<NRewardButton>(rewardsScreen);
+        var rewardButtons = FindAll<NRewardButton>(rewardsScreen)
+            .Where(button => button.Reward != null && button.IsEnabled && button.Visible && button.IsVisibleInTree())
+            .ToList();
         var items = new List<Dictionary<string, object?>>();
         int index = 0;
         foreach (var button in rewardButtons)
         {
-            if (button.Reward == null || !button.IsEnabled) continue;
-            var reward = button.Reward;
+            var reward = button.Reward!;
 
             var item = new Dictionary<string, object?>
             {
                 ["index"] = index,
                 ["type"] = GetRewardTypeName(reward),
-                ["description"] = SafeGetText(() => reward.Description)
+                ["description"] = SafeGetText(() => reward.Description),
+                ["is_visible"] = true,
+                ["can_claim"] = true
             };
 
             // Type-specific details

@@ -132,7 +132,7 @@ When a run is active, the response includes `current_run.run_id` in `{save_scope
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `claim_reward` | `index`: int | Claim a reward. Card rewards open the `card_reward` screen. |
+| `claim_reward` | `index`: int | Claim a visible enabled reward. Card rewards open the `card_reward` screen. |
 | `proceed` | _(none)_ | Leave the rewards screen. |
 
 ### Card Reward (`card_reward`)
