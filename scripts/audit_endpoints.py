@@ -1472,6 +1472,38 @@ def audit_live(base_url: str) -> None:
                 for required_field in required_fields:
                     if required_field not in group:
                         fail(f"{path} missing settings field: {group_name}.{required_field}")
+            display = data["display"]
+            audio = data["audio"]
+            gameplay = data["gameplay"]
+            mods = data["mods"]
+            for field in ["fullscreen", "limit_fps_background"]:
+                if not isinstance(display.get(field), bool):
+                    fail(f"{path} expected display.{field} to be bool, got {display.get(field)!r}")
+            if not isinstance(display.get("resolution"), str) or not re.match(r"^\d+x\d+$", display["resolution"]):
+                fail(f"{path} expected display.resolution as WIDTHxHEIGHT string, got {display.get('resolution')!r}")
+            for field in ["fps_limit", "msaa", "target_display"]:
+                if not isinstance(display.get(field), int):
+                    fail(f"{path} expected display.{field} to be int, got {display.get(field)!r}")
+            for field in ["vsync", "aspect_ratio"]:
+                if not isinstance(display.get(field), str) or not display[field]:
+                    fail(f"{path} expected display.{field} to be non-empty string, got {display.get(field)!r}")
+            for field in ["master", "bgm", "sfx", "ambience"]:
+                value = audio.get(field)
+                if not isinstance(value, (int, float)) or value < 0 or value > 1:
+                    fail(f"{path} expected audio.{field} to be numeric 0..1, got {value!r}")
+            if not isinstance(gameplay.get("fast_mode"), str) or not gameplay["fast_mode"]:
+                fail(f"{path} expected gameplay.fast_mode to be non-empty string, got {gameplay.get('fast_mode')!r}")
+            if not isinstance(gameplay.get("screen_shake"), int):
+                fail(f"{path} expected gameplay.screen_shake to be int, got {gameplay.get('screen_shake')!r}")
+            for field in ["show_run_timer", "show_card_indices", "text_effects", "long_press"]:
+                if not isinstance(gameplay.get(field), bool):
+                    fail(f"{path} expected gameplay.{field} to be bool, got {gameplay.get(field)!r}")
+            if not isinstance(mods.get("enabled"), bool):
+                fail(f"{path} expected mods.enabled to be bool, got {mods.get('enabled')!r}")
+            if not isinstance(data.get("language"), str) or not data["language"]:
+                fail(f"{path} expected language to be non-empty string, got {data.get('language')!r}")
+            if not isinstance(data.get("skip_intro"), bool):
+                fail(f"{path} expected skip_intro to be bool, got {data.get('skip_intro')!r}")
         if path in {"/api/v1/profile", "/api/v1/compendium"}:
             if not isinstance(data, dict):
                 fail(f"{path} expected structured profile context object, got {type(data).__name__}")
