@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Runtime.CompilerServices;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Events;
@@ -403,7 +404,7 @@ public static partial class McpMod
 
             try
             {
-                var instance = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(type);
+                var instance = RuntimeHelpers.GetUninitializedObject(type);
                 var minHp = type.GetProperty("MinInitialHp")?.GetValue(instance);
                 var maxHp = type.GetProperty("MaxInitialHp")?.GetValue(instance);
                 if (minHp != null) entry["min_hp"] = minHp;
@@ -443,7 +444,7 @@ public static partial class McpMod
 
             try
             {
-                var instance = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(type);
+                var instance = RuntimeHelpers.GetUninitializedObject(type);
                 var roomType = type.GetProperty("RoomType")?.GetValue(instance);
                 var isWeak = type.GetProperty("IsWeak")?.GetValue(instance);
                 var minGold = type.GetProperty("MinGoldReward")?.GetValue(instance);
