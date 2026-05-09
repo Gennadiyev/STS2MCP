@@ -322,6 +322,7 @@ def audit_state_surface(repo: Path) -> None:
     state_builder = (repo / "McpMod.StateBuilder.cs").read_text(encoding="utf-8")
     multiplayer_state = (repo / "McpMod.MultiplayerState.cs").read_text(encoding="utf-8")
     formatting = (repo / "McpMod.Formatting.cs").read_text(encoding="utf-8")
+    actions = (repo / "McpMod.Actions.cs").read_text(encoding="utf-8")
     docs = "\n".join(
         [
             (repo / "docs" / "raw-simplified.md").read_text(encoding="utf-8"),
@@ -349,6 +350,39 @@ def audit_state_surface(repo: Path) -> None:
     missing_formatters = sorted(state_types - formatter_refs - covered_by_battle - intentionally_unformatted)
     if missing_formatters:
         fail(f"state types missing markdown formatter coverage: {missing_formatters}")
+
+    card_select_match = re.search(
+        r"private static Dictionary<string, object\?> BuildCardSelectState\(.*?\n    private static Dictionary<string, object\?> BuildChooseCardState\(",
+        state_builder,
+        re.S,
+    )
+    if not card_select_match:
+        fail("could not locate BuildCardSelectState for selection audit")
+    card_select_body = card_select_match.group(0)
+    for required_field in [
+        "is_selected",
+        "can_select",
+        "selected_cards",
+        "selected_count",
+        "min_select",
+        "max_select",
+        "preview_cards",
+    ]:
+        if required_field not in card_select_body and required_field not in state_builder:
+            fail(f"card_select state missing selection metadata: {required_field}")
+        if required_field not in docs:
+            fail(f"docs missing card_select selection metadata: {required_field}")
+
+    select_action_match = re.search(
+        r"private static Dictionary<string, object\?> ExecuteSelectCard\(.*?\n    private static Dictionary<string, object\?> ExecuteConfirmSelection\(",
+        actions,
+        re.S,
+    )
+    if not select_action_match:
+        fail("could not locate ExecuteSelectCard for preview guard audit")
+    select_action_body = select_action_match.group(0)
+    if "preview is already open" not in select_action_body or "%PreviewContainer" not in select_action_body:
+        fail("select_card must reject grid selection while a preview is open")
 
     print(f"states: {len(state_types)} documented, markdown coverage enforced")
 

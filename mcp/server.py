@@ -713,7 +713,8 @@ async def deck_select_card(card_index: int) -> str:
     Used when the game asks you to choose cards from your deck (transform, upgrade,
     remove, discard) or pick a card from offered choices (potions, effects).
 
-    For deck selections: toggles card selection. For choose-a-card: picks immediately.
+    For deck selections: toggles card selection unless a preview is open. For
+    choose-a-card: picks immediately.
 
     Args:
         card_index: 0-based index of the card (as shown in game state).
@@ -1099,6 +1100,9 @@ async def mp_proceed_to_map() -> str:
 @mcp.tool()
 async def mp_deck_select_card(card_index: int) -> str:
     """[Multiplayer Card Selection] Select or deselect a card in the card selection screen.
+
+    For deck selections: toggles card selection unless a preview is open. For
+    choose-a-card: picks immediately.
 
     Args:
         card_index: 0-based index of the card.

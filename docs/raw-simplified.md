@@ -180,7 +180,7 @@ When a run is active, the response includes `current_run.run_id` in `{save_scope
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `select_card` | `index`: int | Grid screens: toggle card selection. Choose-a-card: pick immediately. |
+| `select_card` | `index`: int | Grid screens: toggle card selection unless a preview is open. Choose-a-card: pick immediately. |
 | `confirm_selection` | _(none)_ | Confirm (for grid screens with preview). Not needed for choose-a-card. |
 | `cancel_selection` | _(none)_ | Cancel preview, skip (choose-a-card), or close screen. |
 

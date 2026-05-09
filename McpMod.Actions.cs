@@ -618,6 +618,13 @@ public static partial class McpMod
 
         if (overlay is NCardGridSelectionScreen gridScreen)
         {
+            foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer" })
+            {
+                var container = gridScreen.GetNodeOrNull<Godot.Control>(containerName);
+                if (container?.Visible == true)
+                    return Error("A card selection preview is already open - confirm or cancel it first");
+            }
+
             var grid = FindFirst<NCardGrid>(gridScreen);
             if (grid == null)
                 return Error("Card grid not found in selection screen");

@@ -788,10 +788,18 @@ Covers deck transforms, upgrades, removals, and choose-a-card effects. Appears o
         "description": "Deal 6 damage.",
         "rarity": "Common",
         "is_upgraded": false,
+        "is_selected": false,
+        "is_visible": true,
+        "can_select": true,
         "keywords": [ /* Keyword Objects */ ]
       }
     ],
+    "selected_cards": [],
+    "selected_count": 0,
+    "min_select": 1,
+    "max_select": 1,
     "preview_showing": false,    // true when selection is complete and preview is displayed
+    "preview_cards": [],         // cards shown by an upgrade/transform/select preview
     "can_confirm": false,        // true when confirm button is available
     "can_cancel": true           // true when close/cancel button is available
 

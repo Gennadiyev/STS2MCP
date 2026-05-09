@@ -1360,6 +1360,23 @@ public static partial class McpMod
         return null;
     }
 
+    private static bool? GetBoolMemberValue(object source, string memberName)
+    {
+        var value = GetMemberValue(source, memberName);
+        return value is bool boolValue ? boolValue : null;
+    }
+
+    private static void AddCardHolderState(Dictionary<string, object?> cardInfo, Control holder)
+    {
+        var isSelected = GetBoolMemberValue(holder, "IsSelected")
+                         ?? GetBoolMemberValue(holder, "_isSelected");
+        var isEnabled = GetBoolMemberValue(holder, "IsEnabled");
+
+        cardInfo["is_selected"] = isSelected ?? false;
+        cardInfo["is_visible"] = holder.Visible && holder.IsVisibleInTree();
+        cardInfo["can_select"] = (isEnabled ?? true) && holder.Visible && holder.IsVisibleInTree();
+    }
+
     private static Dictionary<string, object?> BuildEnemyState(Creature creature, Dictionary<string, int> entityCounts)
     {
         var monster = creature.Monster;
@@ -1986,6 +2003,7 @@ public static partial class McpMod
         // Cards in the grid (sorted by visual position - MoveToFront can reorder children)
         var cardHolders = FindAllSortedByPosition<NGridCardHolder>(screen);
         var cards = new List<Dictionary<string, object?>>();
+        var selectedCards = new List<Dictionary<string, object?>>();
         int index = 0;
         foreach (var holder in cardHolders)
         {
@@ -1994,10 +2012,17 @@ public static partial class McpMod
 
             var cardInfo = BuildCardInfo(card);
             cardInfo["index"] = index;
+            AddCardHolderState(cardInfo, holder);
             cards.Add(cardInfo);
+            if (cardInfo["is_selected"] is true)
+                selectedCards.Add(new Dictionary<string, object?>(cardInfo));
             index++;
         }
         state["cards"] = cards;
+        state["selected_cards"] = selectedCards;
+        state["selected_count"] = selectedCards.Count;
+        state["min_select"] = GetMemberValue(screen, "MinSelect");
+        state["max_select"] = GetMemberValue(screen, "MaxSelect");
 
         // Preview container showing? (selection complete, awaiting confirm)
         // Upgrade screens use UpgradeSinglePreviewContainer / UpgradeMultiPreviewContainer
@@ -2008,6 +2033,24 @@ public static partial class McpMod
                             || (previewMulti?.Visible ?? false)
                             || (previewGeneric?.Visible ?? false);
         state["preview_showing"] = previewShowing;
+
+        var previewCards = new List<Dictionary<string, object?>>();
+        if (previewShowing)
+        {
+            int previewIndex = 0;
+            foreach (var holder in FindAllSortedByPosition<NPreviewCardHolder>(screen)
+                         .Where(holder => holder.Visible && holder.IsVisibleInTree()))
+            {
+                var card = holder.CardModel;
+                if (card == null) continue;
+
+                var cardInfo = BuildCardInfo(card);
+                cardInfo["index"] = previewIndex;
+                previewCards.Add(cardInfo);
+                previewIndex++;
+            }
+        }
+        state["preview_cards"] = previewCards;
 
         // Button states - when a preview is open, cancel goes through the
         // preview container's Cancel / PreviewCancel button (same path as
@@ -2077,6 +2120,7 @@ public static partial class McpMod
 
             var cardInfo = BuildCardInfo(card);
             cardInfo["index"] = index;
+            AddCardHolderState(cardInfo, holder);
             cards.Add(cardInfo);
             index++;
         }
@@ -2186,6 +2230,7 @@ public static partial class McpMod
             var cardInfo = BuildCardInfo(card);
             cardInfo["index"] = index;
             cardInfo["description"] = SafeGetCardDescription(card); // hand cards use default pile
+            AddCardHolderState(cardInfo, holder);
             selectableCards.Add(cardInfo);
             index++;
         }
