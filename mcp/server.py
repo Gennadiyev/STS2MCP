@@ -27,6 +27,10 @@ def _sp_url() -> str:
     return f"{_base_url}/api/v1/singleplayer"
 
 
+def _root_url() -> str:
+    return f"{_base_url}/"
+
+
 def _mp_url() -> str:
     return f"{_base_url}/api/v1/multiplayer"
 
@@ -64,6 +68,12 @@ def _get_client() -> httpx.AsyncClient:
 
 async def _get(params: dict | None = None) -> str:
     r = await _get_client().get(_sp_url(), params=params)
+    r.raise_for_status()
+    return r.text
+
+
+async def _root_get() -> str:
+    r = await _get_client().get(_root_url())
     r.raise_for_status()
     return r.text
 
@@ -197,6 +207,19 @@ async def _menu_select_post(body: dict) -> str:
 # ---------------------------------------------------------------------------
 # General
 # ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def get_api_index() -> str:
+    """Get the STS2_MCP HTTP server status and endpoint index.
+
+    Returns the mod version greeting, bound listener prefixes, and the current
+    list of HTTP API routes exposed by the loaded mod.
+    """
+    try:
+        return await _root_get()
+    except Exception as e:
+        return _handle_error(e)
 
 
 @mcp.tool()

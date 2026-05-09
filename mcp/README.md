@@ -4,6 +4,7 @@
 
 | Tool | Scope | Description |
 |---|---|---|
+| `get_api_index()` | General | Get mod status, bound prefixes, and HTTP endpoint index |
 | `get_game_state(format?)` | General | Get current game state (`markdown` or `json`) |
 | `menu_select(option, seed?)` | General | Select a visible menu/game-over option, including `abandon_run` when advertised; automatically retries through the multiplayer route during MP runs |
 | `get_settings()` | General | Get current settings and preferences |
