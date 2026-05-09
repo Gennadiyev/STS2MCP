@@ -500,6 +500,29 @@ def audit_state_surface(repo: Path) -> None:
         if required_fragment not in bundle_action_body:
             fail(f"bundle_select action missing visibility/enabled guard: {required_fragment}")
 
+    treasure_state_match = re.search(
+        r"private static Dictionary<string, object\?> BuildTreasureState\(.*?\n    private static string GetRewardTypeName\(",
+        state_builder,
+        re.S,
+    )
+    if not treasure_state_match:
+        fail("could not locate BuildTreasureState for treasure audit")
+    treasure_state_body = treasure_state_match.group(0)
+    treasure_action_match = re.search(
+        r"private static Dictionary<string, object\?> ExecuteClaimTreasureRelic\(.*?\n    private static Dictionary<string, object\?> ExecuteCrystalSphereSetTool\(",
+        actions,
+        re.S,
+    )
+    if not treasure_action_match:
+        fail("could not locate ExecuteClaimTreasureRelic for treasure audit")
+    treasure_action_body = treasure_action_match.group(0)
+    for required_fragment in ["IsVisibleInTree", "is_visible", "can_claim"]:
+        if required_fragment not in treasure_state_body:
+            fail(f"treasure state missing visibility/enabled metadata: {required_fragment}")
+    for required_fragment in ["IsVisibleInTree", "IsEnabled"]:
+        if required_fragment not in treasure_action_body:
+            fail(f"treasure action missing visibility/enabled guard: {required_fragment}")
+
     print(f"states: {len(state_types)} documented, markdown coverage enforced")
 
 

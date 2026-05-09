@@ -772,6 +772,8 @@ Chest is auto-opened on first state query.
         "name": "Lantern",
         "description": "Gain 1 Energy on the first turn of each combat.",
         "rarity": "Uncommon",
+        "is_visible": true,
+        "can_claim": true,
         "keywords": [ /* Keyword Objects */ ]
       }
     ],

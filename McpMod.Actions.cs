@@ -969,7 +969,7 @@ public static partial class McpMod
         int index = indexElem.GetInt32();
 
         var holders = FindAll<NTreasureRoomRelicHolder>(relicCollection)
-            .Where(h => h.IsEnabled && h.Visible)
+            .Where(h => h.IsEnabled && h.Visible && h.IsVisibleInTree())
             .ToList();
 
         if (index < 0 || index >= holders.Count)

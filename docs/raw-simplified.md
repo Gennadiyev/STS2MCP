@@ -173,7 +173,7 @@ When a run is active, the response includes `current_run.run_id` in `{save_scope
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `claim_treasure_relic` | `index`: int | Claim a relic from the opened chest. |
+| `claim_treasure_relic` | `index`: int | Claim a visible enabled relic from the opened chest. |
 | `proceed` | _(none)_ | Leave the treasure room. |
 
 ### Card Selection Overlay (`card_select`)

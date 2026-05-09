@@ -2456,7 +2456,7 @@ public static partial class McpMod
         if (relicCollection?.Visible == true)
         {
             var holders = FindAll<NTreasureRoomRelicHolder>(relicCollection)
-                .Where(h => h.IsEnabled && h.Visible)
+                .Where(h => h.IsEnabled && h.Visible && h.IsVisibleInTree())
                 .ToList();
 
             var relics = new List<Dictionary<string, object?>>();
@@ -2472,6 +2472,8 @@ public static partial class McpMod
                     ["name"] = SafeGetText(() => relic.Title),
                     ["description"] = SafeGetText(() => relic.DynamicDescription),
                     ["rarity"] = relic.Rarity.ToString(),
+                    ["is_visible"] = true,
+                    ["can_claim"] = holder.IsEnabled,
                     ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
                 });
                 index++;

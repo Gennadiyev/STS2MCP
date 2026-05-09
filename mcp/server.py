@@ -835,6 +835,7 @@ async def treasure_claim_relic(relic_index: int) -> str:
 
     The chest is auto-opened when entering the treasure room.
     After claiming, use proceed_to_map() to continue.
+    Only visible enabled relics are actionable.
 
     Args:
         relic_index: 0-based index of the relic (as shown in game state).
@@ -1225,6 +1226,7 @@ async def mp_treasure_claim_relic(relic_index: int) -> str:
 
     In multiplayer, this is a bid — if multiple players pick the same relic,
     a "relic fight" determines the winner. Others get consolation prizes.
+    Only visible enabled relics are actionable.
 
     Args:
         relic_index: 0-based index of the relic.
