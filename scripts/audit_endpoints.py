@@ -231,6 +231,13 @@ def audit_static_error_shapes(repo: Path) -> None:
     for required_fragment in ["unknown_multiplayer_action", "not_multiplayer_run", "run_not_in_progress", "local_player_unavailable"]:
         if required_fragment not in mcp_mod + multiplayer_actions:
             fail(f"multiplayer actions missing structured dispatch error handling: {required_fragment}")
+    mcp_server = (repo / "mcp" / "server.py").read_text(encoding="utf-8")
+    for required_fragment in ["_format_structured_http_error", "http_status", 'data.get("status") != "error"']:
+        if required_fragment not in mcp_server:
+            fail(f"MCP server must preserve structured non-2xx endpoint errors: {required_fragment}")
+    mcp_readme = (repo / "mcp" / "README.md").read_text(encoding="utf-8")
+    if "MCP wrappers preserve those structured JSON error bodies" not in mcp_readme:
+        fail("mcp/README.md must document structured non-2xx error propagation")
     print("errors: structured 500 response helpers enforced")
 
 

@@ -180,8 +180,25 @@ def _handle_error(e: Exception) -> str:
     if isinstance(e, httpx.ConnectError):
         return "Error: Cannot connect to STS2_MCP mod. Is the game running with the mod enabled?"
     if isinstance(e, httpx.HTTPStatusError):
+        structured = _format_structured_http_error(e.response)
+        if structured is not None:
+            return structured
         return f"Error: HTTP {e.response.status_code} — {e.response.text}"
     return f"Error: {e}"
+
+
+def _format_structured_http_error(response: httpx.Response) -> str | None:
+    try:
+        data = response.json()
+    except ValueError:
+        return None
+
+    if not isinstance(data, dict) or data.get("status") != "error":
+        return None
+
+    payload = dict(data)
+    payload.setdefault("http_status", response.status_code)
+    return json.dumps(payload, indent=2)
 
 
 def _response_error_code(response: httpx.Response) -> str | None:
