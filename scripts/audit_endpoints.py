@@ -1665,6 +1665,14 @@ def audit_live(base_url: str) -> None:
         if not isinstance(data, dict) or data.get("error_code") != "method_not_allowed":
             fail(f"{path} expected method_not_allowed error code for POST, got {data}")
 
+    for path in sorted({path for _, path in EXPECTED_ENDPOINTS} | {"/"}):
+        status, data = load_json_url(base_url.rstrip("/") + path, "PUT", b"{}")
+        assert_error_body(path, status, data)
+        if status != 405:
+            fail(f"{path} expected HTTP 405 for PUT, got {status}: {data}")
+        if not isinstance(data, dict) or data.get("error_code") != "method_not_allowed":
+            fail(f"{path} expected method_not_allowed error code for PUT, got {data}")
+
     status, data = load_json_url(base_url.rstrip("/") + "/api/v1/does-not-exist")
     assert_error_body("/api/v1/does-not-exist", status, data)
     if status != 404:
@@ -1675,6 +1683,7 @@ def audit_live(base_url: str) -> None:
     print("live: GET endpoint smoke checks passed")
     print("live: state format checks passed")
     print("live: safe POST validation checks passed")
+    print("live: unsupported method checks passed")
 
 
 def main() -> None:
