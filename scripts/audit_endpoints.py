@@ -199,6 +199,40 @@ def assert_keyword_payload(path: str, field: str, values: object) -> None:
                 fail(f"{path} {field} entry missing non-empty {required_field}: {keyword}")
 
 
+def assert_current_run_context(path: str, current_run: object, *, expect_active: bool = True) -> None:
+    if not isinstance(current_run, dict):
+        fail(f"{path} expected current_run object, got {current_run}")
+    assert_context_paths_normalized(f"{path}.current_run", current_run)
+    if current_run.get("is_in_progress") is not expect_active:
+        fail(f"{path} current_run expected is_in_progress={expect_active}, got {current_run}")
+    for required_field in ["profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "id_format"]:
+        if required_field not in current_run:
+            fail(f"{path} current_run missing profile/save context field: {required_field}")
+    if not isinstance(current_run["profile_id"], int) or current_run["profile_id"] not in {1, 2, 3}:
+        fail(f"{path} current_run profile_id should be 1-3, got {current_run}")
+    for field in ["progress_path", "resolved_progress_path", "profile_root", "save_scope", "id_format"]:
+        if not isinstance(current_run.get(field), str) or not current_run[field]:
+            fail(f"{path} current_run {field} should be a non-empty string, got {current_run}")
+    if current_run["id_format"] != "{save_scope}:profile{profile_id}:{start_time}":
+        fail(f"{path} current_run unexpected id_format, got {current_run.get('id_format')}")
+    for optional_string in ["save_path", "game_mode", "platform_type", "seed", "run_id", "limitation"]:
+        value = current_run.get(optional_string)
+        if value is not None and (not isinstance(value, str) or not value):
+            fail(f"{path} current_run {optional_string} should be a non-empty string when present, got {current_run}")
+    for optional_int in ["start_time", "save_time", "run_time", "ascension", "current_act_index", "schema_version"]:
+        value = current_run.get(optional_int)
+        if value is not None and not isinstance(value, int):
+            fail(f"{path} current_run {optional_int} should be int when present, got {current_run}")
+    if current_run.get("run_id") and not current_run.get("start_time"):
+        fail(f"{path} current_run run_id requires start_time, got {current_run}")
+    if current_run.get("start_time") and not current_run.get("run_id"):
+        fail(f"{path} current_run start_time should derive run_id, got {current_run}")
+    if current_run.get("run_id"):
+        expected_prefix = f"{current_run['save_scope']}:profile{current_run['profile_id']}:"
+        if not str(current_run["run_id"]).startswith(expected_prefix):
+            fail(f"{path} current_run run_id should start with {expected_prefix!r}, got {current_run}")
+
+
 def audit_docs(repo: Path) -> None:
     raw_full = (repo / "docs" / "raw-full.md").read_text(encoding="utf-8")
     readme = (repo / "README.md").read_text(encoding="utf-8")
@@ -1551,6 +1585,7 @@ def audit_live(base_url: str) -> None:
             for required_field in ["profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run"]:
                 if required_field not in data:
                     fail(f"{path} missing profile/save context field: {required_field}")
+            assert_current_run_context(path, data["current_run"])
             if path == "/api/v1/profile":
                 for required_field in [
                     "total_playtime",
@@ -1814,21 +1849,7 @@ def audit_live(base_url: str) -> None:
             for required_field in ["profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope"]:
                 if required_field not in data:
                     fail(f"{path} missing profile/save context field: {required_field}")
-            current_run = data.get("current_run")
-            if not isinstance(current_run, dict):
-                fail(f"{path} expected current_run save context, got {current_run}")
-            assert_context_paths_normalized(f"{path}.current_run", current_run)
-            for required_field in ["is_in_progress", "profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "id_format"]:
-                if required_field not in current_run:
-                    fail(f"{path} current_run missing profile/save context field: {required_field}")
-            if current_run.get("is_in_progress") is not True:
-                fail(f"{path} current_run expected active run marker, got {current_run}")
-            if current_run.get("id_format") != "{save_scope}:profile{profile_id}:{start_time}":
-                fail(f"{path} current_run unexpected id_format, got {current_run.get('id_format')}")
-            if current_run.get("run_id") and not current_run.get("start_time"):
-                fail(f"{path} current_run run_id requires start_time, got {current_run}")
-            if current_run.get("start_time") and not current_run.get("run_id"):
-                fail(f"{path} current_run start_time should derive run_id, got {current_run}")
+            assert_current_run_context(path, data.get("current_run"))
             glossary_payloads[expected_kind] = data
 
     if {"keywords", "relics", "potions"}.issubset(glossary_payloads):
@@ -1853,6 +1874,8 @@ def audit_live(base_url: str) -> None:
     assert_context_paths_normalized("/api/v1/singleplayer?format=json", data)
     if data.get("status") != "ok" or data.get("kind") != "singleplayer_state":
         fail(f"/api/v1/singleplayer?format=json expected status ok and kind singleplayer_state, got {data}")
+    if "current_run" in data:
+        assert_current_run_context("/api/v1/singleplayer?format=json", data["current_run"])
     battle = data.get("battle")
     if isinstance(battle, dict):
         for required_field in ["round", "turn", "is_play_phase", "player_actions_disabled", "can_end_turn", "end_turn_blocked_reason", "enemies"]:
