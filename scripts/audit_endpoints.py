@@ -39,8 +39,11 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
-def load_json_url(url: str) -> tuple[int, object]:
-    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+def load_json_url(url: str, method: str = "GET", body: bytes | None = None) -> tuple[int, object]:
+    headers = {"Accept": "application/json"}
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=10) as response:
             return response.status, json.load(response)
@@ -104,7 +107,25 @@ def audit_live(base_url: str) -> None:
         if path.startswith("/api/v1/glossary/") and status not in {200, 409}:
             fail(f"{path} expected HTTP 200 or 409, got {status}: {data}")
 
+    post_validation_checks = [
+        ("/api/v1/singleplayer", b"{", 400),
+        ("/api/v1/singleplayer", b"{}", 400),
+        ("/api/v1/profiles", b"{", 400),
+        ("/api/v1/profiles", b"{}", 400),
+    ]
+    for path, body, expected_status in post_validation_checks:
+        status, data = load_json_url(base_url.rstrip("/") + path, "POST", body)
+        assert_error_body(path, status, data)
+        if status != expected_status:
+            fail(f"{path} expected HTTP {expected_status} for validation check, got {status}: {data}")
+
+    status, data = load_json_url(base_url.rstrip("/") + "/api/v1/settings", "POST", b"{}")
+    assert_error_body("/api/v1/settings", status, data)
+    if status != 405:
+        fail(f"/api/v1/settings expected HTTP 405 for POST, got {status}: {data}")
+
     print("live: GET endpoint smoke checks passed")
+    print("live: safe POST validation checks passed")
 
 
 def main() -> None:
