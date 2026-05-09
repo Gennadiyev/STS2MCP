@@ -336,7 +336,34 @@ def audit_static_error_shapes(repo: Path) -> None:
     if not settings_match:
         fail("could not locate BuildSettings for settings audit")
     settings_body = settings_match.group(0)
-    for required_fragment in ["SaveManager.Instance", "Save manager is not available", "Settings data is not available", "status", "kind"]:
+    for required_fragment in [
+        "SaveManager.Instance",
+        "Save manager is not available",
+        "Settings data is not available",
+        "status",
+        "kind",
+        "fullscreen",
+        "resolution",
+        "fps_limit",
+        "vsync",
+        "msaa",
+        "aspect_ratio",
+        "target_display",
+        "limit_fps_background",
+        "master",
+        "bgm",
+        "sfx",
+        "ambience",
+        "fast_mode",
+        "screen_shake",
+        "show_run_timer",
+        "show_card_indices",
+        "text_effects",
+        "long_press",
+        "enabled",
+        "language",
+        "skip_intro",
+    ]:
         if required_fragment not in settings_body:
             fail(f"settings endpoint missing startup-safe structured field: {required_fragment}")
     mcp_mod = (repo / "McpMod.cs").read_text(encoding="utf-8")
@@ -1314,6 +1341,19 @@ def audit_live(base_url: str) -> None:
             for required_field in ["display", "audio", "gameplay", "mods", "language", "skip_intro"]:
                 if required_field not in data:
                     fail(f"{path} missing settings field: {required_field}")
+            settings_groups = {
+                "display": ["fullscreen", "resolution", "fps_limit", "vsync", "msaa", "aspect_ratio", "target_display", "limit_fps_background"],
+                "audio": ["master", "bgm", "sfx", "ambience"],
+                "gameplay": ["fast_mode", "screen_shake", "show_run_timer", "show_card_indices", "text_effects", "long_press"],
+                "mods": ["enabled"],
+            }
+            for group_name, required_fields in settings_groups.items():
+                group = data.get(group_name)
+                if not isinstance(group, dict):
+                    fail(f"{path} expected settings group {group_name} to be an object, got {group}")
+                for required_field in required_fields:
+                    if required_field not in group:
+                        fail(f"{path} missing settings field: {group_name}.{required_field}")
         if path in {"/api/v1/profile", "/api/v1/compendium"}:
             if not isinstance(data, dict):
                 fail(f"{path} expected structured profile context object, got {type(data).__name__}")
