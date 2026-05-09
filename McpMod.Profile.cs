@@ -70,8 +70,12 @@ public static partial class McpMod
         }
 
         string action = actionElem.GetString() ?? "";
-        JsonElement idElem;
-        if (parsed.TryGetValue("profile_id", out idElem) && idElem.ValueKind != JsonValueKind.Number)
+        if (!parsed.TryGetValue("profile_id", out var idElem))
+        {
+            SendError(response, 400, "Missing 'profile_id' field. Use a profile slot 1-3.");
+            return;
+        }
+        if (idElem.ValueKind != JsonValueKind.Number)
         {
             SendError(response, 400, "'profile_id' field must be a number");
             return;

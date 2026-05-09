@@ -882,6 +882,7 @@ def audit_live(base_url: str) -> None:
         ("/api/v1/profiles", b"{", 400),
         ("/api/v1/profiles", b"{}", 400),
         ("/api/v1/profiles", b'{"action": 1}', 400),
+        ("/api/v1/profiles", b'{"action": "switch"}', 400),
         ("/api/v1/profiles", b'{"action": "switch", "profile_id": "1"}', 400),
         ("/api/v1/profiles", b'{"action": "switch", "profile_id": 1.5}', 400),
         ("/api/v1/profiles", b'{"action": "switch", "profile_id": 999999999999}', 400),
