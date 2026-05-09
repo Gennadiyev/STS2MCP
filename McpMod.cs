@@ -666,6 +666,10 @@ public static partial class McpMod
                     _ => 400
                 };
             }
+            else
+            {
+                response.StatusCode = 400;
+            }
         }
         SendJson(response, result);
     }

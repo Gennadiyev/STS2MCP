@@ -223,6 +223,8 @@ def audit_static_error_shapes(repo: Path) -> None:
     for required_fragment in ["SendActionResultJson", "unknown_action", "run_not_in_progress", "local_player_unavailable"]:
         if required_fragment not in mcp_mod + actions:
             fail(f"singleplayer actions missing structured dispatch error handling: {required_fragment}")
+    if "response.StatusCode = 400;" not in mcp_mod:
+        fail("action result sender must return non-2xx for uncoded action errors")
     for required_fragment in ["missing_menu_option", "unknown_menu_option", "not_on_menu"]:
         if required_fragment not in mcp_mod + actions:
             fail(f"menu_select missing structured dispatch error handling: {required_fragment}")
@@ -1144,7 +1146,7 @@ def audit_live(base_url: str) -> None:
         b'{"action": "unknown_action"}',
     )
     assert_error_body("/api/v1/singleplayer", status, data)
-    if status not in {400, 409} or data.get("error_code") not in {"unknown_action", "run_not_in_progress"}:
+    if status not in {400, 409} or data.get("error_code") not in {"unknown_action", "run_not_in_progress", "local_player_unavailable"}:
         fail(f"/api/v1/singleplayer expected structured unknown/no-run action error, got HTTP {status}: {data}")
 
     status, profiles_data = load_json_url(base_url.rstrip("/") + "/api/v1/profiles")

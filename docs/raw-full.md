@@ -1201,7 +1201,7 @@ Profile action validation returns structured HTTP errors: invalid profile IDs an
 ## POST — Perform Actions
 
 All POST requests use a JSON body with an `"action"` field and action-specific parameters.
-Action dispatch failures include structured `error_code` values where available. Missing or unknown main-menu `menu_select` options and unknown non-menu actions return HTTP 400; gameplay actions posted with no active run return HTTP 409 with `error_code: "run_not_in_progress"`.
+Action dispatch failures include structured `error_code` values where available. Missing or unknown main-menu `menu_select` options and unknown non-menu actions return HTTP 400; gameplay actions posted with no active run return HTTP 409 with `error_code: "run_not_in_progress"`. Other failed action attempts return non-2xx structured error JSON instead of HTTP 200.
 
 ### Success Response
 
