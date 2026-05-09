@@ -206,6 +206,50 @@ def audit_action_surface(repo: Path) -> None:
     if missing_docs:
         fail(f"implemented actions missing docs: {missing_docs}")
 
+    module = ast.parse(server, filename=str(repo / "mcp" / "server.py"))
+    route_helpers = {
+        "_get",
+        "_post",
+        "_mp_get",
+        "_mp_post",
+        "_menu_select_post",
+        "_profiles_post",
+        "_profiles_get",
+        "_profile_get",
+        "_compendium_get",
+        "_settings_get",
+        "_bestiary_get",
+        "_glossary_get",
+        "_root_get",
+    }
+    for node in module.body:
+        if not isinstance(node, ast.AsyncFunctionDef):
+            continue
+        is_tool = any(
+            isinstance(decorator, ast.Call)
+            and isinstance(decorator.func, ast.Attribute)
+            and decorator.func.attr == "tool"
+            for decorator in node.decorator_list
+        )
+        if not is_tool:
+            continue
+
+        calls = {
+            call.func.id
+            for call in ast.walk(node)
+            if isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Name)
+            and call.func.id in route_helpers
+        }
+        if node.name.startswith("mp_"):
+            disallowed = calls & {"_get", "_post", "_menu_select_post"}
+            if disallowed:
+                fail(f"MCP multiplayer tool {node.name} must not call singleplayer route helpers: {sorted(disallowed)}")
+            if calls and not any(call in calls for call in ["_mp_get", "_mp_post"]):
+                fail(f"MCP multiplayer tool {node.name} must use multiplayer route helpers, got {sorted(calls)}")
+        elif calls & {"_mp_get", "_mp_post"}:
+            fail(f"MCP non-multiplayer tool {node.name} must not call multiplayer route helpers: {sorted(calls)}")
+
     print(f"actions: {len(sp_actions)} singleplayer, {len(mp_actions)} multiplayer actions covered")
 
 
