@@ -336,7 +336,8 @@ async def get_glossary_cards() -> str:
 
     Requires a run in progress. This is scoped to the current run/character pool,
     not profile-wide discovered cards; use get_compendium() for profile progress.
-    The response includes current_run.run_id, current_run.seed, count, and items.
+    The response includes profile/save context, current_run.run_id,
+    current_run.seed, count, and items.
     """
     try:
         return await _glossary_get("cards")
@@ -350,7 +351,8 @@ async def get_glossary_relics() -> str:
 
     Requires a run in progress. This is scoped to the current run/character pool,
     not profile-wide discovered relics; use get_compendium() for profile progress.
-    The response includes current_run.run_id, current_run.seed, count, and items.
+    The response includes profile/save context, current_run.run_id,
+    current_run.seed, count, and items.
     """
     try:
         return await _glossary_get("relics")
@@ -364,7 +366,8 @@ async def get_glossary_potions() -> str:
 
     Requires a run in progress. This is scoped to the current run/character pool,
     not profile-wide discovered potions; use get_compendium() for profile progress.
-    The response includes current_run.run_id, current_run.seed, count, and items.
+    The response includes profile/save context, current_run.run_id,
+    current_run.seed, count, and items.
     """
     try:
         return await _glossary_get("potions")
@@ -377,8 +380,8 @@ async def get_glossary_keywords() -> str:
     """Get active-run keyword metadata collected from active pools.
 
     Requires a run in progress. Keywords come from cards, relics, and potions
-    reachable in the current run context. The response includes current_run.run_id,
-    current_run.seed, count, and items.
+    reachable in the current run context. The response includes profile/save
+    context, current_run.run_id, current_run.seed, count, and items.
     """
     try:
         return await _glossary_get("keywords")

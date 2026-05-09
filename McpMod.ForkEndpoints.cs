@@ -212,6 +212,10 @@ public static partial class McpMod
             ["kind"] = payload.Kind,
             ["scope"] = "active_run",
             ["count"] = items.Count,
+            ["profile_id"] = payload.ProfileId,
+            ["progress_path"] = payload.ProgressPath,
+            ["profile_root"] = payload.ProfileRoot,
+            ["save_scope"] = payload.SaveScope,
             ["current_run"] = BuildCurrentRunContext(
                 isRunInProgress: true,
                 profileId: payload.ProfileId,

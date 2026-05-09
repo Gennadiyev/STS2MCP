@@ -184,6 +184,14 @@ def audit_static_error_shapes(repo: Path) -> None:
 
 def audit_static_glossary_scope(repo: Path) -> None:
     fork_endpoints = (repo / "McpMod.ForkEndpoints.cs").read_text(encoding="utf-8")
+    docs = "\n".join(
+        [
+            (repo / "docs" / "raw-simplified.md").read_text(encoding="utf-8"),
+            (repo / "docs" / "raw-full.md").read_text(encoding="utf-8"),
+            (repo / "mcp" / "README.md").read_text(encoding="utf-8"),
+            (repo / "mcp" / "server.py").read_text(encoding="utf-8"),
+        ]
+    )
     relic_match = re.search(
         r"internal static object BuildGlossaryRelics\(\).*?\n    internal static object BuildGlossaryPotions\(\)",
         fork_endpoints,
@@ -208,7 +216,21 @@ def audit_static_glossary_scope(repo: Path) -> None:
         if not match or required not in match.group(0):
             fail(f"{method} must include active-run shared pool {required}")
 
-    print("glossary: active-run shared/scoped pools enforced")
+    send_match = re.search(
+        r"private static void SendGlossaryJson\(.*?\n    private static Dictionary<string, object\?> GlossaryError\(",
+        fork_endpoints,
+        re.S,
+    )
+    if not send_match:
+        fail("could not locate SendGlossaryJson for glossary context audit")
+    send_body = send_match.group(0)
+    for required_fragment in ["profile_id", "progress_path", "profile_root", "save_scope", "current_run"]:
+        if required_fragment not in send_body:
+            fail(f"glossary success payload missing profile/save context: {required_fragment}")
+        if required_fragment not in docs:
+            fail(f"docs missing glossary profile/save context: {required_fragment}")
+
+    print("glossary: active-run shared/scoped pools and profile context enforced")
 
 
 def audit_static_card_glossary_metadata(repo: Path) -> None:
@@ -900,6 +922,9 @@ def audit_live(base_url: str) -> None:
                 fail(f"{path} expected status ok and kind {expected_kind}, got {data}")
             if not isinstance(data.get("items"), list) or data.get("count") != len(data["items"]):
                 fail(f"{path} expected items list with matching count, got {data}")
+            for required_field in ["profile_id", "progress_path", "profile_root", "save_scope"]:
+                if required_field not in data:
+                    fail(f"{path} missing profile/save context field: {required_field}")
             current_run = data.get("current_run")
             if not isinstance(current_run, dict) or not current_run.get("run_id") or not current_run.get("seed"):
                 fail(f"{path} expected current_run run_id and seed, got {current_run}")
