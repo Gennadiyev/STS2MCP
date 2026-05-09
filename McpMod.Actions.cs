@@ -502,7 +502,9 @@ public static partial class McpMod
 
         int cardIndex = indexElem.GetInt32();
 
-        var cardHolders = FindAllSortedByPosition<NCardHolder>(cardScreen);
+        var cardHolders = FindAllSortedByPosition<NCardHolder>(cardScreen)
+            .Where(holder => holder.CardModel != null && holder.Visible && holder.IsVisibleInTree())
+            .ToList();
         if (cardIndex < 0 || cardIndex >= cardHolders.Count)
             return Error($"Card index {cardIndex} out of range (screen has {cardHolders.Count} cards)");
 
@@ -523,7 +525,9 @@ public static partial class McpMod
         if (overlay is not NCardRewardSelectionScreen cardScreen)
             return Error("Card reward selection screen is not open");
 
-        var altButtons = FindAll<NCardRewardAlternativeButton>(cardScreen);
+        var altButtons = FindAll<NCardRewardAlternativeButton>(cardScreen)
+            .Where(button => button.IsEnabled && button.Visible && button.IsVisibleInTree())
+            .ToList();
         if (altButtons.Count == 0)
             return Error("No skip option available on this card reward");
 

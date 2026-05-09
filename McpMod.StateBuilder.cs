@@ -1955,7 +1955,9 @@ public static partial class McpMod
     {
         var state = new Dictionary<string, object?>();
 
-        var cardHolders = FindAllSortedByPosition<NCardHolder>(cardScreen);
+        var cardHolders = FindAllSortedByPosition<NCardHolder>(cardScreen)
+            .Where(holder => holder.CardModel != null && holder.Visible && holder.IsVisibleInTree())
+            .ToList();
         var cards = new List<Dictionary<string, object?>>();
         int index = 0;
         foreach (var holder in cardHolders)
@@ -1965,12 +1967,15 @@ public static partial class McpMod
 
             var cardInfo = BuildCardInfo(card);
             cardInfo["index"] = index;
+            AddCardHolderState(cardInfo, holder);
             cards.Add(cardInfo);
             index++;
         }
         state["cards"] = cards;
 
-        var altButtons = FindAll<NCardRewardAlternativeButton>(cardScreen);
+        var altButtons = FindAll<NCardRewardAlternativeButton>(cardScreen)
+            .Where(button => button.IsEnabled && button.Visible && button.IsVisibleInTree())
+            .ToList();
         state["can_skip"] = altButtons.Count > 0;
 
         return state;

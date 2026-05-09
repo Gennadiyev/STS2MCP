@@ -384,6 +384,29 @@ def audit_state_surface(repo: Path) -> None:
     if "preview is already open" not in select_action_body or "%PreviewContainer" not in select_action_body:
         fail("select_card must reject grid selection while a preview is open")
 
+    card_reward_match = re.search(
+        r"private static Dictionary<string, object\?> BuildCardRewardState\(.*?\n    private static Dictionary<string, object\?> BuildCardSelectState\(",
+        state_builder,
+        re.S,
+    )
+    if not card_reward_match:
+        fail("could not locate BuildCardRewardState for reward-card audit")
+    card_reward_body = card_reward_match.group(0)
+    reward_action_match = re.search(
+        r"private static Dictionary<string, object\?> ExecuteSelectCardReward\(.*?\n    private static Dictionary<string, object\?> ExecuteProceed\(",
+        actions,
+        re.S,
+    )
+    if not reward_action_match:
+        fail("could not locate card reward actions for reward-card audit")
+    reward_action_body = reward_action_match.group(0)
+    for required_fragment in ["IsVisibleInTree", "IsEnabled", "AddCardHolderState"]:
+        if required_fragment not in card_reward_body:
+            fail(f"card_reward state missing visibility/enabled metadata: {required_fragment}")
+    for required_fragment in ["IsVisibleInTree", "IsEnabled"]:
+        if required_fragment not in reward_action_body:
+            fail(f"card_reward action missing visibility/enabled guard: {required_fragment}")
+
     print(f"states: {len(state_types)} documented, markdown coverage enforced")
 
 

@@ -513,10 +513,13 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
         "description": "Deal 13 damage. Apply 1 Weak. Apply 1 Vulnerable.",
         "rarity": "Uncommon",
         "is_upgraded": false,
+        "is_selected": false,
+        "is_visible": true,
+        "can_select": true,
         "keywords": [ /* Keyword Objects */ ]
       }
     ],
-    "can_skip": true
+    "can_skip": true       // true only when the skip/alternate button is enabled and visible
   },
   "run": { ... },
   "player": { ... }
