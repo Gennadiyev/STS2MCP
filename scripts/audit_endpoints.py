@@ -226,6 +226,7 @@ def audit_static_card_glossary_metadata(repo: Path) -> None:
         "GetCostDisplay",
         "star_cost",
         "GetStarCostDisplay",
+        "is_upgraded",
         "is_upgradable",
         "current_upgrade_level",
         "max_upgrade_level",

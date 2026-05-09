@@ -283,6 +283,7 @@ public static partial class McpMod
                 ["description"] = SafeGetCardDescription(card),
                 ["rarity"] = card.Rarity.ToString(),
                 ["pool"] = poolName,
+                ["is_upgraded"] = card.IsUpgraded,
                 ["is_upgradable"] = card.IsUpgradable,
                 ["current_upgrade_level"] = card.CurrentUpgradeLevel,
                 ["max_upgrade_level"] = card.MaxUpgradeLevel,

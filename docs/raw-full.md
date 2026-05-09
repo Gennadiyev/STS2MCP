@@ -1085,6 +1085,7 @@ Example success shape:
       "cost": "1",
       "star_cost": null,
       "rarity": "Basic",
+      "is_upgraded": false,
       "is_upgradable": true,
       "current_upgrade_level": 0,
       "max_upgrade_level": 1,
