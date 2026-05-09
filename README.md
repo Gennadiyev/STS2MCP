@@ -96,6 +96,10 @@ multiplayer menu retry behavior:
 uv run --project mcp python scripts/test_mcp_server.py
 ```
 
+For the stable endpoint envelopes, save/run context fields, structured error
+codes, glossary scope, action-readiness fields, and audit coverage, see
+[`docs/endpoint-contracts.md`](docs/endpoint-contracts.md).
+
 ### 2. Give Your AI Instructions to Interact with the Game
 
 **Clone or download the repository**, then:
