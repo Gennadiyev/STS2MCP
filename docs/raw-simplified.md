@@ -65,6 +65,8 @@ All POST requests use JSON body with `"action"` field. All responses include `{ 
 
 `GET /api/v1/compendium` returns the active profile grouped like the in-game Compendium:
 
+When a run is active, the response includes `current_run.run_id` in `{save_scope}:profile{profile_id}:{start_time}` format. This identifies the specific run attempt, while `seed` identifies the generated run content.
+
 | Section | Status |
 |---|---|
 | `card_library` | Discovered cards and card stats; `/api/v1/glossary/cards` adds metadata when a run context exists. |

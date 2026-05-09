@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Text.Json;
+using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Saves.Managers;
 
@@ -60,6 +61,7 @@ public static partial class McpMod
         return new Dictionary<string, object?>
         {
             ["profile_id"] = saveManager.CurrentProfileId,
+            ["current_run"] = BuildCurrentRunContext(saveManager.CurrentProfileId),
             ["source"] = "SaveManager.Progress plus model metadata endpoints",
             ["sections"] = new Dictionary<string, object?>
             {
@@ -209,7 +211,7 @@ public static partial class McpMod
                 ["source"] = "Profile save history files",
                 ["history_path"] = historyDirectory,
                 ["entry_count"] = files.Count,
-                ["entries"] = files.Take(20).Select(BuildRunHistoryEntry).ToList(),
+                ["entries"] = files.Take(20).Select(file => BuildRunHistoryEntry(file, profileId)).ToList(),
                 ["progress_members"] = values.Count > 0 ? values : null,
                 ["limitation"] = files.Count > 20
                     ? "Only the 20 most recent run files are summarized; use history_path to inspect older local run files."
@@ -229,11 +231,14 @@ public static partial class McpMod
         };
     }
 
-    private static Dictionary<string, object?> BuildRunHistoryEntry(FileInfo file)
+    private static Dictionary<string, object?> BuildRunHistoryEntry(FileInfo file, int profileId)
     {
+        var profileRoot = GetProfileRootFromProgressPath(GetProfileProgressPath(profileId), profileId);
+        var saveScope = GetSaveScope(profileRoot);
         var entry = new Dictionary<string, object?>
         {
             ["id"] = Path.GetFileNameWithoutExtension(file.Name),
+            ["run_id"] = $"{saveScope}:profile{profileId}:{Path.GetFileNameWithoutExtension(file.Name)}",
             ["file_name"] = file.Name,
             ["size_bytes"] = file.Length,
             ["last_write_time_utc"] = file.LastWriteTimeUtc
@@ -283,6 +288,60 @@ public static partial class McpMod
         }
 
         return entry;
+    }
+
+    private static Dictionary<string, object?>? BuildCurrentRunContext(int profileId)
+    {
+        if (RunManager.Instance?.IsInProgress != true)
+            return null;
+
+        var profileRoot = GetProfileRootFromProgressPath(GetProfileProgressPath(profileId), profileId);
+        var saveScope = GetSaveScope(profileRoot);
+        var result = new Dictionary<string, object?>
+        {
+            ["is_in_progress"] = true,
+            ["profile_id"] = profileId,
+            ["save_scope"] = saveScope,
+            ["id_format"] = "{save_scope}:profile{profile_id}:{start_time}"
+        };
+
+        var currentRunPath = ResolveCurrentRunPath(profileId);
+        if (currentRunPath == null || !File.Exists(currentRunPath))
+        {
+            result["limitation"] = "Run is in progress, but current_run.save was not found yet.";
+            return result;
+        }
+
+        result["save_path"] = currentRunPath;
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(currentRunPath));
+            var root = document.RootElement;
+
+            CopyJsonScalar(root, result, "start_time");
+            CopyJsonScalar(root, result, "save_time");
+            CopyJsonScalar(root, result, "run_time");
+            CopyJsonScalar(root, result, "game_mode");
+            CopyJsonScalar(root, result, "ascension");
+            CopyJsonScalar(root, result, "current_act_index");
+            CopyJsonScalar(root, result, "schema_version");
+            CopyJsonScalar(root, result, "platform_type");
+
+            if (root.TryGetProperty("rng", out var rng)
+                && rng.ValueKind == JsonValueKind.Object
+                && rng.TryGetProperty("seed", out var seed))
+                result["seed"] = GetJsonValue(seed);
+
+            if (result.TryGetValue("start_time", out var startTime) && startTime != null)
+                result["run_id"] = $"{saveScope}:profile{profileId}:{startTime}";
+        }
+        catch (Exception ex)
+        {
+            result["parse_error"] = ex.Message;
+        }
+
+        return result;
     }
 
     private static int CountMapPoints(JsonElement root)
@@ -353,6 +412,13 @@ public static partial class McpMod
         return $"profile{profileId}";
     }
 
+    private static string GetSaveScope(string profileRoot)
+    {
+        return profileRoot.StartsWith("modded/", StringComparison.OrdinalIgnoreCase)
+            ? "modded"
+            : "vanilla";
+    }
+
     private static IEnumerable<string> EnumerateSaveRoots()
     {
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
@@ -386,6 +452,21 @@ public static partial class McpMod
         }
 
         return progressPath;
+    }
+
+    private static string? ResolveCurrentRunPath(int profileId)
+    {
+        var progressPath = GetProfileProgressPath(profileId);
+        var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
+
+        foreach (var saveRoot in EnumerateSaveRoots())
+        {
+            var absolutePath = Path.Combine(saveRoot, profileRoot, "saves", "current_run.save");
+            if (File.Exists(absolutePath))
+                return absolutePath;
+        }
+
+        return null;
     }
 
     private static object? ToJsonSafe(object? value, int depth, int maxItems)

@@ -881,6 +881,7 @@ Returns the active profile's persistent progress summary, including character st
 
 Returns the active profile's progress grouped by the in-game Compendium cards:
 
+- `current_run`: present while a run is active. Includes a derived `run_id` in `{save_scope}:profile{profile_id}:{start_time}` format, plus `start_time`, `seed`, `save_time`, `run_time`, and run metadata read from `current_run.save`.
 - `card_library`: discovered card IDs and card pick/skip/win/loss stats. Detailed card metadata lives at `/api/v1/glossary/cards`, which currently requires a run context.
 - `relic_collection`: discovered relic IDs. Detailed relic metadata lives at `/api/v1/glossary/relics`, which currently requires a run context.
 - `potion_lab`: discovered potion IDs. Detailed potion metadata lives at `/api/v1/glossary/potions`, which currently requires a run context.
@@ -891,6 +892,15 @@ Returns the active profile's progress grouped by the in-game Compendium cards:
 ```jsonc
 {
   "profile_id": 1,
+  "current_run": {
+    "is_in_progress": true,
+    "profile_id": 1,
+    "save_scope": "modded",
+    "run_id": "modded:profile1:1778295706",
+    "start_time": 1778295706,
+    "seed": "2450ZAR9EF",
+    "run_time": 137
+  },
   "sections": {
     "card_library": { "status": "exposed", "discovered_ids": ["BASH"], "stats": [] },
     "relic_collection": { "status": "partially_exposed", "discovered_ids": ["BURNING_BLOOD"] },
@@ -903,6 +913,7 @@ Returns the active profile's progress grouped by the in-game Compendium cards:
       "entries": [
         {
           "id": "1774869148",
+          "run_id": "modded:profile1:1774869148",
           "players": [{ "id": 1, "character": "CHARACTER.IRONCLAD" }],
           "ascension": 0,
           "win": false,
