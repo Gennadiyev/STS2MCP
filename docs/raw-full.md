@@ -199,12 +199,13 @@ No run in progress.
   "state_type": "menu",
   "message": "No run in progress. Player is in the main menu.",
   "menu_screen": "main",
-  "options": ["continue", "singleplayer", "multiplayer", "compendium", "timeline", "settings", "quit"]
+  "options": ["continue", "abandon_run", "singleplayer", "multiplayer", "compendium", "timeline", "settings", "quit"]
 }
 ```
 
 Use `menu_select` with one of the advertised options. Options are accepted case-insensitively.
 If a visible option is intentionally withheld from automation, the state may also include `blocked_options` with a reason. For example, Timeline can be blocked while obtained epochs still need manual reveal because opening that game state through automation can trigger invalid unlock-state errors.
+`abandon_run` opens a confirmation popup; the next state exposes the popup's `confirm` / `cancel` options.
 
 Menu sub-screens expose their own options:
 
