@@ -936,7 +936,8 @@ async def mp_combat_end_turn() -> str:
     """[Multiplayer Combat] Submit end-turn vote.
 
     In multiplayer, ending the turn is a VOTE — the turn only ends when ALL
-    players have submitted. Use mp_combat_undo_end_turn() to retract.
+    players have submitted. Use battle can_end_turn/end_turn_blocked_reason
+    to check local readiness. Use mp_combat_undo_end_turn() to retract.
     """
     try:
         return await _mp_post({"action": "end_turn"})
@@ -949,6 +950,7 @@ async def mp_combat_undo_end_turn() -> str:
     """[Multiplayer Combat] Retract end-turn vote.
 
     If you submitted end turn but want to play more cards, use this to undo.
+    Use battle can_undo_end_turn/undo_end_turn_blocked_reason to check readiness.
     Only works if other players haven't all committed yet.
     """
     try:

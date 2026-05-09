@@ -213,5 +213,5 @@ When a run is active, the response includes `current_run.run_id` in `{save_scope
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `end_turn` | _(none)_ | Vote to end turn. Turn ends when all players vote. |
-| `undo_end_turn` | _(none)_ | Retract end-turn vote (before all players committed). |
+| `end_turn` | _(none)_ | Vote to end turn when battle state says `can_end_turn`. Turn ends when all players vote. |
+| `undo_end_turn` | _(none)_ | Retract end-turn vote when battle state says `can_undo_end_turn` (before all players committed). |

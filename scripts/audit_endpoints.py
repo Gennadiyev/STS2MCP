@@ -590,6 +590,30 @@ def audit_state_surface(repo: Path) -> None:
         if required_fragment not in end_turn_action_body:
             fail(f"end_turn action missing readiness guard: {required_fragment}")
 
+    mp_battle_match = re.search(
+        r"private static Dictionary<string, object\?> BuildMultiplayerBattleState\(.*?\n    private static Dictionary<string, object\?> BuildMultiplayerMapState\(",
+        multiplayer_state,
+        re.S,
+    )
+    if not mp_battle_match:
+        fail("could not locate BuildMultiplayerBattleState for multiplayer end-turn audit")
+    mp_battle_body = mp_battle_match.group(0)
+    mp_actions = (repo / "McpMod.MultiplayerActions.cs").read_text(encoding="utf-8")
+    for required_fragment in [
+        "local_player_ready_to_end_turn",
+        "can_end_turn",
+        "end_turn_blocked_reason",
+        "can_undo_end_turn",
+        "undo_end_turn_blocked_reason",
+        "GetMultiplayerEndTurnBlockedReason",
+        "GetMultiplayerUndoEndTurnBlockedReason",
+    ]:
+        if required_fragment not in mp_battle_body:
+            fail(f"multiplayer battle state missing end-turn readiness metadata: {required_fragment}")
+    for required_fragment in ["Already submitted end turn", "Not ready to end turn"]:
+        if required_fragment not in mp_actions:
+            fail(f"multiplayer end-turn action missing readiness guard: {required_fragment}")
+
     print(f"states: {len(state_types)} documented, markdown coverage enforced")
 
 

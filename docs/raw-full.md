@@ -1513,7 +1513,12 @@ Finish the Crystal Sphere minigame.
 ```jsonc
 {
   "battle": {
-    "all_players_ready": false
+    "all_players_ready": false,
+    "local_player_ready_to_end_turn": false,
+    "can_end_turn": true,
+    "end_turn_blocked_reason": null,
+    "can_undo_end_turn": false,
+    "undo_end_turn_blocked_reason": "NotReady"
     // Same shape as singleplayer (round, turn, is_play_phase, enemies).
     // Player state lives in top-level "player" (local) and "players" (all).
   },
@@ -1610,12 +1615,12 @@ Finish the Crystal Sphere minigame.
 ```json
 { "action": "end_turn" }
 ```
-In multiplayer, this is a vote. The turn ends only when all players submit.
+In multiplayer, this is a vote. The turn ends only when all players submit. Use `battle.can_end_turn` / `battle.end_turn_blocked_reason` to check local readiness.
 
 **Undo end turn:**
 ```json
 { "action": "undo_end_turn" }
 ```
-Retract the end-turn vote before all players have committed.
+Retract the end-turn vote before all players have committed. Use `battle.can_undo_end_turn` / `battle.undo_end_turn_blocked_reason` to check local readiness.
 
 All other actions work identically to singleplayer.

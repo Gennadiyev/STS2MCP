@@ -280,7 +280,23 @@ public static partial class McpMod
         battle["round"] = combatState.RoundNumber;
         battle["turn"] = combatState.CurrentSide.ToString().ToLower();
         battle["is_play_phase"] = CombatManager.Instance.IsPlayPhase;
+        battle["player_actions_disabled"] = CombatManager.Instance.PlayerActionsDisabled;
         battle["all_players_ready"] = CombatManager.Instance.AllPlayersReadyToEndTurn();
+
+        var localPlayer = LocalContext.GetMe(runState);
+        if (localPlayer != null)
+        {
+            var isReady = CombatManager.Instance.IsPlayerReadyToEndTurn(localPlayer);
+            battle["local_player_ready_to_end_turn"] = isReady;
+
+            var endTurnBlockedReason = GetMultiplayerEndTurnBlockedReason(localPlayer);
+            battle["can_end_turn"] = endTurnBlockedReason == null;
+            battle["end_turn_blocked_reason"] = endTurnBlockedReason;
+
+            var undoBlockedReason = GetMultiplayerUndoEndTurnBlockedReason(localPlayer);
+            battle["can_undo_end_turn"] = undoBlockedReason == null;
+            battle["undo_end_turn_blocked_reason"] = undoBlockedReason;
+        }
 
         // Enemies
         var enemies = new List<Dictionary<string, object?>>();
@@ -293,6 +309,48 @@ public static partial class McpMod
         battle["enemies"] = enemies;
 
         return battle;
+    }
+
+    private static string? GetMultiplayerEndTurnBlockedReason(Player player)
+    {
+        if (!CombatManager.Instance.IsInProgress)
+            return "NotInCombat";
+        if (!CombatManager.Instance.IsPlayPhase)
+            return "NotInPlayPhase";
+        if (CombatManager.Instance.PlayerActionsDisabled)
+            return "PlayerActionsDisabled";
+        if (!player.Creature.IsAlive)
+            return "PlayerDead";
+        if (CombatManager.Instance.IsPlayerReadyToEndTurn(player))
+            return "AlreadyReady";
+
+        var hand = NCombatRoom.Instance?.Ui?.Hand;
+        if (hand != null && hand.InCardPlay)
+            return "CardInPlay";
+        if (hand != null && hand.CurrentMode != NPlayerHand.Mode.Play)
+            return "HandSelectionMode";
+        if (player.Creature.CombatState == null)
+            return "NoCombatState";
+
+        return null;
+    }
+
+    private static string? GetMultiplayerUndoEndTurnBlockedReason(Player player)
+    {
+        if (!CombatManager.Instance.IsInProgress)
+            return "NotInCombat";
+        if (!CombatManager.Instance.IsPlayPhase)
+            return "NotInPlayPhase";
+        if (CombatManager.Instance.PlayerActionsDisabled)
+            return "PlayerActionsDisabled";
+        if (!player.Creature.IsAlive)
+            return "PlayerDead";
+        if (!CombatManager.Instance.IsPlayerReadyToEndTurn(player))
+            return "NotReady";
+        if (player.Creature.CombatState == null)
+            return "NoCombatState";
+
+        return null;
     }
 
     private static Dictionary<string, object?> BuildMultiplayerMapState(RunState runState)
