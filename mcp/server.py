@@ -174,6 +174,26 @@ def _handle_error(e: Exception) -> str:
     return f"Error: {e}"
 
 
+def _response_error_code(response: httpx.Response) -> str | None:
+    try:
+        data = response.json()
+    except ValueError:
+        return None
+    return data.get("error_code") if isinstance(data, dict) else None
+
+
+async def _menu_select_post(body: dict) -> str:
+    try:
+        return await _post(body)
+    except httpx.HTTPStatusError as e:
+        if (
+            e.response.status_code == 409
+            and _response_error_code(e.response) == "multiplayer_run_active"
+        ):
+            return await _mp_post(body)
+        raise
+
+
 # ---------------------------------------------------------------------------
 # General
 # ---------------------------------------------------------------------------
@@ -225,14 +245,7 @@ async def menu_select(option: str, seed: str | None = None) -> str:
     if seed is not None:
         body["seed"] = seed
     try:
-        return await _post(body)
-    except httpx.HTTPStatusError as e:
-        if e.response.status_code == 409 and "Multiplayer run is active" in e.response.text:
-            try:
-                return await _mp_post(body)
-            except Exception as mp_e:
-                return _handle_error(mp_e)
-        return _handle_error(e)
+        return await _menu_select_post(body)
     except Exception as e:
         return _handle_error(e)
 

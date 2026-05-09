@@ -17,7 +17,7 @@ HTTP API on `localhost:15526`. No authentication.
 - `GET /api/v1/profiles` — list profile slots
 - `POST /api/v1/profiles` — switch or delete profile slots
 
-Singleplayer and multiplayer endpoints are mutually exclusive (HTTP 409 if mismatched).
+Singleplayer and multiplayer endpoints are mutually exclusive (HTTP 409 if mismatched). The mismatch response includes `error_code`: `multiplayer_run_active` when singleplayer is called during a multiplayer run, or `not_multiplayer_run` when multiplayer is called outside one.
 
 ## GET — Query Parameters
 

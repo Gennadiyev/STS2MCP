@@ -280,7 +280,8 @@ public static partial class McpMod
                 if (IsMultiplayerRun())
                 {
                     SendError(response, 409,
-                        "Multiplayer run is active. Use /api/v1/multiplayer instead.");
+                        "Multiplayer run is active. Use /api/v1/multiplayer instead.",
+                        "multiplayer_run_active");
                     return;
                 }
 
@@ -297,7 +298,8 @@ public static partial class McpMod
                 if (!IsMultiplayerRun())
                 {
                     SendError(response, 409,
-                        "Not in a multiplayer run. Use /api/v1/singleplayer instead.");
+                        "Not in a multiplayer run. Use /api/v1/singleplayer instead.",
+                        "not_multiplayer_run");
                     return;
                 }
 

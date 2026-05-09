@@ -89,10 +89,13 @@ public static partial class McpMod
         response.Close();
     }
 
-    internal static void SendError(HttpListenerResponse response, int statusCode, string message)
+    internal static void SendError(HttpListenerResponse response, int statusCode, string message, string? errorCode = null)
     {
         response.StatusCode = statusCode;
-        SendJson(response, new Dictionary<string, object?> { ["error"] = message });
+        var data = new Dictionary<string, object?> { ["error"] = message };
+        if (!string.IsNullOrWhiteSpace(errorCode))
+            data["error_code"] = errorCode;
+        SendJson(response, data);
     }
 
     private static Dictionary<string, object?> Error(string message)
