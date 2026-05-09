@@ -1063,6 +1063,7 @@ Returns the active profile's progress grouped by the in-game Compendium cards:
     "character_stats": { "status": "exposed", "characters": [], "global": {} },
     "run_history": {
       "status": "exposed",
+      "history_path": "C:/.../SlayTheSpire2/steam/<account>/modded/profile1/saves/history",
       "entry_count": 10,
       "entries": [
         {

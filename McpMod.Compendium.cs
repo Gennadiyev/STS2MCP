@@ -307,7 +307,7 @@ public static partial class McpMod
                 ["ui_label"] = "Run History",
                 ["status"] = files.Count > 0 ? "exposed" : "exposed_empty",
                 ["source"] = "Profile save history files",
-                ["history_path"] = historyDirectory,
+                ["history_path"] = NormalizePathForJson(historyDirectory),
                 ["entry_count"] = files.Count,
                 ["entries"] = files.Take(20).Select(file => BuildRunHistoryEntry(file, snapshot.ProfileId, snapshot.SaveScope)).ToList(),
                 ["progress_members"] = values.Count > 0 ? values : null,

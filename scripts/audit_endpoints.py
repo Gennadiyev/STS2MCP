@@ -100,7 +100,7 @@ def assert_context_paths_normalized(path: str, data: object) -> None:
     if not isinstance(data, dict):
         return
 
-    for field in ["progress_path", "resolved_progress_path", "profile_root", "save_path"]:
+    for field in ["progress_path", "resolved_progress_path", "profile_root", "save_path", "history_path"]:
         value = data.get(field)
         if isinstance(value, str) and "\\" in value:
             fail(f"{path} expected {field} to use forward slashes, got {value!r}")
@@ -108,6 +108,12 @@ def assert_context_paths_normalized(path: str, data: object) -> None:
     current_run = data.get("current_run")
     if isinstance(current_run, dict):
         assert_context_paths_normalized(f"{path}.current_run", current_run)
+
+    sections = data.get("sections")
+    if isinstance(sections, dict):
+        run_history = sections.get("run_history")
+        if isinstance(run_history, dict):
+            assert_context_paths_normalized(f"{path}.sections.run_history", run_history)
 
 
 def audit_docs(repo: Path) -> None:
