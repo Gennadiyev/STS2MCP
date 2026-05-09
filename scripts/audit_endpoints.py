@@ -285,6 +285,7 @@ def audit_static_card_glossary_metadata(repo: Path) -> None:
     shop_required = [
         "inventory_open",
         "can_close_inventory",
+        "can_purchase",
         "card_is_upgradable",
         "card_current_upgrade_level",
         "card_max_upgrade_level",

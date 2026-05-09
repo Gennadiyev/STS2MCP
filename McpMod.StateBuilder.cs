@@ -1594,7 +1594,8 @@ public static partial class McpMod
                 ["category"] = "relic",
                 ["price"] = entry.Cost,
                 ["is_stocked"] = entry.IsStocked,
-                ["can_afford"] = entry.EnoughGold
+                ["can_afford"] = entry.EnoughGold,
+                ["can_purchase"] = entry.IsStocked && entry.EnoughGold
             };
             if (entry.Model is { } relic)
             {
@@ -1674,6 +1675,7 @@ public static partial class McpMod
                 ["price"] = entry.Cost,
                 ["is_stocked"] = entry.IsStocked,
                 ["can_afford"] = entry.EnoughGold,
+                ["can_purchase"] = entry.IsStocked && entry.EnoughGold,
                 ["on_sale"] = entry.IsOnSale
             };
             if (entry.CreationResult?.Card is { } card)
@@ -1709,7 +1711,8 @@ public static partial class McpMod
                 ["category"] = "relic",
                 ["price"] = entry.Cost,
                 ["is_stocked"] = entry.IsStocked,
-                ["can_afford"] = entry.EnoughGold
+                ["can_afford"] = entry.EnoughGold,
+                ["can_purchase"] = entry.IsStocked && entry.EnoughGold
             };
             if (entry.Model is { } relic)
             {
@@ -1732,7 +1735,8 @@ public static partial class McpMod
                 ["category"] = "potion",
                 ["price"] = entry.Cost,
                 ["is_stocked"] = entry.IsStocked,
-                ["can_afford"] = entry.EnoughGold
+                ["can_afford"] = entry.EnoughGold,
+                ["can_purchase"] = entry.IsStocked && entry.EnoughGold
             };
             if (entry.Model is { } potion)
             {
@@ -1757,7 +1761,8 @@ public static partial class McpMod
                 ["category"] = "card_removal",
                 ["price"] = removal.Cost,
                 ["is_stocked"] = removal.IsStocked,
-                ["can_afford"] = removal.EnoughGold
+                ["can_afford"] = removal.EnoughGold,
+                ["can_purchase"] = removal.IsStocked && removal.EnoughGold
             });
         }
 

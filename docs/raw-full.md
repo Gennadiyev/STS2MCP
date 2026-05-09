@@ -643,6 +643,7 @@ Shop inventory is auto-opened when state is queried. `can_proceed` mirrors the `
         "price": 75,               // Gold price in the shop
         "is_stocked": true,
         "can_afford": true,
+        "can_purchase": true,
         "on_sale": false,
         "card_id": "OFFERING",
         "card_name": "Offering",
@@ -668,6 +669,7 @@ Shop inventory is auto-opened when state is queried. `can_proceed` mirrors the `
         "price": 150,
         "is_stocked": true,
         "can_afford": false,
+        "can_purchase": false,
         "relic_id": "VAJRA",
         "relic_name": "Vajra",
         "relic_description": "At the start of each combat, gain 1 Strength.",
@@ -681,6 +683,7 @@ Shop inventory is auto-opened when state is queried. `can_proceed` mirrors the `
         "price": 50,
         "is_stocked": true,
         "can_afford": true,
+        "can_purchase": true,
         "potion_id": "FIRE_POTION",
         "potion_name": "Fire Potion",
         "potion_description": "Deal 20 damage to target enemy.",
@@ -695,7 +698,8 @@ Shop inventory is auto-opened when state is queried. `can_proceed` mirrors the `
         "category": "card_removal",
         "price": 75,
         "is_stocked": true,
-        "can_afford": true
+        "can_afford": true,
+        "can_purchase": true
       }
     ],
     "inventory_open": true,
@@ -727,6 +731,7 @@ A relic-only shop disguised as an event. Uses `shop_purchase` and `proceed` acti
           "cost": 150,
           "is_stocked": true,
           "can_afford": true,
+          "can_purchase": true,
           "relic_id": "VAJRA",
           "relic_name": "Vajra",
           "relic_description": "At the start of each combat, gain 1 Strength.",
