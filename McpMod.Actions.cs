@@ -47,12 +47,12 @@ public static partial class McpMod
     private static Dictionary<string, object?> ExecuteAction(string action, Dictionary<string, JsonElement> data)
     {
         if (!RunManager.Instance.IsInProgress)
-            return Error("No run in progress");
+            return Error("No run in progress", "run_not_in_progress");
 
         var runState = RunManager.Instance.DebugOnlyGetState()!;
         var player = LocalContext.GetMe(runState);
         if (player == null)
-            return Error("Could not find local player");
+            return Error("Could not find local player", "local_player_unavailable");
 
         var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
         if (tree?.Root != null && IsAnyFtueVisible(tree.Root))
@@ -87,7 +87,7 @@ public static partial class McpMod
             "crystal_sphere_set_tool" => ExecuteCrystalSphereSetTool(data),
             "crystal_sphere_click_cell" => ExecuteCrystalSphereClickCell(data),
             "crystal_sphere_proceed" => ExecuteCrystalSphereProceed(),
-            _ => Error($"Unknown action: {action}")
+            _ => Error($"Unknown action: {action}", "unknown_action")
         };
     }
 

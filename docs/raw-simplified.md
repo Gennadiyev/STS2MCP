@@ -64,7 +64,7 @@ Serialized card objects in hand, deck, piles, rewards, card selections, bundles,
 
 ## POST — Actions
 
-All POST requests use JSON body with `"action"` field. Action responses include `{ "status": "ok" | "error" }`; successful actions usually include `message`, and failed actions include `error`.
+All POST requests use JSON body with `"action"` field. Action responses include `{ "status": "ok" | "error" }`; successful actions usually include `message`, and failed actions include `error`. Dispatch-level failures include `error_code` where available; unknown non-menu actions return HTTP 400, and gameplay actions posted with no active run return HTTP 409 with `error_code: "run_not_in_progress"`.
 
 ### Menu / Game Over
 

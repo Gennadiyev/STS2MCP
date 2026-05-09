@@ -17,15 +17,15 @@ public static partial class McpMod
     private static Dictionary<string, object?> ExecuteMultiplayerAction(string action, Dictionary<string, JsonElement> data)
     {
         if (!RunManager.Instance.IsInProgress)
-            return Error("No run in progress");
+            return Error("No run in progress", "run_not_in_progress");
 
         if (!RunManager.Instance.NetService.Type.IsMultiplayer())
-            return Error("Not in a multiplayer run. Use /api/v1/singleplayer instead.");
+            return Error("Not in a multiplayer run. Use /api/v1/singleplayer instead.", "not_multiplayer_run");
 
         var runState = RunManager.Instance.DebugOnlyGetState()!;
         var player = LocalContext.GetMe(runState);
         if (player == null)
-            return Error("Could not find local player");
+            return Error("Could not find local player", "local_player_unavailable");
 
         var tree = Engine.GetMainLoop() as SceneTree;
         if (tree?.Root != null && IsAnyFtueVisible(tree.Root))
@@ -65,7 +65,7 @@ public static partial class McpMod
             "end_turn" => ExecuteMultiplayerEndTurn(player),
             "undo_end_turn" => ExecuteUndoEndTurn(player),
 
-            _ => Error($"Unknown multiplayer action: {action}")
+            _ => Error($"Unknown multiplayer action: {action}", "unknown_multiplayer_action")
         };
     }
 

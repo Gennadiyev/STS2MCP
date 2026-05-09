@@ -524,7 +524,7 @@ public static partial class McpMod
         {
             var resultTask = RunOnMainThread(() => ExecuteMultiplayerAction(action, parsed));
             var result = resultTask.GetAwaiter().GetResult();
-            SendJson(response, result);
+            SendActionResultJson(response, result);
         }
         catch (Exception ex)
         {
@@ -632,7 +632,7 @@ public static partial class McpMod
         {
             var resultTask = RunOnMainThread(() => ExecuteAction(action, parsed));
             var result = resultTask.GetAwaiter().GetResult();
-            SendJson(response, result);
+            SendActionResultJson(response, result);
         }
         catch (Exception ex)
         {
@@ -646,5 +646,23 @@ public static partial class McpMod
             ? 400
             : 500;
         SendError(response, statusCode, $"{prefix}: {ex.Message}");
+    }
+
+    private static void SendActionResultJson(HttpListenerResponse response, Dictionary<string, object?> result)
+    {
+        if (result.TryGetValue("status", out var status) && status as string == "error")
+        {
+            if (result.TryGetValue("error_code", out var errorCode))
+            {
+                response.StatusCode = (errorCode as string) switch
+                {
+                    "unknown_action" or "unknown_multiplayer_action" => 400,
+                    "run_not_in_progress" or "not_multiplayer_run" => 409,
+                    "local_player_unavailable" => 409,
+                    _ => 400
+                };
+            }
+        }
+        SendJson(response, result);
     }
 }
