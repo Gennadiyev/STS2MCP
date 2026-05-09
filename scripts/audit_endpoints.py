@@ -489,6 +489,8 @@ def audit_state_surface(repo: Path) -> None:
     for required_fragment in ["IsVisibleInTree", "is_enabled", "can_choose"]:
         if required_fragment not in event_state_body:
             fail(f"event option state missing visibility/enabled metadata: {required_fragment}")
+    if "eventRoom.LocalMutableEvent ?? eventRoom.CanonicalEvent" not in event_state_body:
+        fail("event state must prefer LocalMutableEvent so multi-step event text does not go stale")
     for required_fragment in ["IsVisibleInTree", "IsEnabled"]:
         if required_fragment not in event_action_body:
             fail(f"event option action missing visibility/enabled guard: {required_fragment}")

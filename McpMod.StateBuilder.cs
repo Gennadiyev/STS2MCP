@@ -1559,7 +1559,7 @@ public static partial class McpMod
     {
         var state = new Dictionary<string, object?>();
 
-        var eventModel = eventRoom.CanonicalEvent;
+        var eventModel = eventRoom.LocalMutableEvent ?? eventRoom.CanonicalEvent;
         bool isAncient = eventModel is AncientEventModel;
         state["event_id"] = eventModel.Id.Entry;
         state["event_name"] = SafeGetText(() => eventModel.Title);
