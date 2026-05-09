@@ -7,8 +7,14 @@ HTTP API served by the STS2_MCP mod on `localhost:15526`. No authentication. Loc
 - `POST /api/v1/singleplayer` — perform a game action
 - `GET  /api/v1/multiplayer` — read multiplayer game state
 - `POST /api/v1/multiplayer` — perform a multiplayer action
+- `GET  /api/v1/settings` — read settings and preferences
 - `GET  /api/v1/profile` — read current profile progress
 - `GET  /api/v1/compendium` — read Compendium-shaped profile progress
+- `GET  /api/v1/bestiary` — read monster and encounter metadata
+- `GET  /api/v1/glossary/cards` — read active-run card pool metadata
+- `GET  /api/v1/glossary/relics` — read active-run relic pool metadata
+- `GET  /api/v1/glossary/potions` — read active-run potion pool metadata
+- `GET  /api/v1/glossary/keywords` — read active-run keyword metadata
 - `GET  /api/v1/profiles` — list profile slots
 - `POST /api/v1/profiles` — switch or delete profile slots
 
@@ -873,6 +879,10 @@ Prevents soft-locks when an unrecognized overlay is active.
 
 Profile endpoints are independent of the singleplayer and multiplayer run endpoints.
 
+### `GET /api/v1/settings`
+
+Returns current settings and preferences, including display, audio, gameplay, language, skip-intro, and mod-loading status.
+
 ### `GET /api/v1/profile`
 
 Returns the active profile's persistent progress summary, including character stats, card stats, encounter stats, discovered content, achievements, epochs, and global totals.
@@ -924,6 +934,19 @@ Returns the active profile's progress grouped by the in-game Compendium cards:
   }
 }
 ```
+
+### `GET /api/v1/bestiary`
+
+Returns reflected monster and encounter metadata. Profile-specific encounter and enemy fight stats are also summarized under `/api/v1/compendium`.
+
+### `GET /api/v1/glossary/*`
+
+The glossary endpoints expose active-run pool metadata. They require a run in progress and are scoped to the current run/character context, not profile-wide discovered content.
+
+- `GET /api/v1/glossary/cards`: active-run card pool metadata.
+- `GET /api/v1/glossary/relics`: active-run relic pool metadata.
+- `GET /api/v1/glossary/potions`: active-run potion pool metadata.
+- `GET /api/v1/glossary/keywords`: keyword metadata collected from active-run cards, relics, and potions.
 
 ### `GET /api/v1/profiles`
 

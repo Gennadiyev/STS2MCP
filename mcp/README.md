@@ -6,7 +6,14 @@
 |---|---|---|
 | `get_game_state(format?)` | General | Get current game state (`markdown` or `json`) |
 | `menu_select(option, seed?)` | General | Select a visible menu/game-over option |
+| `get_settings()` | General | Get current settings and preferences |
 | `get_profile()` | Profiles | Get active profile progress |
+| `get_compendium()` | Profiles | Get Compendium-shaped profile progress |
+| `get_bestiary()` | Profiles | Get monster and encounter metadata |
+| `get_glossary_cards()` | Active Pool | Get active-run card pool metadata |
+| `get_glossary_relics()` | Active Pool | Get active-run relic pool metadata |
+| `get_glossary_potions()` | Active Pool | Get active-run potion pool metadata |
+| `get_glossary_keywords()` | Active Pool | Get active-run keyword metadata |
 | `list_profiles()` | Profiles | List profile slots and active slot |
 | `switch_profile(profile_id)` | Profiles | Switch to a profile slot through the game UI |
 | `delete_profile(profile_id)` | Profiles | Delete an inactive profile slot |

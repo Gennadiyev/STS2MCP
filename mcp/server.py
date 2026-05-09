@@ -39,6 +39,18 @@ def _compendium_url() -> str:
     return f"{_base_url}/api/v1/compendium"
 
 
+def _settings_url() -> str:
+    return f"{_base_url}/api/v1/settings"
+
+
+def _bestiary_url() -> str:
+    return f"{_base_url}/api/v1/bestiary"
+
+
+def _glossary_url(kind: str) -> str:
+    return f"{_base_url}/api/v1/glossary/{kind}"
+
+
 def _profiles_url() -> str:
     return f"{_base_url}/api/v1/profiles"
 
@@ -82,6 +94,24 @@ async def _profile_get() -> str:
 
 async def _compendium_get() -> str:
     r = await _get_client().get(_compendium_url())
+    r.raise_for_status()
+    return r.text
+
+
+async def _settings_get() -> str:
+    r = await _get_client().get(_settings_url())
+    r.raise_for_status()
+    return r.text
+
+
+async def _bestiary_get() -> str:
+    r = await _get_client().get(_bestiary_url())
+    r.raise_for_status()
+    return r.text
+
+
+async def _glossary_get(kind: str) -> str:
+    r = await _get_client().get(_glossary_url(kind))
     r.raise_for_status()
     return r.text
 
@@ -224,6 +254,84 @@ async def get_compendium() -> str:
     """
     try:
         return await _compendium_get()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def get_settings() -> str:
+    """Get current game settings and preferences.
+
+    Includes display, audio, gameplay preferences, language, and mod-loading
+    status as exposed by the STS2_MCP HTTP settings endpoint.
+    """
+    try:
+        return await _settings_get()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def get_bestiary() -> str:
+    """Get reflected monster and encounter metadata.
+
+    This is model/reference metadata and is separate from Compendium profile
+    encounter stats. The in-game Bestiary card is currently marked locked/future.
+    """
+    try:
+        return await _bestiary_get()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def get_glossary_cards() -> str:
+    """Get active-run card pool metadata.
+
+    Requires a run in progress. This is scoped to the current run/character pool,
+    not profile-wide discovered cards; use get_compendium() for profile progress.
+    """
+    try:
+        return await _glossary_get("cards")
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def get_glossary_relics() -> str:
+    """Get active-run relic pool metadata.
+
+    Requires a run in progress. This is scoped to the current run/character pool,
+    not profile-wide discovered relics; use get_compendium() for profile progress.
+    """
+    try:
+        return await _glossary_get("relics")
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def get_glossary_potions() -> str:
+    """Get active-run potion pool metadata.
+
+    Requires a run in progress. This is scoped to the current run/character pool,
+    not profile-wide discovered potions; use get_compendium() for profile progress.
+    """
+    try:
+        return await _glossary_get("potions")
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def get_glossary_keywords() -> str:
+    """Get active-run keyword metadata collected from active pools.
+
+    Requires a run in progress. Keywords come from cards, relics, and potions
+    reachable in the current run context.
+    """
+    try:
+        return await _glossary_get("keywords")
     except Exception as e:
         return _handle_error(e)
 

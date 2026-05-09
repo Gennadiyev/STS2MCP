@@ -6,8 +6,14 @@ HTTP API on `localhost:15526`. No authentication.
 - `POST /api/v1/singleplayer` — perform action
 - `GET /api/v1/multiplayer` — read multiplayer state
 - `POST /api/v1/multiplayer` — perform multiplayer action
+- `GET /api/v1/settings` — read settings and preferences
 - `GET /api/v1/profile` — read current profile progress
 - `GET /api/v1/compendium` — read Compendium-shaped profile progress
+- `GET /api/v1/bestiary` — read monster and encounter metadata
+- `GET /api/v1/glossary/cards` — read active-run card pool metadata
+- `GET /api/v1/glossary/relics` — read active-run relic pool metadata
+- `GET /api/v1/glossary/potions` — read active-run potion pool metadata
+- `GET /api/v1/glossary/keywords` — read active-run keyword metadata
 - `GET /api/v1/profiles` — list profile slots
 - `POST /api/v1/profiles` — switch or delete profile slots
 
@@ -62,6 +68,12 @@ All POST requests use JSON body with `"action"` field. All responses include `{ 
 ### Profiles
 
 `GET /api/v1/profile` returns persistent progress for the active profile, including character stats, discoveries, achievements, epochs, and global run totals.
+
+`GET /api/v1/settings` returns display, audio, gameplay, language, and mod-loading preferences.
+
+`GET /api/v1/bestiary` returns reflected monster and encounter metadata. Profile-specific fight stats are also summarized under `/api/v1/compendium`.
+
+The `/api/v1/glossary/*` endpoints expose active-run pool metadata. They require a run in progress and are scoped to the current run/character context, not profile-wide discovered content.
 
 `GET /api/v1/compendium` returns the active profile grouped like the in-game Compendium:
 
