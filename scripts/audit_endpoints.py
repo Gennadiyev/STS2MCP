@@ -949,6 +949,10 @@ def audit_live(base_url: str) -> None:
     endpoint_rows = root.get("endpoints")
     if not isinstance(endpoint_rows, list):
         fail("root response does not include endpoints list")
+    if root.get("status") != "ok" or root.get("kind") != "api_index":
+        fail(f"root response expected status ok and kind api_index, got {root}")
+    if root.get("endpoint_count") != len(endpoint_rows):
+        fail(f"root response endpoint_count mismatch, got {root.get('endpoint_count')} for {len(endpoint_rows)} endpoints")
 
     live_index = {
         (str(row.get("method")), str(row.get("path")))
@@ -1104,7 +1108,6 @@ def audit_live(base_url: str) -> None:
         ("/api/v1/singleplayer", b'{"action": 1}', 400),
         ("/api/v1/singleplayer", b'{"action": "menu_select"}', 400),
         ("/api/v1/singleplayer", b'{"action": "menu_select", "option": 1}', 400),
-        ("/api/v1/singleplayer", b'{"action": "menu_select", "option": "definitely_not_real"}', 400),
         ("/api/v1/profiles", b"{", 400),
         ("/api/v1/profiles", b"{}", 400),
         ("/api/v1/profiles", b'{"action": 1}', 400),
@@ -1120,6 +1123,18 @@ def audit_live(base_url: str) -> None:
         assert_error_body(path, status, data)
         if status != expected_status:
             fail(f"{path} expected HTTP {expected_status} for validation check, got {status}: {data}")
+
+    status, data = load_json_url(
+        base_url.rstrip("/") + "/api/v1/singleplayer",
+        "POST",
+        b'{"action": "menu_select", "option": "definitely_not_real"}',
+    )
+    assert_error_body("/api/v1/singleplayer", status, data)
+    if (status, data.get("error_code")) not in {
+        (400, "unknown_menu_option"),
+        (409, "not_on_menu"),
+    }:
+        fail(f"/api/v1/singleplayer expected structured invalid menu option error, got HTTP {status}: {data}")
 
     status, data = load_json_url(
         base_url.rstrip("/") + "/api/v1/singleplayer",

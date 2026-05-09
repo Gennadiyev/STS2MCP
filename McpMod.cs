@@ -273,12 +273,15 @@ public static partial class McpMod
             {
                 if (request.HttpMethod == "GET")
                 {
+                    var endpoints = BuildEndpointIndex();
                     SendJson(response, new
                     {
                         message = $"Hello from STS2 MCP v{Version}",
                         status = "ok",
+                        kind = "api_index",
                         bound_prefixes = _boundPrefixes,
-                        endpoints = BuildEndpointIndex()
+                        endpoint_count = endpoints.Count,
+                        endpoints
                     });
                 }
                 else

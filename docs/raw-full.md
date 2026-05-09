@@ -20,6 +20,8 @@ HTTP API served by the STS2_MCP mod on `localhost:15526`. No authentication. Loc
 
 HTTP error responses include `status: "error"` and `error`. Some route-specific errors also include `error_code`.
 
+`GET /` returns the API index with `status: "ok"`, `kind: "api_index"`, `endpoint_count`, `bound_prefixes`, and the advertised endpoint list.
+
 The singleplayer and multiplayer endpoints are mutually exclusive: calling singleplayer during a multiplayer run (or vice versa) returns HTTP 409. The mismatch response includes `error_code`: `multiplayer_run_active` when singleplayer is called during a multiplayer run, or `not_multiplayer_run` when multiplayer is called outside one.
 
 ---
