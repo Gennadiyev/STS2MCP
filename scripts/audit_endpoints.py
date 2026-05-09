@@ -297,8 +297,9 @@ def audit_static_card_glossary_metadata(repo: Path) -> None:
     missing_shop = [field for field in shop_required if field not in shop_body]
     if missing_shop:
         fail(f"shop card serialization missing upgrade metadata: {missing_shop}")
-    if "proceedButton?.IsEnabled == true || canCloseInventory" not in shop_body:
-        fail("shop can_proceed must mirror ExecuteProceed close-inventory behavior")
+    for required_fragment in ["can_proceed", "canCloseInventory", "IsControlVisibleOrActionable"]:
+        if required_fragment not in shop_body:
+            fail(f"shop can_proceed must mirror ExecuteProceed visible close/proceed behavior: {required_fragment}")
     print("cards: upgrade metadata enforced for glossary and state payloads")
 
 
@@ -454,6 +455,18 @@ def audit_state_surface(repo: Path) -> None:
         if required_fragment not in event_action_body:
             fail(f"event option action missing visibility/enabled guard: {required_fragment}")
 
+    fake_merchant_match = re.search(
+        r"private static Dictionary<string, object\?> BuildFakeMerchantState\(.*?\n    private static Dictionary<string, object\?> BuildFakeMerchantShopItems\(",
+        state_builder,
+        re.S,
+    )
+    if not fake_merchant_match:
+        fail("could not locate BuildFakeMerchantState for fake-merchant proceed audit")
+    fake_merchant_body = fake_merchant_match.group(0)
+    for required_fragment in ["can_proceed", "can_close_inventory", "IsControlVisibleOrActionable"]:
+        if required_fragment not in fake_merchant_body:
+            fail(f"fake_merchant state must gate proceed/close on visible enabled buttons: {required_fragment}")
+
     rest_state_match = re.search(
         r"private static Dictionary<string, object\?> BuildRestSiteState\(.*?\n    private static Dictionary<string, object\?> BuildShopState\(",
         state_builder,
@@ -473,6 +486,8 @@ def audit_state_surface(repo: Path) -> None:
     for required_fragment in ["IsVisibleInTree", "is_visible", "can_choose"]:
         if required_fragment not in rest_state_body:
             fail(f"rest option state missing visibility/enabled metadata: {required_fragment}")
+    if "can_proceed" not in rest_state_body or "IsControlVisibleOrActionable" not in rest_state_body:
+        fail("rest_site state must gate can_proceed on a visible enabled proceed button")
     for required_fragment in ["IsVisibleInTree", "IsEnabled"]:
         if required_fragment not in rest_action_body:
             fail(f"rest option action missing visibility/enabled guard: {required_fragment}")
@@ -573,6 +588,17 @@ def audit_state_surface(repo: Path) -> None:
     if "IsControlVisibleOrActionable" not in hand_confirm_match.group(0):
         fail("combat_confirm_selection action must require a visible enabled button")
 
+    proceed_action_match = re.search(
+        r"private static Dictionary<string, object\?> ExecuteProceed\(.*?\n    private static Dictionary<string, object\?> ExecuteSelectCard\(",
+        actions,
+        re.S,
+    )
+    if not proceed_action_match:
+        fail("could not locate ExecuteProceed for visible proceed audit")
+    proceed_action_body = proceed_action_match.group(0)
+    if "IsControlVisibleOrActionable" not in proceed_action_body:
+        fail("proceed action must require visible enabled proceed/close buttons")
+
     treasure_state_match = re.search(
         r"private static Dictionary<string, object\?> BuildTreasureState\(.*?\n    private static string GetRewardTypeName\(",
         state_builder,
@@ -592,6 +618,8 @@ def audit_state_surface(repo: Path) -> None:
     for required_fragment in ["IsVisibleInTree", "is_visible", "can_claim"]:
         if required_fragment not in treasure_state_body:
             fail(f"treasure state missing visibility/enabled metadata: {required_fragment}")
+    if "can_proceed" not in treasure_state_body or "IsControlVisibleOrActionable" not in treasure_state_body:
+        fail("treasure state must gate can_proceed on a visible enabled proceed button")
     for required_fragment in ["IsVisibleInTree", "IsEnabled"]:
         if required_fragment not in treasure_action_body:
             fail(f"treasure action missing visibility/enabled guard: {required_fragment}")
@@ -724,6 +752,8 @@ def audit_state_surface(repo: Path) -> None:
     for required_fragment in ["IsVisibleInTree", "is_visible", "can_claim"]:
         if required_fragment not in rewards_state_body:
             fail(f"rewards state missing visibility/claim metadata: {required_fragment}")
+    if "can_proceed" not in rewards_state_body or "IsControlVisibleOrActionable" not in rewards_state_body:
+        fail("rewards state must gate can_proceed on a visible enabled proceed button")
     for required_fragment in ["IsVisibleInTree", "IsEnabled"]:
         if required_fragment not in rewards_action_body:
             fail(f"claim_reward action missing visibility/enabled guard: {required_fragment}")

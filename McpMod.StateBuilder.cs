@@ -1665,10 +1665,10 @@ public static partial class McpMod
             var backButton = FindFirst<NBackButton>(fakeMerchantNode);
             var proceedButton = FindFirst<NProceedButton>(fakeMerchantNode);
             var inventoryOpen = inventoryUI?.IsOpen == true;
-            var canCloseInventory = inventoryOpen && backButton?.IsEnabled == true;
+            var canCloseInventory = inventoryOpen && IsControlVisibleOrActionable(backButton);
             shopState["inventory_open"] = inventoryOpen;
             shopState["can_close_inventory"] = canCloseInventory;
-            shopState["can_proceed"] = proceedButton?.IsEnabled == true || canCloseInventory;
+            shopState["can_proceed"] = IsControlVisibleOrActionable(proceedButton) || canCloseInventory;
         }
         else
         {
@@ -1753,7 +1753,7 @@ public static partial class McpMod
         state["options"] = options;
 
         var proceedButton = NRestSiteRoom.Instance?.ProceedButton;
-        state["can_proceed"] = proceedButton?.IsEnabled ?? false;
+        state["can_proceed"] = IsControlVisibleOrActionable(proceedButton);
 
         return state;
     }
@@ -1766,7 +1766,7 @@ public static partial class McpMod
         if (inventory == null)
         {
             state["items"] = new List<Dictionary<string, object?>>();
-            state["can_proceed"] = NMerchantRoom.Instance?.ProceedButton?.IsEnabled ?? false;
+            state["can_proceed"] = IsControlVisibleOrActionable(NMerchantRoom.Instance?.ProceedButton);
             state["error"] =
                 "Shop inventory is not ready yet (null). Often happens right after entering the merchant from the map; retry in a moment.";
             return state;
@@ -1881,12 +1881,12 @@ public static partial class McpMod
         var merchantRoomNode = NMerchantRoom.Instance;
         var inventoryOpen = merchantRoomNode?.Inventory?.IsOpen == true;
         var backButton = merchantRoomNode != null ? FindFirst<NBackButton>(merchantRoomNode) : null;
-        var canCloseInventory = inventoryOpen && backButton?.IsEnabled == true;
+        var canCloseInventory = inventoryOpen && IsControlVisibleOrActionable(backButton);
         state["inventory_open"] = inventoryOpen;
         state["can_close_inventory"] = canCloseInventory;
 
         var proceedButton = merchantRoomNode?.ProceedButton;
-        state["can_proceed"] = proceedButton?.IsEnabled == true || canCloseInventory;
+        state["can_proceed"] = IsControlVisibleOrActionable(proceedButton) || canCloseInventory;
 
         return state;
     }
@@ -2054,7 +2054,7 @@ public static partial class McpMod
 
         // Proceed button
         var proceedButton = FindFirst<NProceedButton>(rewardsScreen);
-        state["can_proceed"] = proceedButton?.IsEnabled ?? false;
+        state["can_proceed"] = IsControlVisibleOrActionable(proceedButton);
 
         return state;
     }
@@ -2598,7 +2598,7 @@ public static partial class McpMod
             state["relics"] = relics;
         }
 
-        state["can_proceed"] = treasureUI.ProceedButton?.IsEnabled ?? false;
+        state["can_proceed"] = IsControlVisibleOrActionable(treasureUI.ProceedButton);
 
         return state;
     }

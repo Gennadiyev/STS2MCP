@@ -1290,7 +1290,7 @@ Skip the card reward (if a skip/bowl option is available).
 
 ### `proceed`
 
-Leave the current screen and open the map. Works from: rewards, rest site, shop, fake merchant, and treasure room.
+Leave the current screen and open the map when a visible proceed button is enabled. Works from: rewards, rest site, shop, fake merchant, and treasure room; shop/fake merchant can close an open inventory first when the visible back button is enabled.
 
 ```json
 { "action": "proceed" }

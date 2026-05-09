@@ -160,21 +160,21 @@ When a run is active, the response includes `current_run.run_id` in `{save_scope
 | Action | Parameters | When to Use |
 |---|---|---|
 | `choose_rest_option` | `index`: int | Choose a visible enabled rest, smith, or other option. |
-| `proceed` | _(none)_ | Leave the rest site. |
+| `proceed` | _(none)_ | Leave the rest site when the visible proceed button is enabled. |
 
 ### Shop (`shop`)
 
 | Action | Parameters | When to Use |
 |---|---|---|
 | `shop_purchase` | `index`: int | Buy an item by its index. Must be stocked and affordable. |
-| `proceed` | _(none)_ | Leave the shop. |
+| `proceed` | _(none)_ | Leave the shop when the visible proceed button is enabled, or close an open inventory first when its visible back button is enabled. |
 
 ### Treasure (`treasure`)
 
 | Action | Parameters | When to Use |
 |---|---|---|
 | `claim_treasure_relic` | `index`: int | Claim a visible enabled relic from the opened chest. |
-| `proceed` | _(none)_ | Leave the treasure room. |
+| `proceed` | _(none)_ | Leave the treasure room when the visible proceed button is enabled. |
 
 ### Card Selection Overlay (`card_select`)
 

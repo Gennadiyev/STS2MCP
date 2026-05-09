@@ -559,7 +559,7 @@ public static partial class McpMod
         if (overlay is NRewardsScreen rewardsScreen)
         {
             var btn = FindFirst<NProceedButton>(rewardsScreen);
-            if (btn is { IsEnabled: true })
+            if (btn != null && IsControlVisibleOrActionable(btn))
             {
                 btn.ForceClick();
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from rewards" };
@@ -567,7 +567,7 @@ public static partial class McpMod
         }
 
         // Try rest site
-        if (NRestSiteRoom.Instance is { } restRoom && restRoom.ProceedButton.IsEnabled)
+        if (NRestSiteRoom.Instance is { } restRoom && IsControlVisibleOrActionable(restRoom.ProceedButton))
         {
             restRoom.ProceedButton.ForceClick();
             return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from rest site" };
@@ -579,10 +579,10 @@ public static partial class McpMod
             if (merchRoom.Inventory?.IsOpen == true)
             {
                 var backBtn = FindFirst<NBackButton>(merchRoom);
-                if (backBtn is { IsEnabled: true })
+                if (backBtn != null && IsControlVisibleOrActionable(backBtn))
                     backBtn.ForceClick();
             }
-            if (merchRoom.ProceedButton.IsEnabled)
+            if (IsControlVisibleOrActionable(merchRoom.ProceedButton))
             {
                 merchRoom.ProceedButton.ForceClick();
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from shop" };
@@ -599,11 +599,11 @@ public static partial class McpMod
                 if (fmInventory is { IsOpen: true })
                 {
                     var backBtn = FindFirst<NBackButton>(fmNode);
-                    if (backBtn is { IsEnabled: true })
+                    if (backBtn != null && IsControlVisibleOrActionable(backBtn))
                         backBtn.ForceClick();
                 }
                 var proceedBtn = FindFirst<NProceedButton>(fmNode);
-                if (proceedBtn is { IsEnabled: true })
+                if (proceedBtn != null && IsControlVisibleOrActionable(proceedBtn))
                 {
                     proceedBtn.ForceClick();
                     return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from fake merchant" };
@@ -614,7 +614,7 @@ public static partial class McpMod
         // Try treasure room
         var treasureUI = FindFirst<NTreasureRoom>(
             ((Godot.SceneTree)Godot.Engine.GetMainLoop()).Root);
-        if (treasureUI != null && treasureUI.ProceedButton.IsEnabled)
+        if (treasureUI != null && IsControlVisibleOrActionable(treasureUI.ProceedButton))
         {
             treasureUI.ProceedButton.ForceClick();
             return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from treasure room" };
