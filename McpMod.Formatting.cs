@@ -371,10 +371,10 @@ public static partial class McpMod
                 foreach (var card in hand)
                 {
                     string playable = card["can_play"] is true ? "✓" : "✗";
-                    string keywords = card.TryGetValue("keywords", out var kw) && kw is List<string> kwList && kwList.Count > 0
-                        ? $" [{string.Join(", ", kwList)}]" : "";
+                    string keywords = FormatKeywordNames(card);
+                    string upgraded = FormatUpgradeMarker(card);
                     string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-                    sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {playable}{keywords} - {card["description"]} (target: {card["target_type"]})");
+                    sb.AppendLine($"- [{card["index"]}] **{card["name"]}**{upgraded} ({card["cost"]} energy{starCost}) [{card["type"]}] {playable}{keywords} - {card["description"]} (target: {card["target_type"]})");
                 }
                 sb.AppendLine();
             }
@@ -472,12 +472,31 @@ public static partial class McpMod
             foreach (var card in pile)
             {
                 string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-                sb.AppendLine($"- {card["name"]} ({card["cost"]}{starCost}): {card["description"]}");
+                string rarity = card.TryGetValue("rarity", out var r) && r != null ? $" [{r}]" : "";
+                string keywords = FormatKeywordNames(card);
+                string upgraded = FormatUpgradeMarker(card);
+                sb.AppendLine($"- {card["name"]}{upgraded} ({card["cost"]}{starCost}){rarity}{keywords}: {card["description"]}");
             }
         }
         else
             sb.AppendLine("- *(empty)*");
         sb.AppendLine();
+    }
+
+    private static string FormatUpgradeMarker(Dictionary<string, object?> card)
+        => card.TryGetValue("is_upgraded", out var upgraded) && upgraded is true ? "+" : "";
+
+    private static string FormatKeywordNames(Dictionary<string, object?> item)
+    {
+        if (!item.TryGetValue("keywords", out var kw) || kw is not List<Dictionary<string, object?>> keywords || keywords.Count == 0)
+            return "";
+
+        var names = keywords
+            .Select(keyword => keyword.TryGetValue("name", out var name) ? name?.ToString() : null)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToList();
+
+        return names.Count > 0 ? $" [{string.Join(", ", names)}]" : "";
     }
 
     private static void FormatEventMarkdown(StringBuilder sb, Dictionary<string, object?> evt)
@@ -747,9 +766,9 @@ public static partial class McpMod
             foreach (var card in cards)
             {
                 string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-                string keywords = card.TryGetValue("keywords", out var kw) && kw is List<string> kwList && kwList.Count > 0
-                    ? $" [{string.Join(", ", kwList)}]" : "";
-                sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]}{keywords} - {card["description"]}");
+                string keywords = FormatKeywordNames(card);
+                string upgraded = FormatUpgradeMarker(card);
+                sb.AppendLine($"- [{card["index"]}] **{card["name"]}**{upgraded} ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]}{keywords} - {card["description"]}");
             }
             sb.AppendLine();
         }
