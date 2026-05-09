@@ -278,6 +278,13 @@ def audit_mcp_tool_docs(repo: Path) -> None:
     if missing_readme:
         fail(f"MCP tools missing mcp/README.md entries: {missing_readme}")
 
+    for doc_name, doc_text in [("mcp/server.py", server), ("mcp/README.md", readme)]:
+        normalized_doc_text = doc_text.replace("`", "")
+        if "current_run.run_id" in normalized_doc_text and "current_run.save exposes" not in normalized_doc_text:
+            fail(f"{doc_name} documents current_run.run_id without save-backed availability wording")
+        if "current_run.seed" in normalized_doc_text and "current_run.save exposes" not in normalized_doc_text:
+            fail(f"{doc_name} documents current_run.seed without save-backed availability wording")
+
     print(f"mcp: {len(tools)} tools documented")
 
 

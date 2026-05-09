@@ -358,8 +358,9 @@ async def get_glossary_cards() -> str:
 
     Requires a run in progress. This is scoped to the current run/character pool,
     not profile-wide discovered cards; use get_compendium() for profile progress.
-    The response includes profile/save context, current_run.run_id,
-    current_run.seed, count, and items.
+    The response includes profile/save context, current_run save context,
+    count, and items. current_run.run_id and current_run.seed are included
+    when current_run.save exposes them.
     """
     try:
         return await _glossary_get("cards")
@@ -373,8 +374,9 @@ async def get_glossary_relics() -> str:
 
     Requires a run in progress. This is scoped to the current run/character pool,
     not profile-wide discovered relics; use get_compendium() for profile progress.
-    The response includes profile/save context, current_run.run_id,
-    current_run.seed, count, and items.
+    The response includes profile/save context, current_run save context,
+    count, and items. current_run.run_id and current_run.seed are included
+    when current_run.save exposes them.
     """
     try:
         return await _glossary_get("relics")
@@ -388,8 +390,9 @@ async def get_glossary_potions() -> str:
 
     Requires a run in progress. This is scoped to the current run/character pool,
     not profile-wide discovered potions; use get_compendium() for profile progress.
-    The response includes profile/save context, current_run.run_id,
-    current_run.seed, count, and items.
+    The response includes profile/save context, current_run save context,
+    count, and items. current_run.run_id and current_run.seed are included
+    when current_run.save exposes them.
     """
     try:
         return await _glossary_get("potions")
@@ -403,7 +406,8 @@ async def get_glossary_keywords() -> str:
 
     Requires a run in progress. Keywords come from cards, relics, and potions
     reachable in the current run context. The response includes profile/save
-    context, current_run.run_id, current_run.seed, count, and items.
+    context, current_run save context, count, and items. current_run.run_id
+    and current_run.seed are included when current_run.save exposes them.
     """
     try:
         return await _glossary_get("keywords")
