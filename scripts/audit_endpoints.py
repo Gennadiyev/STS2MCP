@@ -247,6 +247,9 @@ def audit_static_error_shapes(repo: Path) -> None:
     for required_fragment in ["TryValidateStateFormat", "invalid_format", 'format is "json" or "markdown"']:
         if required_fragment not in mcp_mod:
             fail(f"state endpoints missing format validation: {required_fragment}")
+    for required_fragment in ["SendMethodNotAllowed", "method_not_allowed", "SendNotFound", "not_found", "internal_error"]:
+        if required_fragment not in mcp_mod:
+            fail(f"route errors missing structured error code: {required_fragment}")
     profile = (repo / "McpMod.Profile.cs").read_text(encoding="utf-8")
     validation_codes = [
         "invalid_json",
@@ -288,6 +291,9 @@ def audit_static_error_shapes(repo: Path) -> None:
     )
     if "blocking_popup_active" not in docs:
         fail("docs must describe blocking popup action errors")
+    for required_fragment in ["method_not_allowed", "not_found", "internal_error"]:
+        if required_fragment not in docs:
+            fail(f"docs must describe route-level error code: {required_fragment}")
     for required_fragment in validation_codes:
         if required_fragment not in docs:
             fail(f"docs must describe POST validation error code: {required_fragment}")
@@ -1277,11 +1283,15 @@ def audit_live(base_url: str) -> None:
         assert_error_body(path, status, data)
         if status != 405:
             fail(f"{path} expected HTTP 405 for POST, got {status}: {data}")
+        if not isinstance(data, dict) or data.get("error_code") != "method_not_allowed":
+            fail(f"{path} expected method_not_allowed error code for POST, got {data}")
 
     status, data = load_json_url(base_url.rstrip("/") + "/api/v1/does-not-exist")
     assert_error_body("/api/v1/does-not-exist", status, data)
     if status != 404:
         fail(f"/api/v1/does-not-exist expected HTTP 404, got {status}: {data}")
+    if not isinstance(data, dict) or data.get("error_code") != "not_found":
+        fail(f"/api/v1/does-not-exist expected not_found error code, got {data}")
 
     print("live: GET endpoint smoke checks passed")
     print("live: state format checks passed")

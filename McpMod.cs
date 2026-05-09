@@ -287,7 +287,7 @@ public static partial class McpMod
                 }
                 else
                 {
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
                 }
             }
             else if (path == "/api/v1/singleplayer")
@@ -307,7 +307,7 @@ public static partial class McpMod
                 else if (request.HttpMethod == "POST")
                     HandlePostAction(request, response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/multiplayer")
             {
@@ -325,14 +325,14 @@ public static partial class McpMod
                 else if (request.HttpMethod == "POST")
                     HandlePostMultiplayerAction(request, response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/settings")
             {
                 if (request.HttpMethod == "GET")
                     HandleGetSettings(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/profiles")
             {
@@ -341,67 +341,67 @@ public static partial class McpMod
                 else if (request.HttpMethod == "POST")
                     HandlePostProfiles(request, response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/profile")
             {
                 if (request.HttpMethod == "GET")
                     HandleGetProfile(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/compendium")
             {
                 if (request.HttpMethod == "GET")
                     HandleGetCompendium(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/bestiary")
             {
                 if (request.HttpMethod == "GET")
                     HandleGetBestiary(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/glossary/cards")
             {
                 if (request.HttpMethod == "GET")
                     HandleGetGlossaryCards(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/glossary/relics")
             {
                 if (request.HttpMethod == "GET")
                     HandleGetGlossaryRelics(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/glossary/potions")
             {
                 if (request.HttpMethod == "GET")
                     HandleGetGlossaryPotions(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/glossary/keywords")
             {
                 if (request.HttpMethod == "GET")
                     HandleGetGlossaryKeywords(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else
             {
-                SendError(response, 404, "Not found");
+                SendNotFound(response);
             }
         }
         catch (Exception ex)
         {
             try
             {
-                SendError(context.Response, 500, $"Internal error: {ex.Message}");
+                SendError(context.Response, 500, $"Internal error: {ex.Message}", "internal_error");
             }
             catch { /* response may already be closed */ }
         }
@@ -440,6 +440,12 @@ public static partial class McpMod
         }
         catch { return false; }
     }
+
+    private static void SendMethodNotAllowed(HttpListenerResponse response)
+        => SendError(response, 405, "Method not allowed", "method_not_allowed");
+
+    private static void SendNotFound(HttpListenerResponse response)
+        => SendError(response, 404, "Not found", "not_found");
 
     private static void HandleGetMultiplayerState(HttpListenerRequest request, HttpListenerResponse response)
     {
