@@ -147,6 +147,7 @@ public static partial class McpMod
         public object Data { get; init; } = new();
         public int ProfileId { get; init; }
         public string? ProgressPath { get; init; }
+        public string? ResolvedProgressPath { get; init; }
         public string ProfileRoot { get; init; } = "";
         public string SaveScope { get; init; } = "vanilla";
         public string NetType { get; init; } = "";
@@ -161,6 +162,7 @@ public static partial class McpMod
 
         var profileId = SaveManager.Instance?.CurrentProfileId ?? 0;
         var progressPath = GetProfileProgressPath(profileId);
+        var resolvedProgressPath = ResolveProfileProgressPath(profileId);
         var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
         var runState = RunManager.Instance.DebugOnlyGetState();
         var players = runState?.Players.Select((player, index) => new Dictionary<string, object?>
@@ -176,6 +178,7 @@ public static partial class McpMod
             Data = data,
             ProfileId = profileId,
             ProgressPath = progressPath,
+            ResolvedProgressPath = resolvedProgressPath,
             ProfileRoot = profileRoot,
             SaveScope = GetSaveScope(profileRoot),
             NetType = RunManager.Instance.NetService.Type.ToString(),
@@ -214,6 +217,7 @@ public static partial class McpMod
             ["count"] = items.Count,
             ["profile_id"] = payload.ProfileId,
             ["progress_path"] = payload.ProgressPath,
+            ["resolved_progress_path"] = payload.ResolvedProgressPath,
             ["profile_root"] = payload.ProfileRoot,
             ["save_scope"] = payload.SaveScope,
             ["current_run"] = BuildCurrentRunContext(

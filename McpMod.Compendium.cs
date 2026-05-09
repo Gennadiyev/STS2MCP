@@ -47,6 +47,7 @@ public static partial class McpMod
 
         var profileId = saveManager.CurrentProfileId;
         var progressPath = GetProfileProgressPath(profileId);
+        var resolvedProgressPath = ResolveProfileProgressPath(profileId);
         var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
 
         var cardStats = progress.CardStats.Select(kv => new Dictionary<string, object?>
@@ -75,6 +76,7 @@ public static partial class McpMod
         {
             ProfileId = profileId,
             ProgressPath = progressPath,
+            ResolvedProgressPath = resolvedProgressPath,
             ProfileRoot = profileRoot,
             SaveScope = GetSaveScope(profileRoot),
             IsRunInProgress = RunManager.Instance?.IsInProgress == true,
@@ -113,6 +115,7 @@ public static partial class McpMod
         {
             ["profile_id"] = snapshot.ProfileId,
             ["progress_path"] = snapshot.ProgressPath,
+            ["resolved_progress_path"] = snapshot.ResolvedProgressPath,
             ["profile_root"] = snapshot.ProfileRoot,
             ["save_scope"] = snapshot.SaveScope,
             ["current_run"] = BuildCurrentRunContext(snapshot),
@@ -177,6 +180,7 @@ public static partial class McpMod
         public string? Error { get; init; }
         public int ProfileId { get; init; }
         public string? ProgressPath { get; init; }
+        public string? ResolvedProgressPath { get; init; }
         public string ProfileRoot { get; init; } = "";
         public string SaveScope { get; init; } = "vanilla";
         public bool IsRunInProgress { get; init; }

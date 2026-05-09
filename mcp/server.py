@@ -279,7 +279,8 @@ async def get_profile() -> str:
 
     Includes character stats, discovered content, achievements, epochs, and global
     run totals for the active profile, plus profile_id, progress_path,
-    profile_root, save_scope, and current_run when a run is active.
+    resolved_progress_path, profile_root, save_scope, and current_run when a run
+    is active.
     """
     try:
         return await _profile_get()
@@ -295,8 +296,8 @@ async def get_compendium() -> str:
     Potion Lab, Bestiary, Character Stats, and Run History. Some sections point
     to detail endpoints such as glossary or bestiary when model-level metadata is
     separate from profile discovery/progress data. The top level includes the
-    same profile_id/progress_path/profile_root/save_scope/current_run context as
-    get_profile().
+    same profile_id/progress_path/resolved_progress_path/profile_root/save_scope/
+    current_run context as get_profile().
     """
     try:
         return await _compendium_get()

@@ -240,9 +240,11 @@ public static partial class McpMod
         var result = new Dictionary<string, object?>();
         var profileId = saveManager.CurrentProfileId;
         var progressPath = GetProfileProgressPath(profileId);
+        var resolvedProgressPath = ResolveProfileProgressPath(profileId);
         var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
         result["profile_id"] = profileId;
         result["progress_path"] = progressPath;
+        result["resolved_progress_path"] = resolvedProgressPath;
         result["profile_root"] = profileRoot;
         result["save_scope"] = GetSaveScope(profileRoot);
         result["current_run"] = BuildActiveRunContext();

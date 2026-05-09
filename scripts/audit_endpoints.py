@@ -224,7 +224,7 @@ def audit_static_glossary_scope(repo: Path) -> None:
     if not send_match:
         fail("could not locate SendGlossaryJson for glossary context audit")
     send_body = send_match.group(0)
-    for required_fragment in ["profile_id", "progress_path", "profile_root", "save_scope", "current_run"]:
+    for required_fragment in ["profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run"]:
         if required_fragment not in send_body:
             fail(f"glossary success payload missing profile/save context: {required_fragment}")
         if required_fragment not in docs:
@@ -358,7 +358,7 @@ def audit_static_save_roots(repo: Path) -> None:
     if not compendium_response_match:
         fail("could not locate BuildCompendiumResponse for profile context audit")
     compendium_response = compendium_response_match.group(0)
-    for required_fragment in ["profile_id", "progress_path", "profile_root", "save_scope", "current_run"]:
+    for required_fragment in ["profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run"]:
         if required_fragment not in compendium_response:
             fail(f"compendium endpoint missing profile/save context: {required_fragment}")
 
@@ -370,12 +370,12 @@ def audit_static_save_roots(repo: Path) -> None:
     if not profile_match:
         fail("could not locate BuildProfile for profile context audit")
     profile_body = profile_match.group(0)
-    for required_fragment in ["profile_id", "progress_path", "profile_root", "save_scope", "current_run", "BuildActiveRunContext"]:
+    for required_fragment in ["profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run", "BuildActiveRunContext"]:
         if required_fragment not in profile_body:
             fail(f"profile endpoint missing identity/run context: {required_fragment}")
 
     for doc_name, doc_text in [("mcp/server.py", mcp_server), ("mcp/README.md", mcp_readme)]:
-        for required_fragment in ["progress_path", "profile_root", "save_scope", "current_run"]:
+        for required_fragment in ["progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run"]:
             if required_fragment not in doc_text:
                 fail(f"{doc_name} missing profile/compendium context documentation: {required_fragment}")
     print("saves: multi-account fallback and profile/compendium context enforced")
@@ -908,7 +908,7 @@ def audit_live(base_url: str) -> None:
         if path in {"/api/v1/profile", "/api/v1/compendium"}:
             if not isinstance(data, dict):
                 fail(f"{path} expected structured profile context object, got {type(data).__name__}")
-            for required_field in ["profile_id", "progress_path", "profile_root", "save_scope", "current_run"]:
+            for required_field in ["profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run"]:
                 if required_field not in data:
                     fail(f"{path} missing profile/save context field: {required_field}")
 
@@ -922,7 +922,7 @@ def audit_live(base_url: str) -> None:
                 fail(f"{path} expected status ok and kind {expected_kind}, got {data}")
             if not isinstance(data.get("items"), list) or data.get("count") != len(data["items"]):
                 fail(f"{path} expected items list with matching count, got {data}")
-            for required_field in ["profile_id", "progress_path", "profile_root", "save_scope"]:
+            for required_field in ["profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope"]:
                 if required_field not in data:
                     fail(f"{path} missing profile/save context field: {required_field}")
             current_run = data.get("current_run")
