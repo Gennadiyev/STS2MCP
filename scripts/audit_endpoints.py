@@ -403,8 +403,9 @@ def audit_state_surface(repo: Path) -> None:
     for source_name, source in [("singleplayer", state_builder), ("multiplayer", multiplayer_state)]:
         if '["current_run"] = BuildActiveRunContext()' not in source:
             fail(f"{source_name} state missing current_run identity context")
-    if "run_id" not in docs or "save_scope" not in docs:
-        fail("docs missing current_run run_id/save_scope context")
+    for required_fragment in ["run_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope"]:
+        if required_fragment not in docs:
+            fail(f"docs missing current_run context: {required_fragment}")
 
     state_types |= multiplayer_state_types
     missing_docs = sorted(state_type for state_type in state_types if state_type not in docs)
@@ -928,6 +929,9 @@ def audit_live(base_url: str) -> None:
             current_run = data.get("current_run")
             if not isinstance(current_run, dict) or not current_run.get("run_id") or not current_run.get("seed"):
                 fail(f"{path} expected current_run run_id and seed, got {current_run}")
+            for required_field in ["progress_path", "resolved_progress_path", "profile_root", "save_scope"]:
+                if required_field not in current_run:
+                    fail(f"{path} current_run missing profile/save context field: {required_field}")
             glossary_payloads[expected_kind] = data
 
     if {"keywords", "relics", "potions"}.issubset(glossary_payloads):

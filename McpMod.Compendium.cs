@@ -404,6 +404,9 @@ public static partial class McpMod
         {
             ["is_in_progress"] = true,
             ["profile_id"] = profileId,
+            ["progress_path"] = progressPath,
+            ["resolved_progress_path"] = ResolveProfileProgressPath(profileId),
+            ["profile_root"] = profileRoot,
             ["save_scope"] = saveScope,
             ["id_format"] = "{save_scope}:profile{profile_id}:{start_time}"
         };
