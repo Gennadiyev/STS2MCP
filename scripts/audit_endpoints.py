@@ -118,6 +118,7 @@ def assert_context_paths_normalized(path: str, data: object) -> None:
 
 def audit_docs(repo: Path) -> None:
     raw_full = (repo / "docs" / "raw-full.md").read_text(encoding="utf-8")
+    mcp_mod = (repo / "McpMod.cs").read_text(encoding="utf-8")
     documented = set(re.findall(r"- `(GET|POST)\s+([^`]+)`", raw_full))
     expected = set(EXPECTED_ENDPOINTS)
     missing = sorted(expected - documented)
@@ -126,6 +127,14 @@ def audit_docs(repo: Path) -> None:
         fail(f"docs/raw-full.md is missing endpoints: {missing}")
     if extra:
         fail(f"docs/raw-full.md documents unexpected endpoints: {extra}")
+    for required_fragment in [
+        "status/kind envelope and active-run context",
+        "normalized save/run context",
+        "profile/save/run context",
+        "List profile slots plus normalized save context",
+    ]:
+        if required_fragment not in mcp_mod:
+            fail(f"root endpoint index missing response-context description: {required_fragment}")
     print(f"docs: {len(documented)} endpoints documented")
 
 
