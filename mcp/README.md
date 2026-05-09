@@ -11,10 +11,10 @@
 | `get_profile()` | Profiles | Get active profile progress |
 | `get_compendium()` | Profiles | Get Compendium-shaped profile progress |
 | `get_bestiary()` | Profiles | Get monster and encounter metadata |
-| `get_glossary_cards()` | Active Pool | Get active-run card pool metadata |
-| `get_glossary_relics()` | Active Pool | Get active-run relic pool metadata |
-| `get_glossary_potions()` | Active Pool | Get active-run potion pool metadata |
-| `get_glossary_keywords()` | Active Pool | Get active-run keyword metadata |
+| `get_glossary_cards()` | Active Pool | Get active-run card pool metadata with run_id/seed scope |
+| `get_glossary_relics()` | Active Pool | Get active-run relic pool metadata with run_id/seed scope |
+| `get_glossary_potions()` | Active Pool | Get active-run potion pool metadata with run_id/seed scope |
+| `get_glossary_keywords()` | Active Pool | Get active-run keyword metadata with run_id/seed scope |
 | `list_profiles()` | Profiles | List profile slots and active slot |
 | `switch_profile(profile_id)` | Profiles | Switch to a profile slot through the game UI |
 | `delete_profile(profile_id)` | Profiles | Delete an inactive profile slot |
@@ -46,7 +46,7 @@
 | `crystal_sphere_click_cell(x, y)` | Crystal Sphere | Click a hidden cell in the grid |
 | `crystal_sphere_proceed()` | Crystal Sphere | Continue after the minigame finishes |
 
-Glossary tools require an active run. The HTTP endpoints return `run_not_in_progress` with HTTP 409 when called from the main menu.
+Glossary tools require an active run. Successful responses include `current_run.run_id`, `current_run.seed`, `kind`, `count`, and `items`. The HTTP endpoints return `run_not_in_progress` with HTTP 409 when called from the main menu.
 
 ## Multiplayer
 

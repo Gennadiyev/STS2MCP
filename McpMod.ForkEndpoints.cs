@@ -91,7 +91,7 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(BuildGlossaryCards);
+            var dataTask = RunOnMainThread(() => BuildGlossaryPayload("cards", BuildGlossaryCards));
             SendGlossaryJson(response, dataTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
@@ -104,7 +104,7 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(BuildGlossaryKeywords);
+            var dataTask = RunOnMainThread(() => BuildGlossaryPayload("keywords", BuildGlossaryKeywords));
             SendGlossaryJson(response, dataTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
@@ -117,7 +117,7 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(BuildGlossaryPotions);
+            var dataTask = RunOnMainThread(() => BuildGlossaryPayload("potions", BuildGlossaryPotions));
             SendGlossaryJson(response, dataTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
@@ -130,7 +130,7 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(BuildGlossaryRelics);
+            var dataTask = RunOnMainThread(() => BuildGlossaryPayload("relics", BuildGlossaryRelics));
             SendGlossaryJson(response, dataTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
@@ -139,8 +139,51 @@ public static partial class McpMod
         }
     }
 
-    private static void SendGlossaryJson(HttpListenerResponse response, object data)
+    private sealed class GlossaryPayload
     {
+        public string Kind { get; init; } = "";
+        public object Data { get; init; } = new();
+        public int ProfileId { get; init; }
+        public string? ProgressPath { get; init; }
+        public string ProfileRoot { get; init; } = "";
+        public string SaveScope { get; init; } = "vanilla";
+        public string NetType { get; init; } = "";
+        public List<Dictionary<string, object?>> Players { get; init; } = new();
+    }
+
+    private static GlossaryPayload BuildGlossaryPayload(string kind, Func<object> buildData)
+    {
+        var data = buildData();
+        if (data is Dictionary<string, object?> error && error.TryGetValue("error_code", out _))
+            return new GlossaryPayload { Kind = kind, Data = error };
+
+        var profileId = SaveManager.Instance?.CurrentProfileId ?? 0;
+        var progressPath = GetProfileProgressPath(profileId);
+        var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
+        var runState = RunManager.Instance.DebugOnlyGetState();
+        var players = runState?.Players.Select((player, index) => new Dictionary<string, object?>
+        {
+            ["index"] = index,
+            ["character"] = player.Character?.Id.Entry,
+            ["character_name"] = SafeGetText(() => player.Character?.Title)
+        }).ToList() ?? new List<Dictionary<string, object?>>();
+
+        return new GlossaryPayload
+        {
+            Kind = kind,
+            Data = data,
+            ProfileId = profileId,
+            ProgressPath = progressPath,
+            ProfileRoot = profileRoot,
+            SaveScope = GetSaveScope(profileRoot),
+            NetType = RunManager.Instance.NetService.Type.ToString(),
+            Players = players
+        };
+    }
+
+    private static void SendGlossaryJson(HttpListenerResponse response, GlossaryPayload payload)
+    {
+        var data = payload.Data;
         if (data is Dictionary<string, object?> error
             && error.TryGetValue("error_code", out var errorCode))
         {
@@ -150,9 +193,33 @@ public static partial class McpMod
                 RunStateUnavailableErrorCode => 503,
                 _ => 500
             };
+
+            SendJson(response, data);
+            return;
         }
 
-        SendJson(response, data);
+        if (data is not List<Dictionary<string, object?>> items)
+        {
+            SendJson(response, data);
+            return;
+        }
+
+        SendJson(response, new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["kind"] = payload.Kind,
+            ["scope"] = "active_run",
+            ["count"] = items.Count,
+            ["current_run"] = BuildCurrentRunContext(
+                isRunInProgress: true,
+                profileId: payload.ProfileId,
+                saveScope: payload.SaveScope,
+                progressPath: payload.ProgressPath,
+                profileRoot: payload.ProfileRoot),
+            ["net_type"] = payload.NetType,
+            ["players"] = payload.Players,
+            ["items"] = items
+        });
     }
 
     private static Dictionary<string, object?> GlossaryError(string message, string errorCode)

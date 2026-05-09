@@ -183,6 +183,17 @@ def audit_live(base_url: str) -> None:
 
         if path.startswith("/api/v1/glossary/") and status not in {200, 409}:
             fail(f"{path} expected HTTP 200 or 409, got {status}: {data}")
+        if path.startswith("/api/v1/glossary/") and status == 200:
+            expected_kind = path.rsplit("/", 1)[-1]
+            if not isinstance(data, dict):
+                fail(f"{path} expected structured glossary object, got {type(data).__name__}")
+            if data.get("status") != "ok" or data.get("kind") != expected_kind:
+                fail(f"{path} expected status ok and kind {expected_kind}, got {data}")
+            if not isinstance(data.get("items"), list) or data.get("count") != len(data["items"]):
+                fail(f"{path} expected items list with matching count, got {data}")
+            current_run = data.get("current_run")
+            if not isinstance(current_run, dict) or not current_run.get("run_id") or not current_run.get("seed"):
+                fail(f"{path} expected current_run run_id and seed, got {current_run}")
 
     status, data = load_json_url(base_url.rstrip("/") + "/api/v1/singleplayer?format=json")
     if status != 200 or not isinstance(data, dict) or "state_type" not in data:

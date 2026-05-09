@@ -989,7 +989,7 @@ Returns reflected monster and encounter metadata. Profile-specific encounter and
 
 ### `GET /api/v1/glossary/*`
 
-The glossary endpoints expose active-run pool metadata. They require a run in progress and are scoped to the current run/character context, not profile-wide discovered content.
+The glossary endpoints expose active-run pool metadata. They require a run in progress and are scoped to the current run/character context, not profile-wide discovered content. Successful responses are structured objects with `status`, `kind`, `scope`, `count`, `current_run`, `players`, and `items`.
 
 - `GET /api/v1/glossary/cards`: active-run card pool metadata.
 - `GET /api/v1/glossary/relics`: active-run relic pool metadata.
@@ -997,6 +997,30 @@ The glossary endpoints expose active-run pool metadata. They require a run in pr
 - `GET /api/v1/glossary/keywords`: keyword metadata collected from active-run cards, relics, and potions.
 
 If no run is active, glossary endpoints return HTTP 409 with `error_code: "run_not_in_progress"`.
+
+Example success shape:
+
+```json
+{
+  "status": "ok",
+  "kind": "cards",
+  "scope": "active_run",
+  "count": 87,
+  "current_run": {
+    "run_id": "modded:profile1:1778295706",
+    "seed": "VQY2JBY38L"
+  },
+  "items": [
+    {
+      "id": "STRIKE_RED",
+      "name": "Strike",
+      "type": "Attack",
+      "rarity": "Basic",
+      "keywords": []
+    }
+  ]
+}
+```
 
 ### `GET /api/v1/profiles`
 

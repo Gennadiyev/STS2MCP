@@ -364,19 +364,27 @@ public static partial class McpMod
     }
 
     private static Dictionary<string, object?>? BuildCurrentRunContext(CompendiumSnapshot snapshot)
+        => BuildCurrentRunContext(snapshot.IsRunInProgress, snapshot.ProfileId, snapshot.SaveScope, snapshot.ProgressPath, snapshot.ProfileRoot);
+
+    private static Dictionary<string, object?>? BuildCurrentRunContext(
+        bool isRunInProgress,
+        int profileId,
+        string saveScope,
+        string? progressPath,
+        string profileRoot)
     {
-        if (!snapshot.IsRunInProgress)
+        if (!isRunInProgress)
             return null;
 
         var result = new Dictionary<string, object?>
         {
             ["is_in_progress"] = true,
-            ["profile_id"] = snapshot.ProfileId,
-            ["save_scope"] = snapshot.SaveScope,
+            ["profile_id"] = profileId,
+            ["save_scope"] = saveScope,
             ["id_format"] = "{save_scope}:profile{profile_id}:{start_time}"
         };
 
-        var currentRunPath = ResolveCurrentRunPath(snapshot);
+        var currentRunPath = ResolveCurrentRunPath(progressPath, profileRoot);
         if (currentRunPath == null || !File.Exists(currentRunPath))
         {
             result["limitation"] = "Run is in progress, but current_run.save was not found yet.";
@@ -406,7 +414,7 @@ public static partial class McpMod
                 result["seed"] = GetJsonValue(seed);
 
             if (result.TryGetValue("start_time", out var startTime) && startTime != null)
-                result["run_id"] = $"{snapshot.SaveScope}:profile{snapshot.ProfileId}:{startTime}";
+                result["run_id"] = $"{saveScope}:profile{profileId}:{startTime}";
         }
         catch (Exception ex)
         {
@@ -595,8 +603,11 @@ public static partial class McpMod
     }
 
     private static string? ResolveCurrentRunPath(CompendiumSnapshot snapshot)
+        => ResolveCurrentRunPath(snapshot.ProgressPath, snapshot.ProfileRoot);
+
+    private static string? ResolveCurrentRunPath(string? progressPath, string profileRoot)
     {
-        var saveDirectory = GetSaveDirectoryFromProgressPath(snapshot.ProgressPath);
+        var saveDirectory = GetSaveDirectoryFromProgressPath(progressPath);
         if (saveDirectory != null)
         {
             var currentRunPath = Path.Combine(saveDirectory, "current_run.save");
@@ -606,7 +617,7 @@ public static partial class McpMod
 
         foreach (var saveRoot in EnumerateSaveRoots())
         {
-            var absolutePath = Path.Combine(saveRoot, snapshot.ProfileRoot, "saves", "current_run.save");
+            var absolutePath = Path.Combine(saveRoot, profileRoot, "saves", "current_run.save");
             if (File.Exists(absolutePath))
                 return absolutePath;
         }
