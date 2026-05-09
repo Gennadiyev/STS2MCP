@@ -696,7 +696,7 @@ def audit_state_surface(repo: Path) -> None:
     for required_fragment in ['status: "ok"', "singleplayer_state", "multiplayer_state"]:
         if required_fragment not in docs:
             fail(f"docs missing state response envelope detail: {required_fragment}")
-    for required_fragment in ["run_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope"]:
+    for required_fragment in ["run_id", "current_run.save", "id_format", "progress_path", "resolved_progress_path", "profile_root", "save_scope"]:
         if required_fragment not in docs:
             fail(f"docs missing current_run context: {required_fragment}")
 
@@ -1301,11 +1301,20 @@ def audit_live(base_url: str) -> None:
                 if required_field not in data:
                     fail(f"{path} missing profile/save context field: {required_field}")
             current_run = data.get("current_run")
-            if not isinstance(current_run, dict) or not current_run.get("run_id") or not current_run.get("seed"):
-                fail(f"{path} expected current_run run_id and seed, got {current_run}")
-            for required_field in ["progress_path", "resolved_progress_path", "profile_root", "save_scope"]:
+            if not isinstance(current_run, dict):
+                fail(f"{path} expected current_run save context, got {current_run}")
+            assert_context_paths_normalized(f"{path}.current_run", current_run)
+            for required_field in ["is_in_progress", "profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "id_format"]:
                 if required_field not in current_run:
                     fail(f"{path} current_run missing profile/save context field: {required_field}")
+            if current_run.get("is_in_progress") is not True:
+                fail(f"{path} current_run expected active run marker, got {current_run}")
+            if current_run.get("id_format") != "{save_scope}:profile{profile_id}:{start_time}":
+                fail(f"{path} current_run unexpected id_format, got {current_run.get('id_format')}")
+            if current_run.get("run_id") and not current_run.get("start_time"):
+                fail(f"{path} current_run run_id requires start_time, got {current_run}")
+            if current_run.get("start_time") and not current_run.get("run_id"):
+                fail(f"{path} current_run start_time should derive run_id, got {current_run}")
             glossary_payloads[expected_kind] = data
 
     if {"keywords", "relics", "potions"}.issubset(glossary_payloads):

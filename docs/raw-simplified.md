@@ -44,7 +44,7 @@ Every JSON response includes:
 - `status: "ok"` and `kind` — `singleplayer_state` or `multiplayer_state`
 - `state_type` — which screen the game is on (see below)
 - `run` — `{ act, floor, ascension }` (absent for `menu`)
-- `current_run` — run identity and save context when a run is active, including `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`, `run_id`, and `seed` when the save file exposes it
+- `current_run` — active-run save context, including `is_in_progress`, `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`, and `id_format`; also includes `run_id`, `start_time`, and `seed` when `current_run.save` exposes them
 - `player` — full player state: character, HP, gold, deck, relics, potions, `max_potion_slots` (belt capacity, grows with relics), and during combat: energy, hand, piles, orbs (absent for `menu`)
 
 Serialized card objects in hand, deck, piles, rewards, card selections, bundles, and glossary card items include energy/star costs plus upgrade fields: `is_upgraded`, `is_upgradable`, `current_upgrade_level`, `max_upgrade_level`, `upgrade_preview_type`, `upgrade_preview_cost`, `upgrade_preview_star_cost`, and `upgrade_preview_description`. Hand cards also include `requires_target` and `valid_targets` for enemy-targeted cards. Shop card items expose the same fields with a `card_` prefix, for example `card_upgrade_preview_description`.
@@ -90,13 +90,13 @@ All POST requests use JSON body with `"action"` field. Action responses include 
 
 `GET /api/v1/bestiary` returns deterministic reflected monster and encounter metadata with `status`, `kind`, `monster_count`, `encounter_count`, `monsters`, and `encounters`. Profile-specific fight stats are also summarized under `/api/v1/compendium`.
 
-The `/api/v1/glossary/*` endpoints expose active-run pool metadata. They require a run in progress and are scoped to the current run/character context plus shared run pools such as Colorless cards, shared relics, and shared potions, not profile-wide discovered content. Card glossary items include upgrade availability plus upgraded-preview cost and description. Successful responses include `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`, `current_run.run_id`, `current_run.seed`, `kind`, `count`, and `items`. If no run is active, they return HTTP 409 with `error_code: "run_not_in_progress"` and the same profile/save context fields. If run state cannot be read, they return HTTP 503 with `error_code: "run_state_unavailable"` and the same context fields.
+The `/api/v1/glossary/*` endpoints expose active-run pool metadata. They require a run in progress and are scoped to the current run/character context plus shared run pools such as Colorless cards, shared relics, and shared potions, not profile-wide discovered content. Card glossary items include upgrade availability plus upgraded-preview cost and description. Successful responses include `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`, `current_run` save context, `kind`, `count`, and `items`; `current_run.run_id` and `current_run.seed` are included when `current_run.save` exposes them. If no run is active, they return HTTP 409 with `error_code: "run_not_in_progress"` and the same profile/save context fields. If run state cannot be read, they return HTTP 503 with `error_code: "run_state_unavailable"` and the same context fields.
 
 `GET /api/v1/compendium` returns the active profile grouped like the in-game Compendium:
 
 The top level includes `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, and `save_scope`, matching `/api/v1/profile`.
 
-When a run is active, the response includes `current_run.run_id` in `{save_scope}:profile{profile_id}:{start_time}` format. This identifies the specific run attempt, while `seed` identifies the generated run content.
+When a run is active, the response includes `current_run` with profile/save context and `id_format`. When `current_run.save` exposes `start_time`, the response also includes `current_run.run_id` in `{save_scope}:profile{profile_id}:{start_time}` format. This identifies the specific run attempt, while `seed` identifies the generated run content when present.
 
 | Section | Status |
 |---|---|
