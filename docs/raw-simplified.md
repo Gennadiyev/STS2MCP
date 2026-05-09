@@ -95,6 +95,8 @@ When a run is active, the response includes `current_run.run_id` in `{save_scope
 
 `GET /api/v1/profiles` returns the three profile slots:
 
+`GET /api/v1/profile` returns the active profile's progress with `profile_id`, save scope/path context, and `current_run` when a run is active.
+
 ```json
 {
   "current_profile_id": 1,

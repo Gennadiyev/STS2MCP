@@ -232,11 +232,20 @@ public static partial class McpMod
 
     internal static object BuildProfile()
     {
-        var progress = SaveManager.Instance?.Progress;
-        if (progress == null)
+        var saveManager = SaveManager.Instance;
+        var progress = saveManager?.Progress;
+        if (saveManager == null || progress == null)
             return Error("No profile data available.");
 
         var result = new Dictionary<string, object?>();
+        var profileId = saveManager.CurrentProfileId;
+        var progressPath = GetProfileProgressPath(profileId);
+        var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
+        result["profile_id"] = profileId;
+        result["progress_path"] = progressPath;
+        result["profile_root"] = profileRoot;
+        result["save_scope"] = GetSaveScope(profileRoot);
+        result["current_run"] = BuildActiveRunContext();
 
         var characters = new List<Dictionary<string, object?>>();
         foreach (var kv in progress.CharacterStats)

@@ -312,6 +312,7 @@ def audit_static_card_glossary_metadata(repo: Path) -> None:
 
 def audit_static_save_roots(repo: Path) -> None:
     compendium = (repo / "McpMod.Compendium.cs").read_text(encoding="utf-8")
+    profile = (repo / "McpMod.Profile.cs").read_text(encoding="utf-8")
     match = re.search(
         r"private static IEnumerable<string> EnumerateSaveRoots\(\).*?\n    private static IEnumerable<string> EnumerateSteamDataRoots\(\)",
         compendium,
@@ -324,7 +325,18 @@ def audit_static_save_roots(repo: Path) -> None:
         fail("save-root fallback must search all Steam account roots after the active account")
     if "Directory.GetDirectories(steamRoot)" not in body:
         fail("save-root fallback must enumerate Steam account directories")
-    print("saves: multi-account fallback lookup enforced")
+    profile_match = re.search(
+        r"internal static object BuildProfile\(\).*?\n    \}",
+        profile,
+        re.S,
+    )
+    if not profile_match:
+        fail("could not locate BuildProfile for profile context audit")
+    profile_body = profile_match.group(0)
+    for required_fragment in ["profile_id", "progress_path", "profile_root", "save_scope", "current_run", "BuildActiveRunContext"]:
+        if required_fragment not in profile_body:
+            fail(f"profile endpoint missing identity/run context: {required_fragment}")
+    print("saves: multi-account fallback and profile context enforced")
 
 
 def audit_state_surface(repo: Path) -> None:

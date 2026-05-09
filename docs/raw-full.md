@@ -1010,7 +1010,7 @@ Returns current settings and preferences, including display, audio, gameplay, la
 
 ### `GET /api/v1/profile`
 
-Returns the active profile's persistent progress summary, including character stats, card stats, encounter stats, discovered content, achievements, epochs, and global totals.
+Returns the active profile's persistent progress summary, including `profile_id`, save scope/path context, `current_run` when a run is active, character stats, card stats, encounter stats, discovered content, achievements, epochs, and global totals.
 
 ### `GET /api/v1/compendium`
 
