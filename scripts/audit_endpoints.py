@@ -261,6 +261,27 @@ def audit_static_card_glossary_metadata(repo: Path) -> None:
     missing_helper = [field for field in helper_required if field not in helper_body]
     if missing_helper:
         fail(f"upgraded card preview helper missing clone/upgrade path: {missing_helper}")
+
+    shop_match = re.search(
+        r"private static Dictionary<string, object\?> BuildShopState\(.*?\n    private static Dictionary<string, object\?> BuildMapState\(",
+        state_builder,
+        re.S,
+    )
+    if not shop_match:
+        fail("could not locate BuildShopState for shop card metadata audit")
+    shop_body = shop_match.group(0)
+    shop_required = [
+        "card_is_upgradable",
+        "card_current_upgrade_level",
+        "card_max_upgrade_level",
+        "card_upgrade_preview_type",
+        "card_upgrade_preview_cost",
+        "card_upgrade_preview_star_cost",
+        "card_upgrade_preview_description",
+    ]
+    missing_shop = [field for field in shop_required if field not in shop_body]
+    if missing_shop:
+        fail(f"shop card serialization missing upgrade metadata: {missing_shop}")
     print("cards: upgrade metadata enforced for glossary and state payloads")
 
 

@@ -34,7 +34,7 @@ Every JSON response includes:
 - `run` — `{ act, floor, ascension }` (absent for `menu`)
 - `player` — full player state: character, HP, gold, deck, relics, potions, `max_potion_slots` (belt capacity, grows with relics), and during combat: energy, hand, piles, orbs (absent for `menu`)
 
-Serialized card objects in hand, deck, piles, rewards, card selections, and bundles include upgrade fields: `is_upgraded`, `is_upgradable`, `current_upgrade_level`, `max_upgrade_level`, `upgrade_preview_type`, `upgrade_preview_cost`, `upgrade_preview_star_cost`, and `upgrade_preview_description`.
+Serialized card objects in hand, deck, piles, rewards, card selections, and bundles include upgrade fields: `is_upgraded`, `is_upgradable`, `current_upgrade_level`, `max_upgrade_level`, `upgrade_preview_type`, `upgrade_preview_cost`, `upgrade_preview_star_cost`, and `upgrade_preview_description`. Shop card items expose the same fields with a `card_` prefix, for example `card_upgrade_preview_description`.
 
 | `state_type` | Screen | Available Actions |
 |---|---|---|

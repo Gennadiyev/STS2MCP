@@ -642,6 +642,13 @@ Shop inventory is auto-opened when state is queried.
         "card_rarity": "Rare",
         "card_description": "Lose 6 HP. Gain 2 Energy. Draw 3 cards.",
         "card_is_upgraded": false,
+        "card_is_upgradable": true,
+        "card_current_upgrade_level": 0,
+        "card_max_upgrade_level": 1,
+        "card_upgrade_preview_type": "None",
+        "card_upgrade_preview_cost": "0",
+        "card_upgrade_preview_star_cost": null,
+        "card_upgrade_preview_description": "Lose 6 HP. Gain 2 Energy. Draw 4 cards.",
         "keywords": [ /* Keyword Objects */ ]
       },
       // Relic entry

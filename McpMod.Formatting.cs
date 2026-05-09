@@ -601,10 +601,23 @@ public static partial class McpMod
                 string cardCost = item.TryGetValue("card_cost", out var cc) && cc != null ? cc.ToString()! : "";
                 string cardStarCost = item.TryGetValue("card_star_cost", out var csc) && csc != null ? $" + {csc} star" : "";
                 string cardEnergy = cardCost != "" ? $" ({cardCost} energy{cardStarCost})" : "";
+                string cardUpgrade = "";
+                if (category == "card"
+                    && item.TryGetValue("card_upgrade_preview_description", out var upgradeDesc)
+                    && upgradeDesc != null
+                    && !Equals(upgradeDesc, item.GetValueOrDefault("card_description")))
+                {
+                    string upgradeCost = item.TryGetValue("card_upgrade_preview_cost", out var uc) && uc != null ? uc.ToString()! : "";
+                    string upgradeStar = item.TryGetValue("card_upgrade_preview_star_cost", out var usc) && usc != null ? $" + {usc} star" : "";
+                    string upgradeEnergy = upgradeCost != "" ? $"({upgradeCost} energy{upgradeStar})" : "";
+                    cardUpgrade = upgradeEnergy != ""
+                        ? $" | Upgrade: {upgradeEnergy} {upgradeDesc}"
+                        : $" | Upgrade: {upgradeDesc}";
+                }
                 string itemKeywords = FormatKeywordNames(item);
                 string desc = category switch
                 {
-                    "card" => $"**{item.GetValueOrDefault("card_name")}**{(item.GetValueOrDefault("card_is_upgraded") is true ? "+" : "")}{cardEnergy} [{item.GetValueOrDefault("card_type")}] {item.GetValueOrDefault("card_rarity")}{itemKeywords} - {item.GetValueOrDefault("card_description")}",
+                    "card" => $"**{item.GetValueOrDefault("card_name")}**{(item.GetValueOrDefault("card_is_upgraded") is true ? "+" : "")}{cardEnergy} [{item.GetValueOrDefault("card_type")}] {item.GetValueOrDefault("card_rarity")}{itemKeywords} - {item.GetValueOrDefault("card_description")}{cardUpgrade}",
                     "relic" => $"**{item.GetValueOrDefault("relic_name")}** {item.GetValueOrDefault("relic_rarity")}{itemKeywords} - {item.GetValueOrDefault("relic_description")}",
                     "potion" => $"**{item.GetValueOrDefault("potion_name")}** {item.GetValueOrDefault("potion_rarity")} ({item.GetValueOrDefault("potion_usage")}, target: {item.GetValueOrDefault("potion_target_type")}){itemKeywords} - {item.GetValueOrDefault("potion_description")}",
                     "card_removal" => "**Remove a card** from your deck",

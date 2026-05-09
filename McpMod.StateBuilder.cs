@@ -1633,6 +1633,13 @@ public static partial class McpMod
                 item["card_rarity"] = cardInfo["rarity"];
                 item["card_description"] = cardInfo["description"];
                 item["card_is_upgraded"] = cardInfo["is_upgraded"];
+                item["card_is_upgradable"] = cardInfo["is_upgradable"];
+                item["card_current_upgrade_level"] = cardInfo["current_upgrade_level"];
+                item["card_max_upgrade_level"] = cardInfo["max_upgrade_level"];
+                item["card_upgrade_preview_type"] = cardInfo["upgrade_preview_type"];
+                item["card_upgrade_preview_cost"] = cardInfo["upgrade_preview_cost"];
+                item["card_upgrade_preview_star_cost"] = cardInfo["upgrade_preview_star_cost"];
+                item["card_upgrade_preview_description"] = cardInfo["upgrade_preview_description"];
                 item["keywords"] = cardInfo["keywords"];
             }
             items.Add(item);
