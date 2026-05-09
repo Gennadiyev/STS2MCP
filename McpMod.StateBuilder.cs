@@ -2171,16 +2171,16 @@ public static partial class McpMod
         }
         state["revealed_items"] = revealedItems;
 
-        var bigButton = screen.GetNodeOrNull<Godot.Control>("%BigDivinationButton");
-        var smallButton = screen.GetNodeOrNull<Godot.Control>("%SmallDivinationButton");
-        bool bigVisible = bigButton?.Visible == true;
-        bool smallVisible = smallButton?.Visible == true;
+        var bigButton = screen.GetNodeOrNull<NClickableControl>("%BigDivinationButton");
+        var smallButton = screen.GetNodeOrNull<NClickableControl>("%SmallDivinationButton");
+        bool bigUsable = bigButton?.Visible == true && bigButton.IsEnabled;
+        bool smallUsable = smallButton?.Visible == true && smallButton.IsEnabled;
         bool bigActive = bigButton?.GetNodeOrNull<Godot.Control>("%Outline")?.Visible == true;
         bool smallActive = smallButton?.GetNodeOrNull<Godot.Control>("%Outline")?.Visible == true;
 
         state["tool"] = bigActive ? "big" : smallActive ? "small" : "none";
-        state["can_use_big_tool"] = bigVisible;
-        state["can_use_small_tool"] = smallVisible;
+        state["can_use_big_tool"] = bigUsable;
+        state["can_use_small_tool"] = smallUsable;
 
         var divinationsLeft = screen.GetNodeOrNull<Godot.Control>("%DivinationsLeft");
         if (divinationsLeft != null)
