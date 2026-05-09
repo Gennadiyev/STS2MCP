@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Godot;
@@ -19,6 +20,36 @@ public static partial class McpMod
     {
         try { return StripRichTextTags(card.GetDescriptionForPile(pile)).Replace("\n", " "); }
         catch { return SafeGetText(() => card.Description)?.Replace("\n", " "); }
+    }
+
+    private static CardModel? SafeBuildUpgradedCardPreview(CardModel card)
+    {
+        if (!card.IsUpgradable)
+            return null;
+
+        try
+        {
+            var preview = card.IsMutable
+                ? (CardModel)card.MutableClone()
+                : card.ToMutable();
+            preview.UpgradeInternal();
+            return preview;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? SafeGetCardUpgradePreviewDescription(CardModel card, PileType pile = PileType.Hand)
+    {
+        var preview = SafeBuildUpgradedCardPreview(card);
+        if (preview != null)
+            return SafeGetCardDescription(preview, pile);
+
+        return card.IsUpgradable
+            ? SafeGetText(() => card.GetDescriptionForUpgradePreview())?.Replace("\n", " ")
+            : null;
     }
 
     internal static string? SafeGetText(Func<object?> getter)
