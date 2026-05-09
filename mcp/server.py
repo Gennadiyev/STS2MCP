@@ -213,9 +213,9 @@ async def _menu_select_post(body: dict) -> str:
 async def get_api_index() -> str:
     """Get the STS2_MCP HTTP server status and endpoint index.
 
-    Returns status/kind, the mod version greeting, bound listener prefixes,
-    endpoint_count, and the current list of HTTP API routes exposed by the
-    loaded mod.
+    Returns status/kind, version, the mod version greeting, bound listener
+    prefixes, endpoint_count, and the current list of HTTP API routes exposed by
+    the loaded mod.
     """
     try:
         return await _root_get()

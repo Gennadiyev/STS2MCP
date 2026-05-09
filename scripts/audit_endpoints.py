@@ -951,6 +951,8 @@ def audit_live(base_url: str) -> None:
         fail("root response does not include endpoints list")
     if root.get("status") != "ok" or root.get("kind") != "api_index":
         fail(f"root response expected status ok and kind api_index, got {root}")
+    if not root.get("version"):
+        fail(f"root response expected explicit version field, got {root}")
     if root.get("endpoint_count") != len(endpoint_rows):
         fail(f"root response endpoint_count mismatch, got {root.get('endpoint_count')} for {len(endpoint_rows)} endpoints")
 

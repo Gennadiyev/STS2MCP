@@ -279,6 +279,7 @@ public static partial class McpMod
                         message = $"Hello from STS2 MCP v{Version}",
                         status = "ok",
                         kind = "api_index",
+                        version = Version,
                         bound_prefixes = _boundPrefixes,
                         endpoint_count = endpoints.Count,
                         endpoints

@@ -19,7 +19,7 @@ HTTP API on `localhost:15526`. No authentication.
 
 HTTP error responses include `status: "error"` and `error`. Some route-specific errors also include `error_code`.
 
-`GET /` returns `status: "ok"`, `kind: "api_index"`, `endpoint_count`, `bound_prefixes`, and the advertised endpoint list.
+`GET /` returns `status: "ok"`, `kind: "api_index"`, `version`, `endpoint_count`, `bound_prefixes`, and the advertised endpoint list.
 
 Singleplayer and multiplayer endpoints are mutually exclusive (HTTP 409 if mismatched). The mismatch response includes `error_code`: `multiplayer_run_active` when singleplayer is called during a multiplayer run, or `not_multiplayer_run` when multiplayer is called outside one.
 
