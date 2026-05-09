@@ -45,6 +45,8 @@
 | `crystal_sphere_click_cell(x, y)` | Crystal Sphere | Click a hidden cell in the grid |
 | `crystal_sphere_proceed()` | Crystal Sphere | Continue after the minigame finishes |
 
+Glossary tools require an active run. The HTTP endpoints return `run_not_in_progress` with HTTP 409 when called from the main menu.
+
 ## Multiplayer
 
 All multiplayer tools are prefixed with `mp_`. They route through `/api/v1/multiplayer` and are only available during multiplayer (co-op) runs. The endpoints automatically guard against cross-mode calls.

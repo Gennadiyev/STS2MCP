@@ -954,6 +954,8 @@ The glossary endpoints expose active-run pool metadata. They require a run in pr
 - `GET /api/v1/glossary/potions`: active-run potion pool metadata.
 - `GET /api/v1/glossary/keywords`: keyword metadata collected from active-run cards, relics, and potions.
 
+If no run is active, glossary endpoints return HTTP 409 with `error_code: "run_not_in_progress"`.
+
 ### `GET /api/v1/profiles`
 
 Lists the three profile slots and identifies the active slot.

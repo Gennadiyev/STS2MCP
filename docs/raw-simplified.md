@@ -73,7 +73,7 @@ All POST requests use JSON body with `"action"` field. All responses include `{ 
 
 `GET /api/v1/bestiary` returns reflected monster and encounter metadata. Profile-specific fight stats are also summarized under `/api/v1/compendium`.
 
-The `/api/v1/glossary/*` endpoints expose active-run pool metadata. They require a run in progress and are scoped to the current run/character context, not profile-wide discovered content.
+The `/api/v1/glossary/*` endpoints expose active-run pool metadata. They require a run in progress and are scoped to the current run/character context, not profile-wide discovered content. If no run is active, they return HTTP 409 with `error_code: "run_not_in_progress"`.
 
 `GET /api/v1/compendium` returns the active profile grouped like the in-game Compendium:
 

@@ -14,6 +14,9 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
+    private const string RunNotInProgressErrorCode = "run_not_in_progress";
+    private const string RunStateUnavailableErrorCode = "run_state_unavailable";
+
     private static void HandleGetSettings(HttpListenerResponse response)
     {
         try
@@ -88,7 +91,7 @@ public static partial class McpMod
         try
         {
             var dataTask = RunOnMainThread(BuildGlossaryCards);
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            SendGlossaryJson(response, dataTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
         {
@@ -101,7 +104,7 @@ public static partial class McpMod
         try
         {
             var dataTask = RunOnMainThread(BuildGlossaryKeywords);
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            SendGlossaryJson(response, dataTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
         {
@@ -114,7 +117,7 @@ public static partial class McpMod
         try
         {
             var dataTask = RunOnMainThread(BuildGlossaryPotions);
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            SendGlossaryJson(response, dataTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
         {
@@ -127,7 +130,7 @@ public static partial class McpMod
         try
         {
             var dataTask = RunOnMainThread(BuildGlossaryRelics);
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            SendGlossaryJson(response, dataTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
         {
@@ -135,14 +138,40 @@ public static partial class McpMod
         }
     }
 
+    private static void SendGlossaryJson(HttpListenerResponse response, object data)
+    {
+        if (data is Dictionary<string, object?> error
+            && error.TryGetValue("error_code", out var errorCode))
+        {
+            response.StatusCode = (errorCode as string) switch
+            {
+                RunNotInProgressErrorCode => 409,
+                RunStateUnavailableErrorCode => 503,
+                _ => 500
+            };
+        }
+
+        SendJson(response, data);
+    }
+
+    private static Dictionary<string, object?> GlossaryError(string message, string errorCode)
+    {
+        return new Dictionary<string, object?>
+        {
+            ["status"] = "error",
+            ["error"] = message,
+            ["error_code"] = errorCode
+        };
+    }
+
     internal static object BuildGlossaryCards()
     {
         if (!RunManager.Instance.IsInProgress)
-            return new Dictionary<string, object?> { ["error"] = "No run in progress." };
+            return GlossaryError("No run in progress.", RunNotInProgressErrorCode);
 
         var runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
-            return new Dictionary<string, object?> { ["error"] = "Could not read run state." };
+            return GlossaryError("Could not read run state.", RunStateUnavailableErrorCode);
 
         var result = new List<Dictionary<string, object?>>();
         var seen = new HashSet<string>();
@@ -185,20 +214,21 @@ public static partial class McpMod
     internal static object BuildGlossaryRelics()
     {
         if (!RunManager.Instance.IsInProgress)
-            return new Dictionary<string, object?> { ["error"] = "No run in progress." };
+            return GlossaryError("No run in progress.", RunNotInProgressErrorCode);
 
         var runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
-            return new Dictionary<string, object?> { ["error"] = "Could not read run state." };
+            return GlossaryError("Could not read run state.", RunStateUnavailableErrorCode);
 
         var result = new List<Dictionary<string, object?>>();
         var seen = new HashSet<string>();
 
         foreach (var player in runState.Players)
         {
-            var pool = player.Character?.RelicPool;
-            if (pool == null) continue;
-            var poolName = SafeGetText(() => player.Character.Title) ?? "Unknown";
+            var character = player.Character;
+            if (character == null || character.RelicPool == null) continue;
+            var pool = character.RelicPool;
+            var poolName = SafeGetText(() => character.Title) ?? "Unknown";
 
             foreach (var relic in pool.AllRelics)
             {
@@ -248,20 +278,21 @@ public static partial class McpMod
     internal static object BuildGlossaryPotions()
     {
         if (!RunManager.Instance.IsInProgress)
-            return new Dictionary<string, object?> { ["error"] = "No run in progress." };
+            return GlossaryError("No run in progress.", RunNotInProgressErrorCode);
 
         var runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
-            return new Dictionary<string, object?> { ["error"] = "Could not read run state." };
+            return GlossaryError("Could not read run state.", RunStateUnavailableErrorCode);
 
         var result = new List<Dictionary<string, object?>>();
         var seen = new HashSet<string>();
 
         foreach (var player in runState.Players)
         {
-            var pool = player.Character?.PotionPool;
-            if (pool == null) continue;
-            var poolName = SafeGetText(() => player.Character.Title) ?? "Unknown";
+            var character = player.Character;
+            if (character == null || character.PotionPool == null) continue;
+            var pool = character.PotionPool;
+            var poolName = SafeGetText(() => character.Title) ?? "Unknown";
 
             foreach (var potion in pool.AllPotions)
             {
@@ -289,11 +320,11 @@ public static partial class McpMod
     internal static object BuildGlossaryKeywords()
     {
         if (!RunManager.Instance.IsInProgress)
-            return new Dictionary<string, object?> { ["error"] = "No run in progress." };
+            return GlossaryError("No run in progress.", RunNotInProgressErrorCode);
 
         var runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
-            return new Dictionary<string, object?> { ["error"] = "Could not read run state." };
+            return GlossaryError("Could not read run state.", RunStateUnavailableErrorCode);
 
         var keywords = new Dictionary<string, string>();
 
