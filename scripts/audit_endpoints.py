@@ -54,6 +54,15 @@ def load_json_url(url: str, method: str = "GET", body: bytes | None = None) -> t
             raise RuntimeError(f"{url} returned HTTP {exc.code} with non-JSON body") from exc
 
 
+def load_text_url(url: str) -> tuple[int, str]:
+    req = urllib.request.Request(url, headers={"Accept": "text/markdown"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return response.status, response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read().decode("utf-8", errors="replace")
+
+
 def assert_error_body(path: str, status: int, data: object) -> None:
     if status < 400:
         return
@@ -150,6 +159,14 @@ def audit_live(base_url: str) -> None:
         if path.startswith("/api/v1/glossary/") and status not in {200, 409}:
             fail(f"{path} expected HTTP 200 or 409, got {status}: {data}")
 
+    status, data = load_json_url(base_url.rstrip("/") + "/api/v1/singleplayer?format=json")
+    if status != 200 or not isinstance(data, dict) or "state_type" not in data:
+        fail(f"/api/v1/singleplayer?format=json expected JSON state, got HTTP {status}: {data}")
+
+    markdown_status, markdown = load_text_url(base_url.rstrip("/") + "/api/v1/singleplayer?format=markdown")
+    if markdown_status != 200 or "# Game State:" not in markdown:
+        fail(f"/api/v1/singleplayer?format=markdown expected markdown state, got HTTP {markdown_status}: {markdown[:120]}")
+
     post_validation_checks = [
         ("/api/v1/singleplayer", b"{", 400),
         ("/api/v1/singleplayer", b"{}", 400),
@@ -168,6 +185,7 @@ def audit_live(base_url: str) -> None:
         fail(f"/api/v1/settings expected HTTP 405 for POST, got {status}: {data}")
 
     print("live: GET endpoint smoke checks passed")
+    print("live: state format checks passed")
     print("live: safe POST validation checks passed")
 
 
