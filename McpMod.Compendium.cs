@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Text.Json;
+using MegaCrit.Sts2.Core.Platform.Steam;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 using MegaCrit.Sts2.Core.Saves.Managers;
@@ -497,8 +498,37 @@ public static partial class McpMod
         if (!Directory.Exists(steamRoot))
             yield break;
 
+        var activeSteamSaveRoot = GetActiveSteamSaveRoot(steamRoot);
+        if (activeSteamSaveRoot != null)
+        {
+            yield return activeSteamSaveRoot;
+            yield break;
+        }
+
         foreach (var accountRoot in Directory.GetDirectories(steamRoot))
             yield return accountRoot;
+    }
+
+    private static string? GetActiveSteamSaveRoot(string steamRoot)
+    {
+        try
+        {
+            if (!SteamInitializer.Initialized)
+                return null;
+
+            var steamUtil = typeof(SteamInitializer).Assembly.GetType("MegaCrit.Sts2.Core.Platform.Steam.SteamUtil");
+            var getSteamId = steamUtil?.GetMethod("GetSteamID64", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            var steamId = getSteamId?.Invoke(null, null)?.ToString();
+            if (string.IsNullOrWhiteSpace(steamId) || steamId == "0")
+                return null;
+
+            var accountRoot = Path.Combine(steamRoot, steamId);
+            return Directory.Exists(accountRoot) ? accountRoot : null;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static string? GetProfileProgressPath(int profileId)
