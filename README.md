@@ -164,7 +164,11 @@ STS2_PORT=15526
 STS2_MCP_AUTH_TOKEN=your-token
 ```
 
-When `STS2_MCP_AUTH_TOKEN` is set, the MCP bridge sends it to the game HTTP API as an `Authorization: Bearer ...` header. Shell environment variables take precedence over values in `mcp/.env`. If you change the mod's game API port, set the same `STS2_PORT` for the MCP bridge.
+When `STS2_MCP_AUTH_TOKEN` is set, the MCP bridge sends it to the game HTTP API as an `Authorization: Bearer ...` header on every request. This is a bridge client setting only: the current STS2_MCP game mod does not require or validate that token by itself. It exists so the MCP bridge can interoperate with a local proxy, tunnel, or future authenticated HTTP listener without changing tool calls.
+
+Shell environment variables take precedence over values in `mcp/.env`, which makes it safe to keep shared defaults in the file while overriding secrets in the launch environment. The parser supports simple `KEY=value`, `export KEY=value`, quoted values, and inline comments that begin after whitespace. Values such as `token#fragment` are preserved because `#` is only treated as a comment marker when preceded by whitespace.
+
+Local `.env` files are ignored by git. If you change the mod's game API port, set the same `STS2_PORT` for the MCP bridge.
 
 ## For Developers
 

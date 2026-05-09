@@ -192,6 +192,39 @@ The MCP wrappers are:
 
 They preserve structured endpoint errors and `http_status` through the same bridge behavior as the other MCP read/action wrappers.
 
+## MCP Bridge Configuration And Auth Headers
+
+The Python MCP bridge can read connection settings from both the process environment and `mcp/.env`. Environment variables take precedence; `.env` only fills in keys that are not already set.
+
+Supported bridge settings:
+
+- `STS2_HOST`
+- `STS2_PORT`
+- `STS2_MCP_AUTH_TOKEN`
+
+`STS2_HOST` and `STS2_PORT` choose the HTTP listener used by all MCP tool calls. They mirror the `--host` and `--port` command-line flags, with command-line parsing refreshing the bridge's base URL before tools are served.
+
+`STS2_MCP_AUTH_TOKEN` is optional. When present, the bridge adds this header to every `httpx` request it sends to the STS2_MCP HTTP API:
+
+```http
+Authorization: Bearer <token>
+```
+
+This is client-side header injection only. It does not change the game/mod HTTP server's authentication behavior and does not make the listener require a token. It is intended for deployments where the MCP bridge talks through a local proxy, tunnel, or future authenticated listener that expects bearer tokens.
+
+The `.env` parser intentionally stays small and predictable:
+
+- blank lines and `#` comments are ignored
+- `KEY=value` is supported
+- `export KEY=value` is supported
+- single-quoted and double-quoted values are supported
+- inline comments are removed only when `#` is preceded by whitespace
+- shell environment variables are never overwritten by `.env`
+
+That means `STS2_MCP_AUTH_TOKEN=abc#123` keeps the `#123` suffix, while `STS2_MCP_AUTH_TOKEN=abc # local token` parses as `abc`.
+
+Local `.env` files are ignored by git so bridge secrets and machine-specific host/port settings are not committed.
+
 ## Structured Errors
 
 Endpoint failures return non-2xx structured JSON instead of HTTP 200 error payloads whenever the failure is a route, validation, action, read, or state conflict.
@@ -294,6 +327,8 @@ The MCP server adds wrappers for read-only metadata and profile endpoints:
 
 `menu_select` retries through the multiplayer route when a singleplayer menu call is rejected because a multiplayer run is active. Static tests guard route-helper parity so multiplayer tools keep using multiplayer routes and non-multiplayer tools do not accidentally route to multiplayer helpers.
 
+The MCP bridge also supports optional bearer-token injection through `STS2_MCP_AUTH_TOKEN`; this is covered by focused bridge tests and does not alter the HTTP server contract.
+
 ## Audit Coverage
 
 `scripts/audit_endpoints.py` provides static and live checks for the endpoint contract. The static mode is suitable for CI and documentation reviews:
@@ -314,4 +349,4 @@ python3 scripts/audit_endpoints.py --base-url http://127.0.0.1:15526
 uv run --project mcp python scripts/test_mcp_server.py
 ```
 
-The audit suite checks endpoint/index/doc parity, response envelopes, structured errors, normalized save paths, profile/Compendium schemas, glossary schemas, Bestiary schemas, settings schemas, snapshot endpoint contracts, state format validation, action-readiness fields, and safe validation failures that should not mutate a run.
+The audit suite checks endpoint/index/doc parity, response envelopes, structured errors, normalized save paths, profile/Compendium schemas, glossary schemas, Bestiary schemas, settings schemas, snapshot endpoint contracts, state format validation, action-readiness fields, and safe validation failures that should not mutate a run. The MCP bridge tests cover `.env` precedence and auth-header injection in addition to structured endpoint error propagation.

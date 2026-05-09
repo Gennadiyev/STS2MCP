@@ -73,6 +73,22 @@ Menu/action dispatch failures also use structured endpoint errors: missing or un
 
 Glossary tools require an active run. They include the current character context plus shared run pools such as Colorless cards, shared relics, and shared potions. Card glossary items include energy/star costs, upgrade availability, plus upgraded-preview cost and description. Successful responses include `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`, `current_run` save context, `kind`, `count`, and `items`; `current_run.run_id` and `current_run.seed` are included when `current_run.save` exposes them. The HTTP endpoints return `run_not_in_progress` with HTTP 409 when called from the main menu, or `run_state_unavailable` with HTTP 503 if the active run state cannot be read, while still including the active profile/save context fields.
 
+## Bridge Configuration
+
+The Python MCP bridge reads connection settings from the process environment and then from `mcp/.env` for unset keys. Environment variables always win over `.env` values.
+
+Supported settings:
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `STS2_HOST` | `localhost` | Hostname or IP address for the STS2_MCP HTTP listener |
+| `STS2_PORT` | `15526` | Port for the STS2_MCP HTTP listener |
+| `STS2_MCP_AUTH_TOKEN` | unset | Optional bearer token sent by the MCP bridge as `Authorization: Bearer <token>` |
+
+`STS2_MCP_AUTH_TOKEN` does not make the game mod enforce authentication. It only controls the HTTP headers sent by the MCP bridge, which is useful when the bridge talks through an authenticated proxy/tunnel or a future listener that validates bearer tokens.
+
+`mcp/.env` supports simple `KEY=value` entries, optional `export`, quoted values, and inline comments after whitespace. Tokens containing `#` are preserved when the hash is part of the value, for example `STS2_MCP_AUTH_TOKEN=abc#123`. Local `.env` files are ignored by git.
+
 ## Multiplayer
 
 All multiplayer tools are prefixed with `mp_`. They route through `/api/v1/multiplayer` and are only available during multiplayer (co-op) runs. The endpoints automatically guard against cross-mode calls.
