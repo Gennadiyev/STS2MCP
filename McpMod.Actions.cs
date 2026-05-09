@@ -278,7 +278,9 @@ public static partial class McpMod
 
         int index = indexElem.GetInt32();
 
-        var buttons = FindAll<NEventOptionButton>(uiRoom);
+        var buttons = FindAll<NEventOptionButton>(uiRoom)
+            .Where(button => button.Visible && button.IsVisibleInTree())
+            .ToList();
 
         if (buttons.Count == 0)
             return Error("No event options available");
@@ -288,6 +290,8 @@ public static partial class McpMod
         var button = buttons[index];
         if (button.Option.IsLocked)
             return Error($"Event option {index} is locked");
+        if (!button.IsEnabled)
+            return Error($"Event option {index} is disabled");
         string title = SafeGetText(() => button.Option.Title) ?? "option";
         button.ForceClick();
 

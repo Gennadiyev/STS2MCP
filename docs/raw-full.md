@@ -582,6 +582,9 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
         "title": "Draft",
         "description": "Choose 10 card rewards to replace your starting deck.",
         "is_locked": false,
+        "is_enabled": true,
+        "is_visible": true,
+        "can_choose": true,
         "is_proceed": false,
         "was_chosen": false,
         "relic_id": "RELIC_ID",             // Only if option has a relic

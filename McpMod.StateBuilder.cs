@@ -1464,7 +1464,9 @@ public static partial class McpMod
         var options = new List<Dictionary<string, object?>>();
         if (uiRoom != null)
         {
-            var buttons = FindAll<NEventOptionButton>(uiRoom);
+            var buttons = FindAll<NEventOptionButton>(uiRoom)
+                .Where(button => button.Visible && button.IsVisibleInTree())
+                .ToList();
             int index = 0;
             foreach (var button in buttons)
             {
@@ -1475,6 +1477,9 @@ public static partial class McpMod
                     ["title"] = SafeGetText(() => opt.Title),
                     ["description"] = SafeGetText(() => opt.Description),
                     ["is_locked"] = opt.IsLocked,
+                    ["is_enabled"] = button.IsEnabled,
+                    ["is_visible"] = true,
+                    ["can_choose"] = button.IsEnabled && !opt.IsLocked,
                     ["is_proceed"] = opt.IsProceed,
                     ["was_chosen"] = opt.WasChosen
                 };

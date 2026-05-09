@@ -679,6 +679,7 @@ async def event_choose_option(option_index: int) -> str:
 
     Works for both regular events and ancients (after dialogue ends).
     Also used to click the Proceed option after an event resolves.
+    Locked or disabled options are reported as errors.
 
     Args:
         option_index: 0-based index of the option from the event state.
@@ -1001,6 +1002,7 @@ async def mp_event_choose_option(option_index: int) -> str:
 
     For shared events: this is a vote (resolves when all players vote).
     For individual events: immediate choice, same as singleplayer.
+    Locked or disabled options are reported as errors.
 
     Args:
         option_index: 0-based index of the option from the event state.
