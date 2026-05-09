@@ -370,7 +370,7 @@ def audit_static_save_roots(repo: Path) -> None:
     if not compendium_response_match:
         fail("could not locate BuildCompendiumResponse for profile context audit")
     compendium_response = compendium_response_match.group(0)
-    for required_fragment in ["profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run"]:
+    for required_fragment in ["status", "kind", "profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run"]:
         if required_fragment not in compendium_response:
             fail(f"compendium endpoint missing profile/save context: {required_fragment}")
 
@@ -382,7 +382,7 @@ def audit_static_save_roots(repo: Path) -> None:
     if not profile_match:
         fail("could not locate BuildProfile for profile context audit")
     profile_body = profile_match.group(0)
-    for required_fragment in ["profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run", "BuildActiveRunContext"]:
+    for required_fragment in ["status", "kind", "profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run", "BuildActiveRunContext"]:
         if required_fragment not in profile_body:
             fail(f"profile endpoint missing identity/run context: {required_fragment}")
 
@@ -939,6 +939,9 @@ def audit_live(base_url: str) -> None:
         if path in {"/api/v1/profile", "/api/v1/compendium"}:
             if not isinstance(data, dict):
                 fail(f"{path} expected structured profile context object, got {type(data).__name__}")
+            expected_kind = path.rsplit("/", 1)[-1]
+            if data.get("status") != "ok" or data.get("kind") != expected_kind:
+                fail(f"{path} expected status ok and kind {expected_kind}, got {data}")
             for required_field in ["profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run"]:
                 if required_field not in data:
                     fail(f"{path} missing profile/save context field: {required_field}")

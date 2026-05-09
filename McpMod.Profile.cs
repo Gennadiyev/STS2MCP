@@ -253,6 +253,8 @@ public static partial class McpMod
         var progressPath = GetProfileProgressPath(profileId);
         var resolvedProgressPath = ResolveProfileProgressPath(profileId);
         var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
+        result["status"] = "ok";
+        result["kind"] = "profile";
         result["profile_id"] = profileId;
         result["progress_path"] = progressPath;
         result["resolved_progress_path"] = resolvedProgressPath;

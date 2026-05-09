@@ -113,6 +113,8 @@ public static partial class McpMod
 
         return new Dictionary<string, object?>
         {
+            ["status"] = "ok",
+            ["kind"] = "compendium",
             ["profile_id"] = snapshot.ProfileId,
             ["progress_path"] = snapshot.ProgressPath,
             ["resolved_progress_path"] = snapshot.ResolvedProgressPath,

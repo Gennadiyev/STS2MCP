@@ -97,7 +97,9 @@ When a run is active, the response includes `current_run.run_id` in `{save_scope
 
 `GET /api/v1/profiles` returns the three profile slots with `status`, `kind`, `count`, and per-slot save context fields (`progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`):
 
-`GET /api/v1/profile` returns the active profile's progress with `profile_id`, save scope/path context, `resolved_progress_path`, and `current_run` when a run is active.
+`GET /api/v1/profile` returns the active profile's progress with `status`, `kind: "profile"`, `profile_id`, save scope/path context, `resolved_progress_path`, and `current_run` when a run is active.
+
+`GET /api/v1/compendium` returns the active profile's Compendium-shaped progress with `status`, `kind: "compendium"`, the same profile/save context, and grouped Compendium sections.
 
 ```json
 {
