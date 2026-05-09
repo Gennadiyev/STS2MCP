@@ -39,6 +39,9 @@ Examples:
 - `glossary_relics`
 - `glossary_potions`
 - `glossary_keywords`
+- `snapshots`
+- `snapshot`
+- `snapshot_resume`
 
 Markdown state output is still available through `format=markdown` for the singleplayer and multiplayer state routes. JSON state output carries the same `state_type` and screen-specific payloads as before, now wrapped with `status: "ok"` and a route-specific `kind`.
 
@@ -119,6 +122,76 @@ The same upgrade-preview fields are propagated into state card payloads where ca
 
 Nested Bestiary metadata is sorted where the API can control ordering, including monster moves and likely encounter monster lists.
 
+## Run Save Snapshots
+
+Snapshot support is opt-in and disabled by default. Launch the game with:
+
+```bash
+STS2_MCP_SNAPSHOTS=1
+```
+
+to enable automatic snapshot capture whenever the game saves the active run. Use:
+
+```bash
+STS2_MCP_SNAPSHOT_DIR=/path/to/snapshot/root
+```
+
+to override the snapshot root. Without an override, snapshots are stored under the detected active account save root in `sts2_mcp_snapshots`.
+
+The snapshot API has two routes:
+
+- `GET /api/v1/snapshots`
+- `POST /api/v1/snapshots`
+
+`GET /api/v1/snapshots` returns:
+
+- `status: "ok"`
+- `kind: "snapshots"`
+- `enabled`
+- `enable_env_var`
+- `snapshot_root_env_var`
+- `snapshot_root`
+- `count`
+- `snapshots`
+
+`POST /api/v1/snapshots` supports two actions:
+
+- `{"action": "create"}`
+- `{"action": "resume", "snapshot_id": "..."}`
+
+Manual `create` copies the active profile's latest `current_run.save` or `current_run_mp.save` into a snapshot directory and writes `metadata.json`. Automatic snapshots use the same copy format but subscribe to the game's save event.
+
+`resume` restores a selected snapshot into the active profile's current-run save slot. Restore is rejected while a run is in progress. After a successful restore, use the in-game Continue flow to load the restored run.
+
+Before overwriting an existing current-run save, restore writes a `.pre_snapshot_resume_*.backup` copy next to the destination save.
+
+### Snapshot Safety Rules
+
+Snapshot restore does not trust absolute paths from snapshot metadata. It reconstructs the snapshot save path from the configured snapshot root, snapshot ID, and supported save filename, then derives the restore destination from the active profile/save root.
+
+Only supported run-save filenames are accepted:
+
+- `current_run.save`
+- `current_run_mp.save`
+
+Manual snapshot creation is rejected from map and shop-like screens:
+
+- `map`
+- `shop`
+- `fake_merchant`
+
+Those states are intentionally blocked because STS2 saves do not restore the idle map UI exactly, and shop saves do not persist the current merchant inventory. Snapshot after choosing a map node, before entering a shop, or after leaving it.
+
+Snapshot IDs are sanitized path components derived from save scope, profile ID, save type, and timestamp. Snapshot enumeration only inspects immediate child directories of the snapshot root, not arbitrary recursive paths.
+
+The MCP wrappers are:
+
+- `list_snapshots`
+- `create_snapshot`
+- `resume_snapshot`
+
+They preserve structured endpoint errors and `http_status` through the same bridge behavior as the other MCP read/action wrappers.
+
 ## Structured Errors
 
 Endpoint failures return non-2xx structured JSON instead of HTTP 200 error payloads whenever the failure is a route, validation, action, read, or state conflict.
@@ -136,6 +209,8 @@ Common route/validation error codes include:
 - `invalid_profile_id`
 - `invalid_profile_id_type`
 - `unknown_profile_action`
+- `missing_snapshot_id`
+- `unknown_snapshot_action`
 - `invalid_format`
 
 State and action conflict error codes include:
@@ -147,6 +222,11 @@ State and action conflict error codes include:
 - `active_profile_delete`
 - `blocking_popup_active`
 - `timeline_manual_action_required`
+- `snapshots_disabled`
+- `snapshot_not_found`
+- `current_run_save_not_found`
+- `snapshot_state_not_supported`
+- `snapshot_restore_path_unavailable`
 - `action_error`
 
 Read endpoint availability/failure codes include:
@@ -160,6 +240,9 @@ Read endpoint availability/failure codes include:
 - `compendium_build_failed`
 - `bestiary_build_failed`
 - `glossary_build_failed`
+- `snapshots_read_failed`
+- `snapshot_create_failed`
+- `snapshot_resume_failed`
 - `singleplayer_state_read_failed`
 - `multiplayer_state_read_failed`
 
@@ -205,6 +288,9 @@ The MCP server adds wrappers for read-only metadata and profile endpoints:
 - `list_profiles`
 - `switch_profile`
 - `delete_profile`
+- `list_snapshots`
+- `create_snapshot`
+- `resume_snapshot`
 
 `menu_select` retries through the multiplayer route when a singleplayer menu call is rejected because a multiplayer run is active. Static tests guard route-helper parity so multiplayer tools keep using multiplayer routes and non-multiplayer tools do not accidentally route to multiplayer helpers.
 
@@ -228,4 +314,4 @@ python3 scripts/audit_endpoints.py --base-url http://127.0.0.1:15526
 uv run --project mcp python scripts/test_mcp_server.py
 ```
 
-The audit suite checks endpoint/index/doc parity, response envelopes, structured errors, normalized save paths, profile/Compendium schemas, glossary schemas, Bestiary schemas, settings schemas, state format validation, action-readiness fields, and safe validation failures that should not mutate a run.
+The audit suite checks endpoint/index/doc parity, response envelopes, structured errors, normalized save paths, profile/Compendium schemas, glossary schemas, Bestiary schemas, settings schemas, snapshot endpoint contracts, state format validation, action-readiness fields, and safe validation failures that should not mutate a run.
