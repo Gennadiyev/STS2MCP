@@ -246,8 +246,8 @@ public static partial class McpMod
         var result = new List<Dictionary<string, object?>>();
         var seen = new HashSet<string>();
 
-        var colorlessPool = ModelDb.CardPool<ColorlessCardPool>();
-        AddCardsFromPool(colorlessPool, SafeGetText(() => colorlessPool.Title) ?? colorlessPool.Id.Entry, result, seen);
+        foreach (var pool in ModelDb.AllSharedCardPools)
+            AddCardsFromPool(pool, SafeGetText(() => pool.Title) ?? pool.Id.Entry, result, seen);
 
         foreach (var player in runState.Players)
         {
@@ -407,8 +407,9 @@ public static partial class McpMod
 
         var keywords = new Dictionary<string, string>();
 
-        foreach (var card in ModelDb.CardPool<ColorlessCardPool>().AllCards)
-            AddKeywordTips(card.HoverTips, keywords);
+        foreach (var pool in ModelDb.AllSharedCardPools)
+            foreach (var card in pool.AllCards)
+                AddKeywordTips(card.HoverTips, keywords);
         foreach (var relic in ModelDb.RelicPool<SharedRelicPool>().AllRelics)
             AddKeywordTips(relic.HoverTipsExcludingRelic, keywords);
         foreach (var potion in ModelDb.PotionPool<SharedPotionPool>().AllPotions)

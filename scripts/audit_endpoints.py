@@ -194,10 +194,10 @@ def audit_static_glossary_scope(repo: Path) -> None:
     if "Assembly.GetTypes()" in relic_match.group(0) or "typeof(RelicModel)" in relic_match.group(0):
         fail("relic glossary must stay scoped to active run relic pools, not reflected assembly-wide relics")
     required_shared_pools = {
-        "BuildGlossaryCards": "ModelDb.CardPool<ColorlessCardPool>",
+        "BuildGlossaryCards": "ModelDb.AllSharedCardPools",
         "BuildGlossaryRelics": "ModelDb.RelicPool<SharedRelicPool>",
         "BuildGlossaryPotions": "ModelDb.PotionPool<SharedPotionPool>",
-        "BuildGlossaryKeywords": "ModelDb.RelicPool<SharedRelicPool>",
+        "BuildGlossaryKeywords": "ModelDb.AllSharedCardPools",
     }
     for method, required in required_shared_pools.items():
         match = re.search(
