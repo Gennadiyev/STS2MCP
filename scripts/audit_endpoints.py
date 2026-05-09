@@ -1729,6 +1729,72 @@ def audit_live(base_url: str) -> None:
                     fail(f"{path} run_history entries should be list or object, got {entries}")
                 if "entry_count" in run_history and isinstance(entries, list) and not isinstance(run_history.get("entry_count"), int):
                     fail(f"{path} run_history entry_count should be int, got {run_history}")
+                for field in ["status", "source", "limitation"]:
+                    if not isinstance(run_history.get(field), str) or not run_history[field]:
+                        fail(f"{path} run_history {field} should be non-empty string, got {run_history}")
+                progress_members = run_history.get("progress_members")
+                if progress_members is not None and not isinstance(progress_members, dict):
+                    fail(f"{path} run_history progress_members should be object or null, got {progress_members}")
+                if "history_path" in run_history:
+                    if not isinstance(run_history["history_path"], str) or not run_history["history_path"]:
+                        fail(f"{path} run_history history_path should be non-empty string, got {run_history}")
+                    if run_history["source"] != "Profile save history files":
+                        fail(f"{path} run_history with history_path should use file source, got {run_history}")
+                if isinstance(entries, list):
+                    entry_count = run_history.get("entry_count")
+                    if isinstance(entry_count, int) and len(entries) > entry_count:
+                        fail(f"{path} run_history entries should not exceed entry_count, got {len(entries)} > {entry_count}")
+                    if isinstance(entry_count, int) and len(entries) != min(entry_count, 20):
+                        fail(f"{path} run_history expected min(entry_count, 20) entries, got {len(entries)} for {entry_count}")
+                    for entry in entries:
+                        if not isinstance(entry, dict):
+                            fail(f"{path} run_history entries should contain objects, got {entry}")
+                        for required_field in ["id", "run_id", "file_name", "size_bytes", "last_write_time_utc"]:
+                            if required_field not in entry:
+                                fail(f"{path} run_history entry missing {required_field}: {entry}")
+                        for required_field in ["id", "run_id", "file_name", "last_write_time_utc"]:
+                            if not isinstance(entry.get(required_field), str) or not entry[required_field]:
+                                fail(f"{path} run_history entry {required_field} should be non-empty string: {entry}")
+                        if not isinstance(entry.get("size_bytes"), int) or entry["size_bytes"] <= 0:
+                            fail(f"{path} run_history entry size_bytes should be positive int: {entry}")
+                        expected_prefix = f"{data['save_scope']}:profile{data['profile_id']}:"
+                        if not entry["run_id"].startswith(expected_prefix):
+                            fail(f"{path} run_history entry run_id should start with {expected_prefix!r}: {entry}")
+                        if not entry["file_name"].endswith(".run"):
+                            fail(f"{path} run_history entry file_name should end with .run: {entry}")
+                        for optional_int in ["start_time", "run_time", "ascension", "map_point_count"]:
+                            if entry.get(optional_int) is not None and not isinstance(entry[optional_int], int):
+                                fail(f"{path} run_history entry {optional_int} should be int when present: {entry}")
+                        for optional_bool in ["win", "was_abandoned"]:
+                            if entry.get(optional_bool) is not None and not isinstance(entry[optional_bool], bool):
+                                fail(f"{path} run_history entry {optional_bool} should be bool when present: {entry}")
+                        for optional_string in ["game_mode", "killed_by_encounter", "killed_by_event", "seed", "build_id", "parse_error"]:
+                            if entry.get(optional_string) is not None and (not isinstance(entry[optional_string], str) or not entry[optional_string]):
+                                fail(f"{path} run_history entry {optional_string} should be non-empty string when present: {entry}")
+                        acts = entry.get("acts")
+                        if acts is not None:
+                            if not isinstance(acts, list):
+                                fail(f"{path} run_history entry acts should be list when present: {entry}")
+                            for act in acts:
+                                if not isinstance(act, str) or not act:
+                                    fail(f"{path} run_history entry acts should contain non-empty strings: {entry}")
+                        players = entry.get("players")
+                        if players is not None:
+                            if not isinstance(players, list):
+                                fail(f"{path} run_history entry players should be list when present: {entry}")
+                            for player in players:
+                                if not isinstance(player, dict):
+                                    fail(f"{path} run_history player should be object: {player}")
+                                for required_field in ["id", "character", "deck_count", "relic_count", "potion_count"]:
+                                    if required_field not in player:
+                                        fail(f"{path} run_history player missing {required_field}: {player}")
+                                if not isinstance(player["id"], int):
+                                    fail(f"{path} run_history player id should be int: {player}")
+                                if not isinstance(player["character"], str) or not player["character"]:
+                                    fail(f"{path} run_history player character should be non-empty string: {player}")
+                                for numeric_field in ["deck_count", "relic_count", "potion_count"]:
+                                    if not isinstance(player[numeric_field], int) or player[numeric_field] < 0:
+                                        fail(f"{path} run_history player {numeric_field} should be non-negative int: {player}")
         if path == "/api/v1/profiles":
             if not isinstance(data, dict) or data.get("status") != "ok" or data.get("kind") != "profiles":
                 fail(f"{path} expected structured profiles status/kind, got {data}")
