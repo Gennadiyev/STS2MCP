@@ -54,36 +54,36 @@ public static partial class McpMod
         }
         catch
         {
-            SendError(response, 400, "Invalid JSON");
+            SendError(response, 400, "Invalid JSON", "invalid_json");
             return;
         }
 
         if (parsed == null || !parsed.TryGetValue("action", out var actionElem))
         {
-            SendError(response, 400, "Missing 'action' field. Use: switch, delete");
+            SendError(response, 400, "Missing 'action' field. Use: switch, delete", "missing_action");
             return;
         }
         if (actionElem.ValueKind != JsonValueKind.String)
         {
-            SendError(response, 400, "'action' field must be a string");
+            SendError(response, 400, "'action' field must be a string", "invalid_action_type");
             return;
         }
 
         string action = actionElem.GetString() ?? "";
         if (!parsed.TryGetValue("profile_id", out var idElem))
         {
-            SendError(response, 400, "Missing 'profile_id' field. Use a profile slot 1-3.");
+            SendError(response, 400, "Missing 'profile_id' field. Use a profile slot 1-3.", "missing_profile_id");
             return;
         }
         if (idElem.ValueKind != JsonValueKind.Number)
         {
-            SendError(response, 400, "'profile_id' field must be a number");
+            SendError(response, 400, "'profile_id' field must be a number", "invalid_profile_id_type");
             return;
         }
         int profileId = 0;
         if (idElem.ValueKind == JsonValueKind.Number && !idElem.TryGetInt32(out profileId))
         {
-            SendError(response, 400, "'profile_id' field must be a 32-bit integer");
+            SendError(response, 400, "'profile_id' field must be a 32-bit integer", "invalid_profile_id_type");
             return;
         }
 

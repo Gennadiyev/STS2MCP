@@ -247,6 +247,18 @@ def audit_static_error_shapes(repo: Path) -> None:
     for required_fragment in ["TryValidateStateFormat", "invalid_format", 'format is "json" or "markdown"']:
         if required_fragment not in mcp_mod:
             fail(f"state endpoints missing format validation: {required_fragment}")
+    profile = (repo / "McpMod.Profile.cs").read_text(encoding="utf-8")
+    validation_codes = [
+        "invalid_json",
+        "missing_action",
+        "invalid_action_type",
+        "missing_profile_id",
+        "invalid_profile_id_type",
+        "invalid_action_payload",
+    ]
+    for required_fragment in validation_codes:
+        if required_fragment not in mcp_mod + profile:
+            fail(f"POST validation missing structured error code: {required_fragment}")
     actions = (repo / "McpMod.Actions.cs").read_text(encoding="utf-8")
     multiplayer_actions = (repo / "McpMod.MultiplayerActions.cs").read_text(encoding="utf-8")
     for required_fragment in ["SendActionResultJson", "unknown_action", "run_not_in_progress", "local_player_unavailable", "blocking_popup_active"]:
@@ -276,6 +288,9 @@ def audit_static_error_shapes(repo: Path) -> None:
     )
     if "blocking_popup_active" not in docs:
         fail("docs must describe blocking popup action errors")
+    for required_fragment in validation_codes:
+        if required_fragment not in docs:
+            fail(f"docs must describe POST validation error code: {required_fragment}")
     print("errors: structured 500 response helpers enforced")
 
 
@@ -1182,26 +1197,28 @@ def audit_live(base_url: str) -> None:
         fail(f"/api/v1/singleplayer?format=xml expected invalid_format HTTP 400, got HTTP {status}: {data}")
 
     post_validation_checks = [
-        ("/api/v1/singleplayer", b"{", 400),
-        ("/api/v1/singleplayer", b"{}", 400),
-        ("/api/v1/singleplayer", b'{"action": 1}', 400),
-        ("/api/v1/singleplayer", b'{"action": "menu_select"}', 400),
-        ("/api/v1/singleplayer", b'{"action": "menu_select", "option": 1}', 400),
-        ("/api/v1/profiles", b"{", 400),
-        ("/api/v1/profiles", b"{}", 400),
-        ("/api/v1/profiles", b'{"action": 1}', 400),
-        ("/api/v1/profiles", b'{"action": "switch"}', 400),
-        ("/api/v1/profiles", b'{"action": "switch", "profile_id": "1"}', 400),
-        ("/api/v1/profiles", b'{"action": "switch", "profile_id": 1.5}', 400),
-        ("/api/v1/profiles", b'{"action": "switch", "profile_id": 999999999999}', 400),
-        ("/api/v1/profiles", b'{"action": "switch", "profile_id": 4}', 400),
-        ("/api/v1/profiles", b'{"action": "unknown", "profile_id": 1}', 400),
+        ("/api/v1/singleplayer", b"{", 400, "invalid_json"),
+        ("/api/v1/singleplayer", b"{}", 400, "missing_action"),
+        ("/api/v1/singleplayer", b'{"action": 1}', 400, "invalid_action_type"),
+        ("/api/v1/singleplayer", b'{"action": "menu_select"}', 400, "missing_menu_option"),
+        ("/api/v1/singleplayer", b'{"action": "menu_select", "option": 1}', 400, "invalid_action_payload"),
+        ("/api/v1/profiles", b"{", 400, "invalid_json"),
+        ("/api/v1/profiles", b"{}", 400, "missing_action"),
+        ("/api/v1/profiles", b'{"action": 1}', 400, "invalid_action_type"),
+        ("/api/v1/profiles", b'{"action": "switch"}', 400, "missing_profile_id"),
+        ("/api/v1/profiles", b'{"action": "switch", "profile_id": "1"}', 400, "invalid_profile_id_type"),
+        ("/api/v1/profiles", b'{"action": "switch", "profile_id": 1.5}', 400, "invalid_profile_id_type"),
+        ("/api/v1/profiles", b'{"action": "switch", "profile_id": 999999999999}', 400, "invalid_profile_id_type"),
+        ("/api/v1/profiles", b'{"action": "switch", "profile_id": 4}', 400, "invalid_profile_id"),
+        ("/api/v1/profiles", b'{"action": "unknown", "profile_id": 1}', 400, "unknown_profile_action"),
     ]
-    for path, body, expected_status in post_validation_checks:
+    for path, body, expected_status, expected_code in post_validation_checks:
         status, data = load_json_url(base_url.rstrip("/") + path, "POST", body)
         assert_error_body(path, status, data)
         if status != expected_status:
             fail(f"{path} expected HTTP {expected_status} for validation check, got {status}: {data}")
+        if not isinstance(data, dict) or data.get("error_code") != expected_code:
+            fail(f"{path} expected error_code {expected_code} for validation check, got HTTP {status}: {data}")
 
     status, data = load_json_url(
         base_url.rstrip("/") + "/api/v1/singleplayer",

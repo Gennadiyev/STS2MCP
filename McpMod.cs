@@ -486,18 +486,18 @@ public static partial class McpMod
         }
         catch
         {
-            SendError(response, 400, "Invalid JSON");
+            SendError(response, 400, "Invalid JSON", "invalid_json");
             return;
         }
 
         if (parsed == null || !parsed.TryGetValue("action", out var actionElem))
         {
-            SendError(response, 400, "Missing 'action' field");
+            SendError(response, 400, "Missing 'action' field", "missing_action");
             return;
         }
         if (actionElem.ValueKind != JsonValueKind.String)
         {
-            SendError(response, 400, "'action' field must be a string");
+            SendError(response, 400, "'action' field must be a string", "invalid_action_type");
             return;
         }
 
@@ -597,18 +597,18 @@ public static partial class McpMod
         }
         catch
         {
-            SendError(response, 400, "Invalid JSON");
+            SendError(response, 400, "Invalid JSON", "invalid_json");
             return;
         }
 
         if (parsed == null || !parsed.TryGetValue("action", out var actionElem))
         {
-            SendError(response, 400, "Missing 'action' field");
+            SendError(response, 400, "Missing 'action' field", "missing_action");
             return;
         }
         if (actionElem.ValueKind != JsonValueKind.String)
         {
-            SendError(response, 400, "'action' field must be a string");
+            SendError(response, 400, "'action' field must be a string", "invalid_action_type");
             return;
         }
 
@@ -649,7 +649,8 @@ public static partial class McpMod
         var statusCode = ex is InvalidOperationException or FormatException or OverflowException
             ? 400
             : 500;
-        SendError(response, statusCode, $"{prefix}: {ex.Message}");
+        var errorCode = statusCode == 400 ? "invalid_action_payload" : "action_failed";
+        SendError(response, statusCode, $"{prefix}: {ex.Message}", errorCode);
     }
 
     private static void SendActionResultJson(HttpListenerResponse response, Dictionary<string, object?> result)
