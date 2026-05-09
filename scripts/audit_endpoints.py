@@ -1448,6 +1448,11 @@ def audit_live(base_url: str) -> None:
 
         if path in {"/api/v1/settings", "/api/v1/profile", "/api/v1/compendium", "/api/v1/bestiary", "/api/v1/profiles"} and status != 200:
             fail(f"{path} expected HTTP 200, got {status}: {data}")
+        if path == "/api/v1/multiplayer":
+            if status not in {200, 409}:
+                fail(f"{path} expected HTTP 200 in MP or 409 outside MP, got {status}: {data}")
+            if status == 409 and (not isinstance(data, dict) or data.get("error_code") != "not_multiplayer_run"):
+                fail(f"{path} expected not_multiplayer_run outside MP, got {data}")
         if path == "/api/v1/settings":
             if not isinstance(data, dict) or data.get("status") != "ok" or data.get("kind") != "settings":
                 fail(f"{path} expected structured settings status/kind, got {data}")
@@ -1826,6 +1831,10 @@ def audit_live(base_url: str) -> None:
         assert_error_body("/api/v1/multiplayer", status, data)
         if status not in {400, 409}:
             fail(f"/api/v1/multiplayer expected HTTP 400 in MP or 409 outside MP, got {status}: {data}")
+        if status == 409 and (not isinstance(data, dict) or data.get("error_code") != "not_multiplayer_run"):
+            fail(f"/api/v1/multiplayer expected not_multiplayer_run outside MP, got {data}")
+        if status == 400 and (not isinstance(data, dict) or data.get("error_code") not in {"invalid_json", "missing_action"}):
+            fail(f"/api/v1/multiplayer expected validation error inside MP, got {data}")
 
     get_only_paths = [
         "/",
