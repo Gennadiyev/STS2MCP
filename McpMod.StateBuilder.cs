@@ -601,6 +601,7 @@ public static partial class McpMod
             ["floor"] = runState.TotalFloor,
             ["ascension"] = runState.AscensionLevel
         };
+        result["current_run"] = BuildActiveRunContext();
 
         // Always include full player data (relics, potions, deck, etc.) on every screen
         var _player = LocalContext.GetMe(runState);

@@ -32,6 +32,7 @@ Singleplayer and multiplayer endpoints are mutually exclusive (HTTP 409 if misma
 Every JSON response includes:
 - `state_type` — which screen the game is on (see below)
 - `run` — `{ act, floor, ascension }` (absent for `menu`)
+- `current_run` — run identity and save context when a run is active, including `profile_id`, `save_scope`, `run_id`, and `seed` when the save file exposes it
 - `player` — full player state: character, HP, gold, deck, relics, potions, `max_potion_slots` (belt capacity, grows with relics), and during combat: energy, hand, piles, orbs (absent for `menu`)
 
 Serialized card objects in hand, deck, piles, rewards, card selections, bundles, and glossary card items include energy/star costs plus upgrade fields: `is_upgraded`, `is_upgradable`, `current_upgrade_level`, `max_upgrade_level`, `upgrade_preview_type`, `upgrade_preview_cost`, `upgrade_preview_star_cost`, and `upgrade_preview_description`. Hand cards also include `requires_target` and `valid_targets` for enemy-targeted cards. Shop card items expose the same fields with a `card_` prefix, for example `card_upgrade_preview_description`.

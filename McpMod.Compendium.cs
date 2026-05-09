@@ -366,6 +366,23 @@ public static partial class McpMod
     private static Dictionary<string, object?>? BuildCurrentRunContext(CompendiumSnapshot snapshot)
         => BuildCurrentRunContext(snapshot.IsRunInProgress, snapshot.ProfileId, snapshot.SaveScope, snapshot.ProgressPath, snapshot.ProfileRoot);
 
+    private static Dictionary<string, object?>? BuildActiveRunContext()
+    {
+        var saveManager = SaveManager.Instance;
+        if (saveManager == null)
+            return null;
+
+        var profileId = saveManager.CurrentProfileId;
+        var progressPath = GetProfileProgressPath(profileId);
+        var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
+        return BuildCurrentRunContext(
+            RunManager.Instance?.IsInProgress == true,
+            profileId,
+            GetSaveScope(profileRoot),
+            progressPath,
+            profileRoot);
+    }
+
     private static Dictionary<string, object?>? BuildCurrentRunContext(
         bool isRunInProgress,
         int profileId,

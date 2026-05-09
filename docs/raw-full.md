@@ -44,6 +44,12 @@ Every response (except `menu`) includes these top-level fields alongside the sta
     "floor": 3,             // Total floors visited
     "ascension": 0          // Ascension level
   },
+  "current_run": {
+    "profile_id": 1,
+    "save_scope": "modded",
+    "run_id": "modded:profile1:1778295706",
+    "seed": "2450ZAR9EF"
+  },
   "player": { ... },        // Full player state (see Player Object below)
   // ... state-specific fields
 }

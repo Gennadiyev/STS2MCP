@@ -252,6 +252,7 @@ public static partial class McpMod
             ["floor"] = runState.TotalFloor,
             ["ascension"] = runState.AscensionLevel
         };
+        result["current_run"] = BuildActiveRunContext();
 
         // All players summary (always included for multiplayer)
         result["players"] = BuildAllPlayersState(runState);

@@ -346,6 +346,12 @@ def audit_state_surface(repo: Path) -> None:
     if missing_mp_parity:
         fail(f"multiplayer state surface missing singleplayer states: {missing_mp_parity}")
 
+    for source_name, source in [("singleplayer", state_builder), ("multiplayer", multiplayer_state)]:
+        if '["current_run"] = BuildActiveRunContext()' not in source:
+            fail(f"{source_name} state missing current_run identity context")
+    if "run_id" not in docs or "save_scope" not in docs:
+        fail("docs missing current_run run_id/save_scope context")
+
     state_types |= multiplayer_state_types
     missing_docs = sorted(state_type for state_type in state_types if state_type not in docs)
     if missing_docs:
