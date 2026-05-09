@@ -17,7 +17,7 @@ HTTP API on `localhost:15526`. No authentication.
 - `GET /api/v1/profiles` — list profile slots
 - `POST /api/v1/profiles` — switch or delete profile slots
 
-HTTP error responses include `status: "error"` and `error`. Some route-specific errors also include `error_code`.
+HTTP error responses include `status: "error"` and `error`; route, validation, read-endpoint, and action failures include `error_code`.
 Route-level failures include `error_code: "method_not_allowed"` for unsupported HTTP methods, `error_code: "not_found"` for unknown paths, and `error_code: "internal_error"` for unexpected top-level handler failures.
 POST validation failures use stable `error_code` values where possible, including `invalid_json`, `missing_action`, `invalid_action_type`, `missing_profile_id`, `invalid_profile_id_type`, and `invalid_action_payload`.
 Action failures include `error_code`; endpoint-specific conflicts keep their specific codes, while older generic action failures use the stable fallback `action_error`.
@@ -74,7 +74,7 @@ Serialized card objects in hand, deck, piles, rewards, card selections, bundles,
 
 ## POST — Actions
 
-All POST requests use JSON body with `"action"` field. Action responses include `{ "status": "ok" | "error" }`; successful actions usually include `message`, and failed actions include `error`. Dispatch-level failures include `error_code` where available; missing/unknown main-menu `menu_select` options and unknown non-menu actions return HTTP 400, and gameplay actions posted with no active run return HTTP 409 with `error_code: "run_not_in_progress"`. If a tutorial or blocking popup is visible during a run, gameplay actions return HTTP 409 with `error_code: "blocking_popup_active"`; use the advertised `menu_select` option first. Other failed action attempts return non-2xx structured error JSON instead of HTTP 200.
+All POST requests use JSON body with `"action"` field. Action responses include `{ "status": "ok" | "error" }`; successful actions usually include `message`, and failed actions include `error` plus `error_code`. Missing/unknown main-menu `menu_select` options and unknown non-menu actions return HTTP 400, gameplay actions posted with no active run return HTTP 409 with `error_code: "run_not_in_progress"`, and older generic action failures use `error_code: "action_error"`. If a tutorial or blocking popup is visible during a run, gameplay actions return HTTP 409 with `error_code: "blocking_popup_active"`; use the advertised `menu_select` option first. Other failed action attempts return non-2xx structured error JSON instead of HTTP 200.
 
 ### Menu / Game Over
 

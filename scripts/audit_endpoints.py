@@ -360,6 +360,10 @@ def audit_static_error_shapes(repo: Path) -> None:
         fail("docs must describe timeline manual-action errors")
     if "action_error" not in docs:
         fail("docs must describe generic action error fallback code")
+    for doc_path in [repo / "docs" / "raw-full.md", repo / "docs" / "raw-simplified.md"]:
+        doc_text = doc_path.read_text(encoding="utf-8")
+        if "Some route-specific errors also include `error_code`" in doc_text:
+            fail(f"{doc_path.name} must not describe action error_code as optional")
     if re.search(r'\["status"\]\s*=\s*"error"(?![^}]*\["error_code"\])', actions, re.S):
         fail("manual action error dictionaries must include error_code")
     if '"error_code": "action_error"' not in (repo / "docs" / "raw-full.md").read_text(encoding="utf-8"):
