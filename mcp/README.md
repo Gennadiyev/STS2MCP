@@ -4,12 +4,23 @@
 
 | Tool | Scope | Description |
 |---|---|---|
+| `get_api_index()` | General | Get mod status, bound prefixes, and HTTP endpoint index |
 | `get_game_state(format?)` | General | Get current game state (`markdown` or `json`) |
-| `menu_select(option, seed?)` | General | Select a visible menu/game-over option |
-| `get_profile()` | Profiles | Get active profile progress |
+| `menu_select(option, seed?)` | General | Select a visible menu/game-over option, including `abandon_run` when advertised; automatically retries through the multiplayer route during MP runs |
+| `get_settings()` | General | Get current settings and preferences |
+| `get_profile()` | Profiles | Get active profile progress plus save/run context |
+| `get_compendium()` | Profiles | Get Compendium-shaped profile progress plus save/run context |
+| `get_bestiary()` | Profiles | Get deterministic monster and encounter metadata with counts |
+| `get_glossary_cards()` | Active Pool | Get active-run card pool metadata with current-run save context |
+| `get_glossary_relics()` | Active Pool | Get active-run relic pool metadata with current-run save context |
+| `get_glossary_potions()` | Active Pool | Get active-run potion pool metadata with current-run save context |
+| `get_glossary_keywords()` | Active Pool | Get active-run keyword metadata with current-run save context |
 | `list_profiles()` | Profiles | List profile slots and active slot |
 | `switch_profile(profile_id)` | Profiles | Switch to a profile slot through the game UI |
 | `delete_profile(profile_id)` | Profiles | Delete an inactive profile slot |
+| `list_snapshots()` | Snapshots | List current-run save snapshots and snapshot feature status |
+| `create_snapshot()` | Snapshots | Create a snapshot from the active profile's current run save |
+| `resume_snapshot(snapshot_id)` | Snapshots | Restore a snapshot to the active profile's current run save slot |
 | `use_potion(slot, target?)` | General | Use a potion (works in and out of combat) |
 | `discard_potion(slot)` | General | Discard a potion to free up the slot |
 | `proceed_to_map()` | General | Proceed from rewards/rest site/shop/treasure to the map |
@@ -38,6 +49,46 @@
 | `crystal_sphere_click_cell(x, y)` | Crystal Sphere | Click a hidden cell in the grid |
 | `crystal_sphere_proceed()` | Crystal Sphere | Continue after the minigame finishes |
 
+`get_api_index()` returns `status`, `kind: api_index`, `version`, `endpoint_count`, bound listener prefixes, and the advertised HTTP routes.
+
+`get_game_state()` and `mp_get_game_state()` JSON responses include `status: ok`, `kind` (`singleplayer_state` or `multiplayer_state`), `state_type`, and the active-run context fields when a run is in progress.
+
+Profile, profile-list, and Compendium tools include `status`, `kind`, `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, and `save_scope`; profile and Compendium responses also include `current_run` when a run is active, so callers can distinguish the active profile, save scope, local save location, and current run attempt.
+
+Save/path context fields are normalized with forward slashes, including Windows absolute paths.
+
+Profile switch/delete failures are surfaced as structured endpoint errors with HTTP 400 for invalid input and HTTP 409 for state conflicts such as deleting the active profile or switching during a run.
+
+Snapshot capture is opt-in. Launch the game with `STS2_MCP_SNAPSHOTS=1` to create a snapshot every time the game saves `current_run.save` or `current_run_mp.save`. Set `STS2_MCP_SNAPSHOT_DIR` to override the snapshot directory. `resume_snapshot()` restores a selected snapshot on disk and is rejected while a run is in progress; continue from the in-game menu after restoring.
+
+POST validation failures preserve endpoint `error_code` values such as `invalid_json`, `missing_action`, `invalid_action_type`, `missing_profile_id`, `invalid_profile_id_type`, and `invalid_action_payload`.
+
+Route-level failures preserve endpoint `error_code` values such as `method_not_allowed`, `not_found`, and `internal_error`.
+
+Read endpoint startup/data-availability failures preserve endpoint `error_code` values such as `save_manager_unavailable`, `settings_data_unavailable`, and `profile_data_unavailable`.
+
+Read endpoint exceptions preserve endpoint-specific `error_code` values such as `settings_read_failed`, `bestiary_build_failed`, `glossary_build_failed`, `profile_build_failed`, `profiles_read_failed`, `compendium_build_failed`, `singleplayer_state_read_failed`, and `multiplayer_state_read_failed`.
+
+Menu/action dispatch failures also use structured endpoint errors: missing or unknown main-menu selections and unknown actions return HTTP 400, gameplay actions sent without an active run return HTTP 409, Timeline manual-reveal blocks return HTTP 409 with `error_code: timeline_manual_action_required`, and blocking tutorial/popup overlays return HTTP 409 with `error_code: blocking_popup_active`. Older generic action failures carry the stable fallback `error_code: action_error` instead of omitting an error code. Other failed actions return non-2xx structured error JSON instead of HTTP 200. MCP wrappers preserve those structured JSON error bodies and add `http_status` so callers can handle endpoint failures without parsing a flat text prefix.
+
+Glossary tools require an active run. They include the current character context plus shared run pools such as Colorless cards, shared relics, and shared potions. Card glossary items include energy/star costs, upgrade availability, plus upgraded-preview cost and description. Successful responses include `profile_id`, `progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`, `current_run` save context, `kind`, `count`, and `items`; `current_run.run_id` and `current_run.seed` are included when `current_run.save` exposes them. The HTTP endpoints return `run_not_in_progress` with HTTP 409 when called from the main menu, or `run_state_unavailable` with HTTP 503 if the active run state cannot be read, while still including the active profile/save context fields.
+
+## Bridge Configuration
+
+The Python MCP bridge reads connection settings from the process environment and then from `mcp/.env` for unset keys. Environment variables always win over `.env` values.
+
+Supported settings:
+
+| Setting | Default | Purpose |
+|---|---|---|
+| `STS2_HOST` | `localhost` | Hostname or IP address for the STS2_MCP HTTP listener |
+| `STS2_PORT` | `15526` | Port for the STS2_MCP HTTP listener |
+| `STS2_MCP_AUTH_TOKEN` | unset | Optional bearer token sent by the MCP bridge as `Authorization: Bearer <token>` |
+
+`STS2_MCP_AUTH_TOKEN` does not make the game mod enforce authentication. It only controls the HTTP headers sent by the MCP bridge, which is useful when the bridge talks through an authenticated proxy/tunnel or a future listener that validates bearer tokens.
+
+`mcp/.env` supports simple `KEY=value` entries, optional `export`, quoted values, and inline comments after whitespace. Tokens containing `#` are preserved when the hash is part of the value, for example `STS2_MCP_AUTH_TOKEN=abc#123`. Local `.env` files are ignored by git.
+
 ## Multiplayer
 
 All multiplayer tools are prefixed with `mp_`. They route through `/api/v1/multiplayer` and are only available during multiplayer (co-op) runs. The endpoints automatically guard against cross-mode calls.
@@ -50,7 +101,7 @@ All multiplayer tools are prefixed with `mp_`. They route through `/api/v1/multi
 | `mp_combat_undo_end_turn()` | Combat | Retract end-turn vote |
 | `mp_use_potion(slot, target?)` | General | Use a potion from the local player's slots |
 | `mp_discard_potion(slot)` | General | Discard a potion from the local player's slots |
-| `mp_proceed_to_map()` | General | Proceed from current screen to the map |
+| `mp_proceed_to_map()` | General | Proceed from rewards/rest site/shop/fake merchant/treasure to the map |
 | `mp_map_vote(node_index)` | Map | Vote for a map node (travel when all agree) |
 | `mp_event_choose_option(option_index)` | Event | Vote for / choose an event option |
 | `mp_event_advance_dialogue()` | Event | Advance ancient event dialogue |

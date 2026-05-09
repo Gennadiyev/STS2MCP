@@ -4,12 +4,12 @@
 
 <p align="center"><em>An Experimental Research Project to Fully-Automate your Slay the Spire 2 Runs</em></p>
 
-A mod for [**Slay the Spire 2**](https://store.steampowered.com/app/2868840/Slay_the_Spire_2/) that lets AI agents play the game. Exposes game state and actions via a localhost REST API, with an optional MCP server for Claude Desktop / Claude Code integration.
+A mod for [**Slay the Spire 2**](https://store.steampowered.com/app/2868840/Slay_the_Spire_2/) that lets AI agents play the game. Exposes game state and actions via a local REST API, with an optional MCP server for Claude Desktop / Claude Code integration.
 
 Singleplayer and multiplayer (co-op) supported, plus full menu and lobby control: profile switching, character select (SP and MP host/client) with optional seed, multiplayer host / Steam-friend join / FastMP localhost join, multiplayer load lobby for resuming saved co-op runs, game-over dismissal, FTUE/tutorial popup handling, and Timeline visibility. Tested against STS2 `v0.103.2`.
 
 > [!warning]
-> This mod allows external programs to read and control your game via a localhost API. Use at your own risk with runs you care less about.
+> This mod allows external programs to read and control your game via a local API. When the Windows listener can bind an IPv4 interface, other machines on the same network can reach it. Use at your own risk with runs you care less about.
 
 > [!caution]
 > Multiplayer support is in **beta** — expect bugs. Any multiplayer issues encountered with this mod installed are very likely caused by the mod, not the game. Please disable the mod and verify the issue persists before reporting bugs to the STS2 developers.
@@ -22,7 +22,7 @@ Grab the [latest release](https://github.com/Gennadiyev/STS2MCP/releases/latest)
 
 1. Copy `STS2_MCP.dll` and `STS2_MCP.json` to `<game_install>/mods/`
 2. Launch the game and enable mods in settings (a consent dialog appears on first launch)
-3. The mod starts an HTTP server on `localhost:15526` automatically
+3. The mod starts an HTTP server on port `15526` automatically. It first tries a wildcard bind, then explicit local IPv4 addresses, and finally loopback-only (`localhost`) if broader binds are unavailable.
 
 > [!note]
 > The release DLL is a platform-agnostic .NET assembly — the same `STS2_MCP.dll` and `STS2_MCP.json` work on Windows, Linux, and macOS. No separate builds are needed.
@@ -55,10 +55,62 @@ curl -s http://localhost:15526/
 A successful response looks like:
 
 ```json
-{"message": "Hello from STS2 MCP v0.3.4", "status": "ok"}
+{
+  "message": "Hello from STS2 MCP v0.4.0",
+  "status": "ok",
+  "kind": "api_index",
+  "version": "0.4.0",
+  "bound_prefixes": ["http://localhost:15526/", "http://127.0.0.1:15526/"],
+  "endpoint_count": 16,
+  "endpoints": [
+    { "method": "GET", "path": "/api/v1/singleplayer" },
+    { "method": "POST", "path": "/api/v1/singleplayer" },
+    { "method": "GET", "path": "/api/v1/multiplayer" },
+    { "method": "POST", "path": "/api/v1/multiplayer" },
+    { "method": "GET", "path": "/api/v1/settings" },
+    { "method": "GET", "path": "/api/v1/profile" },
+    { "method": "GET", "path": "/api/v1/compendium" },
+    { "method": "GET", "path": "/api/v1/bestiary" },
+    { "method": "GET", "path": "/api/v1/glossary/cards" },
+    { "method": "GET", "path": "/api/v1/glossary/relics" },
+    { "method": "GET", "path": "/api/v1/glossary/potions" },
+    { "method": "GET", "path": "/api/v1/glossary/keywords" },
+    { "method": "GET", "path": "/api/v1/profiles" },
+    { "method": "POST", "path": "/api/v1/profiles" },
+    { "method": "GET", "path": "/api/v1/snapshots" },
+    { "method": "POST", "path": "/api/v1/snapshots" }
+  ]
+}
 ```
 
 If you get "Connection refused", the mod is not loaded — check that mods are enabled in the game's settings.
+
+To audit the documented and live HTTP endpoint surface:
+
+```bash
+python3 scripts/audit_endpoints.py
+```
+
+To run the focused MCP bridge tests for endpoint error propagation and
+multiplayer menu retry behavior:
+
+```bash
+uv run --project mcp python scripts/test_mcp_server.py
+```
+
+For the stable endpoint envelopes, save/run context fields, structured error
+codes, glossary scope, action-readiness fields, and audit coverage, see
+[`docs/endpoint-contracts.md`](docs/endpoint-contracts.md).
+
+#### Optional run snapshots
+
+Launch the game with `STS2_MCP_SNAPSHOTS=1` to capture a snapshot every time the game saves the active run. Snapshots copy `current_run.save` or `current_run_mp.save` to a separate snapshot directory and include metadata such as profile, run ID, save time, mode, and source path.
+
+Set `STS2_MCP_SNAPSHOT_DIR` to choose the snapshot directory. Without it, snapshots are stored under the detected account save root in `sts2_mcp_snapshots`.
+
+Use `GET /api/v1/snapshots` to list snapshots, `POST /api/v1/snapshots` with `{"action":"create"}` to create one manually, and `{"action":"resume","snapshot_id":"..."}` to restore a snapshot to the active profile's current-run save slot. Restore is rejected while a run is in progress; after restoring, use the in-game Continue flow.
+
+Manual snapshots are rejected on map and shop screens. STS2 saves resume the latest visited room rather than the idle map screen, and shop saves do not persist the current merchant inventory. Choose a map node before snapshotting, and snapshot before entering a shop or after leaving it.
 
 ### 2. Give Your AI Instructions to Interact with the Game
 
@@ -102,7 +154,21 @@ Restart your Claude session after adding the config. To verify the MCP server is
 
 The MCP server accepts `--host` and `--port` options if you need non-default settings.
 
-Flag `--no-trust-env` can be used to disable `requests` from picking up proxy settings from the environment, which can cause connection issues if you are running the server in a container.
+Flag `--no-trust-env` can be used to disable the HTTP client from picking up proxy settings from the environment, which can cause connection issues if you are running the server in a container.
+
+Optional bridge settings can also be placed in `mcp/.env`:
+
+```dotenv
+STS2_HOST=localhost
+STS2_PORT=15526
+STS2_MCP_AUTH_TOKEN=your-token
+```
+
+When `STS2_MCP_AUTH_TOKEN` is set, the MCP bridge sends it to the game HTTP API as an `Authorization: Bearer ...` header on every request. This is a bridge client setting only: the current STS2_MCP game mod does not require or validate that token by itself. It exists so the MCP bridge can interoperate with a local proxy, tunnel, or future authenticated HTTP listener without changing tool calls.
+
+Shell environment variables take precedence over values in `mcp/.env`, which makes it safe to keep shared defaults in the file while overriding secrets in the launch environment. The parser supports simple `KEY=value`, `export KEY=value`, quoted values, and inline comments that begin after whitespace. Values such as `token#fragment` are preserved because `#` is only treated as a comment marker when preceded by whitespace.
+
+Local `.env` files are ignored by git. If you change the mod's game API port, set the same `STS2_PORT` for the MCP bridge.
 
 ## For Developers
 
@@ -159,7 +225,7 @@ cp out/STS2_MCP/STS2_MCP.dll "$MODS_DIR/"
 cp mod_manifest.json "$MODS_DIR/STS2_MCP.json"
 ```
 
-> [!NOTE] 
+> [!NOTE]
 > `mod_manifest.json` is renamed to `STS2_MCP.json` on copy — the game's mod loader expects the manifest filename to match the mod ID.
 
 ## License

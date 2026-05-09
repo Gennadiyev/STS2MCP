@@ -20,11 +20,11 @@ public static partial class McpMod
         try
         {
             var dataTask = RunOnMainThread(BuildProfile);
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            SendReadResultJson(response, dataTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Failed to build profile: {ex.Message}");
+            SendError(response, 500, $"Failed to build profile: {ex.Message}", "profile_build_failed");
         }
     }
 
@@ -33,11 +33,11 @@ public static partial class McpMod
         try
         {
             var dataTask = RunOnMainThread(BuildProfilesSummary);
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            SendReadResultJson(response, dataTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Failed to get profiles: {ex.Message}");
+            SendError(response, 500, $"Failed to get profiles: {ex.Message}", "profiles_read_failed");
         }
     }
 
@@ -54,37 +54,72 @@ public static partial class McpMod
         }
         catch
         {
-            SendError(response, 400, "Invalid JSON");
+            SendError(response, 400, "Invalid JSON", "invalid_json");
             return;
         }
 
         if (parsed == null || !parsed.TryGetValue("action", out var actionElem))
         {
-            SendError(response, 400, "Missing 'action' field. Use: switch, delete");
+            SendError(response, 400, "Missing 'action' field. Use: switch, delete", "missing_action");
+            return;
+        }
+        if (actionElem.ValueKind != JsonValueKind.String)
+        {
+            SendError(response, 400, "'action' field must be a string", "invalid_action_type");
             return;
         }
 
         string action = actionElem.GetString() ?? "";
-        int profileId = parsed.TryGetValue("profile_id", out var idElem) && idElem.ValueKind == JsonValueKind.Number
-            ? idElem.GetInt32()
-            : 0;
+        if (!parsed.TryGetValue("profile_id", out var idElem))
+        {
+            SendError(response, 400, "Missing 'profile_id' field. Use a profile slot 1-3.", "missing_profile_id");
+            return;
+        }
+        if (idElem.ValueKind != JsonValueKind.Number)
+        {
+            SendError(response, 400, "'profile_id' field must be a number", "invalid_profile_id_type");
+            return;
+        }
+        int profileId = 0;
+        if (idElem.ValueKind == JsonValueKind.Number && !idElem.TryGetInt32(out profileId))
+        {
+            SendError(response, 400, "'profile_id' field must be a 32-bit integer", "invalid_profile_id_type");
+            return;
+        }
 
         try
         {
             var resultTask = RunOnMainThread(() => ExecuteProfileAction(action, profileId));
-            SendJson(response, resultTask.GetAwaiter().GetResult());
+            SendProfileActionJson(response, resultTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Profile action failed: {ex.Message}");
+            SendActionError(response, "Profile action failed", ex);
         }
+    }
+
+    private static void SendProfileActionJson(HttpListenerResponse response, Dictionary<string, object?> result)
+    {
+        if (result.TryGetValue("status", out var status) && status as string == "error")
+        {
+            response.StatusCode = result.TryGetValue("error_code", out var errorCode)
+                ? (errorCode as string) switch
+                {
+                    "invalid_profile_id" or "unknown_profile_action" => 400,
+                    "run_in_progress" or "active_profile_delete" => 409,
+                    "save_manager_unavailable" => 503,
+                    _ => 400
+                }
+                : 400;
+        }
+        SendJson(response, result);
     }
 
     private static Dictionary<string, object?> BuildProfilesSummary()
     {
         var sm = SaveManager.Instance;
         if (sm == null)
-            return Error("Save manager is not available");
+            return Error("Save manager is not available", "save_manager_unavailable");
 
         var profiles = new List<Dictionary<string, object?>>();
         for (int i = 1; i <= 3; i++)
@@ -92,26 +127,39 @@ public static partial class McpMod
             var profileData = new Dictionary<string, object?>
             {
                 ["id"] = i,
+                ["profile_id"] = i,
                 ["is_current"] = i == sm.CurrentProfileId,
             };
 
+            string? path = null;
+            string? resolvedPath = null;
+            var profileRoot = $"profile{i}";
             try
             {
-                var path = ProgressSaveManager.GetProgressPathForProfile(i);
-                profileData["has_data"] = File.Exists(path);
-                profileData["path"] = path;
+                path = GetProfileProgressPath(i);
+                resolvedPath = ResolveProfileProgressPath(i);
+                profileRoot = GetProfileRootFromProgressPath(path, i);
             }
             catch
             {
-                profileData["has_data"] = false;
             }
+            profileData["has_data"] = resolvedPath != null && File.Exists(resolvedPath);
+            profileData["path"] = NormalizePathForJson(path);
+            profileData["resolved_path"] = NormalizePathForJson(resolvedPath);
+            profileData["progress_path"] = NormalizePathForJson(path);
+            profileData["resolved_progress_path"] = NormalizePathForJson(resolvedPath);
+            profileData["profile_root"] = NormalizePathForJson(profileRoot);
+            profileData["save_scope"] = GetSaveScope(profileRoot);
 
             profiles.Add(profileData);
         }
 
         return new Dictionary<string, object?>
         {
+            ["status"] = "ok",
+            ["kind"] = "profiles",
             ["current_profile_id"] = sm.CurrentProfileId,
+            ["count"] = profiles.Count,
             ["profiles"] = profiles
         };
     }
@@ -120,16 +168,16 @@ public static partial class McpMod
     {
         var sm = SaveManager.Instance;
         if (sm == null)
-            return Error("Save manager is not available");
+            return Error("Save manager is not available", "save_manager_unavailable");
         if (profileId is < 1 or > 3)
-            return Error("profile_id must be 1-3");
+            return Error("profile_id must be 1-3", "invalid_profile_id");
 
         var normalizedAction = action.Trim().ToLowerInvariant();
 
         if (normalizedAction == "switch")
         {
             if (RunManager.Instance?.IsInProgress == true)
-                return Error("Cannot switch profiles during a run");
+                return Error("Cannot switch profiles during a run", "run_in_progress");
 
             var tree = Engine.GetMainLoop() as SceneTree;
             if (tree?.Root != null)
@@ -169,7 +217,7 @@ public static partial class McpMod
         if (normalizedAction == "delete")
         {
             if (profileId == sm.CurrentProfileId)
-                return Error("Cannot delete the active profile");
+                return Error("Cannot delete the active profile", "active_profile_delete");
 
             sm.DeleteProfile(profileId);
             return new Dictionary<string, object?>
@@ -179,7 +227,7 @@ public static partial class McpMod
             };
         }
 
-        return Error($"Unknown action: {action}. Use: switch, delete");
+        return Error($"Unknown action: {action}. Use: switch, delete", "unknown_profile_action");
     }
 
     private static bool TrySwitchProfileViaOpenScreen(Node root, int profileId)
@@ -212,14 +260,27 @@ public static partial class McpMod
 
     internal static object BuildProfile()
     {
-        var progress = SaveManager.Instance?.Progress;
-        if (progress == null)
-            return new Dictionary<string, object?> { ["error"] = "No profile data available." };
+        var saveManager = SaveManager.Instance;
+        var progress = saveManager?.Progress;
+        if (saveManager == null || progress == null)
+            return Error("No profile data available.", "profile_data_unavailable");
 
         var result = new Dictionary<string, object?>();
+        var profileId = saveManager.CurrentProfileId;
+        var progressPath = GetProfileProgressPath(profileId);
+        var resolvedProgressPath = ResolveProfileProgressPath(profileId);
+        var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
+        result["status"] = "ok";
+        result["kind"] = "profile";
+        result["profile_id"] = profileId;
+        result["progress_path"] = NormalizePathForJson(progressPath);
+        result["resolved_progress_path"] = NormalizePathForJson(resolvedProgressPath);
+        result["profile_root"] = NormalizePathForJson(profileRoot);
+        result["save_scope"] = GetSaveScope(profileRoot);
+        result["current_run"] = BuildActiveRunContext();
 
         var characters = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.CharacterStats)
+        foreach (var kv in progress.CharacterStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
             var stats = kv.Value;
             characters.Add(new Dictionary<string, object?>
@@ -238,7 +299,7 @@ public static partial class McpMod
         result["characters"] = characters;
 
         var cards = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.CardStats)
+        foreach (var kv in progress.CardStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
             var stats = kv.Value;
             cards.Add(new Dictionary<string, object?>
@@ -253,7 +314,7 @@ public static partial class McpMod
         result["card_stats"] = cards;
 
         var encounters = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.EncounterStats)
+        foreach (var kv in progress.EncounterStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
             var enc = new Dictionary<string, object?>
             {
@@ -272,13 +333,13 @@ public static partial class McpMod
                 });
             }
             if (fightStats.Count > 0)
-                enc["by_character"] = fightStats;
+                enc["by_character"] = SortDictionaryListByStringField(fightStats, "character");
             encounters.Add(enc);
         }
         result["encounter_stats"] = encounters;
 
         var enemies = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.EnemyStats)
+        foreach (var kv in progress.EnemyStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
             var enemy = new Dictionary<string, object?>
             {
@@ -297,13 +358,13 @@ public static partial class McpMod
                 });
             }
             if (fightStats.Count > 0)
-                enemy["by_character"] = fightStats;
+                enemy["by_character"] = SortDictionaryListByStringField(fightStats, "character");
             enemies.Add(enemy);
         }
         result["enemy_stats"] = enemies;
 
         var ancients = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.AncientStats)
+        foreach (var kv in progress.AncientStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
             var anc = new Dictionary<string, object?>
             {
@@ -323,16 +384,16 @@ public static partial class McpMod
                 });
             }
             if (charStats.Count > 0)
-                anc["by_character"] = charStats;
+                anc["by_character"] = SortDictionaryListByStringField(charStats, "character");
             ancients.Add(anc);
         }
         result["ancient_stats"] = ancients;
 
-        result["discovered_cards"] = progress.DiscoveredCards.Select(id => id.Entry).ToList();
-        result["discovered_relics"] = progress.DiscoveredRelics.Select(id => id.Entry).ToList();
-        result["discovered_potions"] = progress.DiscoveredPotions.Select(id => id.Entry).ToList();
-        result["discovered_events"] = progress.DiscoveredEvents.Select(id => id.Entry).ToList();
-        result["discovered_acts"] = progress.DiscoveredActs.Select(id => id.Entry).ToList();
+        result["discovered_cards"] = progress.DiscoveredCards.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList();
+        result["discovered_relics"] = progress.DiscoveredRelics.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList();
+        result["discovered_potions"] = progress.DiscoveredPotions.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList();
+        result["discovered_events"] = progress.DiscoveredEvents.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList();
+        result["discovered_acts"] = progress.DiscoveredActs.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList();
 
         var achievements = new List<Dictionary<string, object?>>();
         foreach (var kv in progress.UnlockedAchievements)
@@ -343,14 +404,16 @@ public static partial class McpMod
                 ["unlocked_at"] = kv.Value
             });
         }
-        result["achievements"] = achievements;
+        result["achievements"] = SortDictionaryListByStringField(achievements, "id");
 
-        result["epochs"] = progress.Epochs.Select(e => new Dictionary<string, object?>
-        {
-            ["id"] = e.Id,
-            ["state"] = e.State.ToString(),
-            ["obtained"] = e.ObtainDate
-        }).ToList();
+        result["epochs"] = progress.Epochs
+            .OrderBy(e => e.Id?.ToString(), StringComparer.Ordinal)
+            .Select(e => new Dictionary<string, object?>
+            {
+                ["id"] = e.Id,
+                ["state"] = e.State.ToString(),
+                ["obtained"] = e.ObtainDate
+            }).ToList();
 
         result["total_playtime"] = progress.TotalPlaytime;
         result["total_unlocks"] = progress.TotalUnlocks;
