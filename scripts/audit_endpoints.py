@@ -1605,14 +1605,34 @@ def audit_live(base_url: str) -> None:
                 fail(f"{path} expected monsters list with matching monster_count, got {data}")
             if not isinstance(encounters, list) or data.get("encounter_count") != len(encounters):
                 fail(f"{path} expected encounters list with matching encounter_count, got {data}")
+            if data.get("source") != "reflected MonsterModel and EncounterModel metadata":
+                fail(f"{path} expected reflected metadata source, got {data.get('source')}")
             monster_ids = [str(item.get("id")) for item in monsters if isinstance(item, dict)]
             encounter_ids = [str(item.get("id")) for item in encounters if isinstance(item, dict)]
             if monster_ids != sorted(monster_ids) or encounter_ids != sorted(encounter_ids):
                 fail(f"{path} expected deterministic id ordering")
-            for item in [*monsters, *encounters]:
+            for item in monsters:
                 if not isinstance(item, dict):
-                    fail(f"{path} expected bestiary entries to be objects, got {item}")
-                for field in ["moves", "likely_monsters"]:
+                    fail(f"{path} expected monster entries to be objects, got {item}")
+                for field in ["id", "class", "min_hp", "max_hp"]:
+                    if field not in item:
+                        fail(f"{path} monster missing field {field}: {item}")
+                if not isinstance(item["min_hp"], int) or not isinstance(item["max_hp"], int) or item["min_hp"] > item["max_hp"]:
+                    fail(f"{path} monster has invalid hp range: {item}")
+                moves = item.get("moves")
+                if moves is not None:
+                    assert_sorted_strings(path, "moves", moves)
+            for item in encounters:
+                if not isinstance(item, dict):
+                    fail(f"{path} expected encounter entries to be objects, got {item}")
+                for field in ["id", "class", "room_type", "is_weak", "min_gold", "max_gold"]:
+                    if field not in item:
+                        fail(f"{path} encounter missing field {field}: {item}")
+                if not isinstance(item["min_gold"], int) or not isinstance(item["max_gold"], int) or item["min_gold"] > item["max_gold"]:
+                    fail(f"{path} encounter has invalid gold range: {item}")
+                if not isinstance(item["is_weak"], bool):
+                    fail(f"{path} encounter is_weak should be bool: {item}")
+                for field in ["likely_monsters"]:
                     values = item.get(field)
                     if values is not None:
                         assert_sorted_strings(path, field, values)
