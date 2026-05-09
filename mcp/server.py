@@ -9,6 +9,7 @@ import asyncio
 import json
 import os
 import sys
+from pathlib import Path
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -17,10 +18,61 @@ mcp = FastMCP("sts2")
 
 _base_url: str = "http://localhost:15526"
 _trust_env: bool = True
+_auth_token: str | None = None
 _http: httpx.AsyncClient | None = None
+
+
+def _parse_dotenv_value(raw_value: str) -> str:
+    value = raw_value.strip()
+    if value.startswith(("'", '"')):
+        quote = value[0]
+        end = value.find(quote, 1)
+        if end != -1:
+            return value[1:end]
+    for marker in (" #", "\t#"):
+        if marker in value:
+            value = value.split(marker, 1)[0].rstrip()
+            break
+    return value
+
+
+def _load_dotenv() -> None:
+    for env_path in (Path(__file__).resolve().parent / ".env", Path.cwd() / ".env"):
+        try:
+            lines = env_path.read_text(encoding="utf-8").splitlines()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            continue
+
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            key, raw_value = stripped.split("=", 1)
+            key = key.strip()
+            if key.startswith("export "):
+                key = key.removeprefix("export ").strip()
+            if key and key not in os.environ:
+                os.environ[key] = _parse_dotenv_value(raw_value)
+
+
+def _read_auth_token() -> str | None:
+    token = os.environ.get("STS2_MCP_AUTH_TOKEN", "").strip()
+    return token or None
+
+
+def _auth_headers() -> dict[str, str]:
+    if _auth_token is None:
+        return {}
+    return {"Authorization": f"Bearer {_auth_token}"}
+
+
+_load_dotenv()
 DEFAULT_HOST = os.environ.get("STS2_HOST", "localhost")
 DEFAULT_PORT = int(os.environ.get("STS2_PORT", "15526"))
 _base_url = f"http://{DEFAULT_HOST}:{DEFAULT_PORT}"
+_auth_token = _read_auth_token()
 
 
 def _sp_url() -> str:
@@ -66,7 +118,11 @@ def _snapshots_url() -> str:
 def _get_client() -> httpx.AsyncClient:
     global _http
     if _http is None:
-        _http = httpx.AsyncClient(timeout=httpx.Timeout(10), trust_env=_trust_env)
+        _http = httpx.AsyncClient(
+            timeout=httpx.Timeout(10),
+            trust_env=_trust_env,
+            headers=_auth_headers(),
+        )
     return _http
 
 
@@ -1397,9 +1453,10 @@ def main():
     parser.add_argument("--no-trust-env", action="store_true", help="Ignore HTTP_PROXY/HTTPS_PROXY environment variables")
     args = parser.parse_args()
 
-    global _base_url, _trust_env
+    global _auth_token, _base_url, _trust_env
     _base_url = f"http://{args.host}:{args.port}"
     _trust_env = not args.no_trust_env
+    _auth_token = _read_auth_token()
 
     # Eagerly initialize the shared httpx client so the first request is fast
     _get_client()

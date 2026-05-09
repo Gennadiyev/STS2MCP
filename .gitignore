@@ -8,6 +8,10 @@ __pycache__/
 *.pyo
 mcp/.venv/
 
+# Local environment
+.env
+mcp/.env
+
 # Claude Code
 # .claude/
 .mcp.json

@@ -154,7 +154,17 @@ Restart your Claude session after adding the config. To verify the MCP server is
 
 The MCP server accepts `--host` and `--port` options if you need non-default settings.
 
-Flag `--no-trust-env` can be used to disable `requests` from picking up proxy settings from the environment, which can cause connection issues if you are running the server in a container.
+Flag `--no-trust-env` can be used to disable the HTTP client from picking up proxy settings from the environment, which can cause connection issues if you are running the server in a container.
+
+Optional bridge settings can also be placed in `mcp/.env`:
+
+```dotenv
+STS2_HOST=localhost
+STS2_PORT=15526
+STS2_MCP_AUTH_TOKEN=your-token
+```
+
+When `STS2_MCP_AUTH_TOKEN` is set, the MCP bridge sends it to the game HTTP API as an `Authorization: Bearer ...` header. Shell environment variables take precedence over values in `mcp/.env`. If you change the mod's game API port, set the same `STS2_PORT` for the MCP bridge.
 
 ## For Developers
 
