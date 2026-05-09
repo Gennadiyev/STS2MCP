@@ -50,27 +50,31 @@ public static partial class McpMod
         var resolvedProgressPath = ResolveProfileProgressPath(profileId);
         var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
 
-        var cardStats = progress.CardStats.Select(kv => new Dictionary<string, object?>
-        {
-            ["id"] = kv.Key.Entry,
-            ["times_picked"] = kv.Value.TimesPicked,
-            ["times_skipped"] = kv.Value.TimesSkipped,
-            ["times_won"] = kv.Value.TimesWon,
-            ["times_lost"] = kv.Value.TimesLost
-        }).ToList();
+        var cardStats = progress.CardStats
+            .OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal)
+            .Select(kv => new Dictionary<string, object?>
+            {
+                ["id"] = kv.Key.Entry,
+                ["times_picked"] = kv.Value.TimesPicked,
+                ["times_skipped"] = kv.Value.TimesSkipped,
+                ["times_won"] = kv.Value.TimesWon,
+                ["times_lost"] = kv.Value.TimesLost
+            }).ToList();
 
-        var characterStats = progress.CharacterStats.Select(kv => new Dictionary<string, object?>
-        {
-            ["id"] = kv.Key.Entry,
-            ["max_ascension"] = kv.Value.MaxAscension,
-            ["preferred_ascension"] = kv.Value.PreferredAscension,
-            ["total_wins"] = kv.Value.TotalWins,
-            ["total_losses"] = kv.Value.TotalLosses,
-            ["fastest_win_time"] = kv.Value.FastestWinTime,
-            ["best_win_streak"] = kv.Value.BestWinStreak,
-            ["current_win_streak"] = kv.Value.CurrentWinStreak,
-            ["playtime"] = kv.Value.Playtime
-        }).ToList();
+        var characterStats = progress.CharacterStats
+            .OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal)
+            .Select(kv => new Dictionary<string, object?>
+            {
+                ["id"] = kv.Key.Entry,
+                ["max_ascension"] = kv.Value.MaxAscension,
+                ["preferred_ascension"] = kv.Value.PreferredAscension,
+                ["total_wins"] = kv.Value.TotalWins,
+                ["total_losses"] = kv.Value.TotalLosses,
+                ["fastest_win_time"] = kv.Value.FastestWinTime,
+                ["best_win_streak"] = kv.Value.BestWinStreak,
+                ["current_win_streak"] = kv.Value.CurrentWinStreak,
+                ["playtime"] = kv.Value.Playtime
+            }).ToList();
 
         return new CompendiumSnapshot
         {
@@ -80,9 +84,9 @@ public static partial class McpMod
             ProfileRoot = profileRoot,
             SaveScope = GetSaveScope(profileRoot),
             IsRunInProgress = RunManager.Instance?.IsInProgress == true,
-            DiscoveredCards = progress.DiscoveredCards.Select(id => id.Entry).ToList(),
-            DiscoveredRelics = progress.DiscoveredRelics.Select(id => id.Entry).ToList(),
-            DiscoveredPotions = progress.DiscoveredPotions.Select(id => id.Entry).ToList(),
+            DiscoveredCards = progress.DiscoveredCards.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList(),
+            DiscoveredRelics = progress.DiscoveredRelics.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList(),
+            DiscoveredPotions = progress.DiscoveredPotions.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList(),
             CardStats = cardStats,
             CharacterStats = characterStats,
             EncounterStats = BuildEncounterStats(progress),
@@ -202,7 +206,7 @@ public static partial class McpMod
         var result = new List<Dictionary<string, object?>>();
         foreach (var kv in progress.EncounterStats)
             result.Add(BuildFightStatsEntry(kv.Key.Entry, kv.Value));
-        return result;
+        return SortDictionaryListByStringField(result, "id");
     }
 
     private static List<Dictionary<string, object?>> BuildEnemyStats(dynamic progress)
@@ -210,7 +214,7 @@ public static partial class McpMod
         var result = new List<Dictionary<string, object?>>();
         foreach (var kv in progress.EnemyStats)
             result.Add(BuildFightStatsEntry(kv.Key.Entry, kv.Value));
-        return result;
+        return SortDictionaryListByStringField(result, "id");
     }
 
     private static Dictionary<string, object?> BuildFightStatsEntry(string id, dynamic stats)
@@ -233,9 +237,20 @@ public static partial class McpMod
             });
         }
         if (byCharacter.Count > 0)
-            entry["by_character"] = byCharacter;
+            entry["by_character"] = byCharacter
+                .OrderBy(item => item.TryGetValue("character", out var value) ? value?.ToString() : "", StringComparer.Ordinal)
+                .ToList();
 
         return entry;
+    }
+
+    private static List<Dictionary<string, object?>> SortDictionaryListByStringField(
+        List<Dictionary<string, object?>> items,
+        string field)
+    {
+        return items
+            .OrderBy(item => item.TryGetValue(field, out var value) ? value?.ToString() : "", StringComparer.Ordinal)
+            .ToList();
     }
 
     private static Dictionary<string, object?> BuildRunHistoryProgressMembers(object progress)

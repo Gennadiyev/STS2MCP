@@ -73,6 +73,29 @@ def assert_error_body(path: str, status: int, data: object) -> None:
         fail(f"{path} returned HTTP {status} without status/error fields: {data}")
 
 
+def assert_sorted_strings(path: str, field: str, values: object) -> None:
+    if not isinstance(values, list):
+        fail(f"{path} expected {field} to be a list, got {values}")
+    strings = [str(value) for value in values]
+    if strings != sorted(strings):
+        fail(f"{path} expected {field} to be sorted")
+
+
+def assert_sorted_objects(path: str, field: str, values: object, key: str) -> None:
+    if not isinstance(values, list):
+        fail(f"{path} expected {field} to be a list, got {values}")
+    keys = []
+    for item in values:
+        if not isinstance(item, dict):
+            fail(f"{path} expected {field} entries to be objects, got {item}")
+        keys.append(str(item.get(key)))
+        nested = item.get("by_character")
+        if nested is not None:
+            assert_sorted_objects(path, f"{field}.by_character", nested, "character")
+    if keys != sorted(keys):
+        fail(f"{path} expected {field} to be sorted by {key}")
+
+
 def audit_docs(repo: Path) -> None:
     raw_full = (repo / "docs" / "raw-full.md").read_text(encoding="utf-8")
     documented = set(re.findall(r"- `(GET|POST)\s+([^`]+)`", raw_full))
@@ -945,6 +968,29 @@ def audit_live(base_url: str) -> None:
             for required_field in ["profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run"]:
                 if required_field not in data:
                     fail(f"{path} missing profile/save context field: {required_field}")
+            if path == "/api/v1/profile":
+                for field in ["characters", "card_stats", "encounter_stats", "enemy_stats", "ancient_stats", "achievements", "epochs"]:
+                    assert_sorted_objects(path, field, data.get(field), "id")
+                for field in ["discovered_cards", "discovered_relics", "discovered_potions", "discovered_events", "discovered_acts"]:
+                    assert_sorted_strings(path, field, data.get(field))
+            if path == "/api/v1/compendium":
+                sections = data.get("sections")
+                if not isinstance(sections, dict):
+                    fail(f"{path} expected sections object, got {sections}")
+                card_library = sections.get("card_library")
+                relic_collection = sections.get("relic_collection")
+                potion_lab = sections.get("potion_lab")
+                bestiary = sections.get("bestiary")
+                character_stats = sections.get("character_stats")
+                if not all(isinstance(section, dict) for section in [card_library, relic_collection, potion_lab, bestiary, character_stats]):
+                    fail(f"{path} expected structured compendium sections, got {sections}")
+                assert_sorted_strings(path, "card_library.discovered_ids", card_library.get("discovered_ids"))
+                assert_sorted_objects(path, "card_library.stats", card_library.get("stats"), "id")
+                assert_sorted_strings(path, "relic_collection.discovered_ids", relic_collection.get("discovered_ids"))
+                assert_sorted_strings(path, "potion_lab.discovered_ids", potion_lab.get("discovered_ids"))
+                assert_sorted_objects(path, "bestiary.encounter_stats", bestiary.get("encounter_stats"), "id")
+                assert_sorted_objects(path, "bestiary.enemy_stats", bestiary.get("enemy_stats"), "id")
+                assert_sorted_objects(path, "character_stats.characters", character_stats.get("characters"), "id")
         if path == "/api/v1/profiles":
             if not isinstance(data, dict) or data.get("status") != "ok" or data.get("kind") != "profiles":
                 fail(f"{path} expected structured profiles status/kind, got {data}")

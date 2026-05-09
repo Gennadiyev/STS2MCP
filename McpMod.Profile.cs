@@ -263,7 +263,7 @@ public static partial class McpMod
         result["current_run"] = BuildActiveRunContext();
 
         var characters = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.CharacterStats)
+        foreach (var kv in progress.CharacterStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
             var stats = kv.Value;
             characters.Add(new Dictionary<string, object?>
@@ -282,7 +282,7 @@ public static partial class McpMod
         result["characters"] = characters;
 
         var cards = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.CardStats)
+        foreach (var kv in progress.CardStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
             var stats = kv.Value;
             cards.Add(new Dictionary<string, object?>
@@ -297,7 +297,7 @@ public static partial class McpMod
         result["card_stats"] = cards;
 
         var encounters = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.EncounterStats)
+        foreach (var kv in progress.EncounterStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
             var enc = new Dictionary<string, object?>
             {
@@ -316,13 +316,13 @@ public static partial class McpMod
                 });
             }
             if (fightStats.Count > 0)
-                enc["by_character"] = fightStats;
+                enc["by_character"] = SortDictionaryListByStringField(fightStats, "character");
             encounters.Add(enc);
         }
         result["encounter_stats"] = encounters;
 
         var enemies = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.EnemyStats)
+        foreach (var kv in progress.EnemyStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
             var enemy = new Dictionary<string, object?>
             {
@@ -341,13 +341,13 @@ public static partial class McpMod
                 });
             }
             if (fightStats.Count > 0)
-                enemy["by_character"] = fightStats;
+                enemy["by_character"] = SortDictionaryListByStringField(fightStats, "character");
             enemies.Add(enemy);
         }
         result["enemy_stats"] = enemies;
 
         var ancients = new List<Dictionary<string, object?>>();
-        foreach (var kv in progress.AncientStats)
+        foreach (var kv in progress.AncientStats.OrderBy(kv => kv.Key.Entry, StringComparer.Ordinal))
         {
             var anc = new Dictionary<string, object?>
             {
@@ -367,16 +367,16 @@ public static partial class McpMod
                 });
             }
             if (charStats.Count > 0)
-                anc["by_character"] = charStats;
+                anc["by_character"] = SortDictionaryListByStringField(charStats, "character");
             ancients.Add(anc);
         }
         result["ancient_stats"] = ancients;
 
-        result["discovered_cards"] = progress.DiscoveredCards.Select(id => id.Entry).ToList();
-        result["discovered_relics"] = progress.DiscoveredRelics.Select(id => id.Entry).ToList();
-        result["discovered_potions"] = progress.DiscoveredPotions.Select(id => id.Entry).ToList();
-        result["discovered_events"] = progress.DiscoveredEvents.Select(id => id.Entry).ToList();
-        result["discovered_acts"] = progress.DiscoveredActs.Select(id => id.Entry).ToList();
+        result["discovered_cards"] = progress.DiscoveredCards.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList();
+        result["discovered_relics"] = progress.DiscoveredRelics.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList();
+        result["discovered_potions"] = progress.DiscoveredPotions.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList();
+        result["discovered_events"] = progress.DiscoveredEvents.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList();
+        result["discovered_acts"] = progress.DiscoveredActs.Select(id => id.Entry).OrderBy(id => id, StringComparer.Ordinal).ToList();
 
         var achievements = new List<Dictionary<string, object?>>();
         foreach (var kv in progress.UnlockedAchievements)
@@ -387,14 +387,16 @@ public static partial class McpMod
                 ["unlocked_at"] = kv.Value
             });
         }
-        result["achievements"] = achievements;
+        result["achievements"] = SortDictionaryListByStringField(achievements, "id");
 
-        result["epochs"] = progress.Epochs.Select(e => new Dictionary<string, object?>
-        {
-            ["id"] = e.Id,
-            ["state"] = e.State.ToString(),
-            ["obtained"] = e.ObtainDate
-        }).ToList();
+        result["epochs"] = progress.Epochs
+            .OrderBy(e => e.Id?.ToString(), StringComparer.Ordinal)
+            .Select(e => new Dictionary<string, object?>
+            {
+                ["id"] = e.Id,
+                ["state"] = e.State.ToString(),
+                ["obtained"] = e.ObtainDate
+            }).ToList();
 
         result["total_playtime"] = progress.TotalPlaytime;
         result["total_unlocks"] = progress.TotalUnlocks;
