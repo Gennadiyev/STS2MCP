@@ -272,19 +272,14 @@ public static partial class McpMod
             if (seen.Contains(id)) continue;
             seen.Add(id);
 
-            string costDisplay;
-            if (card.EnergyCost.CostsX)
-                costDisplay = "X";
-            else
-                costDisplay = card.EnergyCost.GetAmountToSpend().ToString();
-
             var upgradedPreview = SafeBuildUpgradedCardPreview(card);
             result.Add(new Dictionary<string, object?>
             {
                 ["id"] = id,
                 ["name"] = SafeGetText(() => card.Title),
                 ["type"] = card.Type.ToString(),
-                ["cost"] = costDisplay,
+                ["cost"] = GetCostDisplay(card),
+                ["star_cost"] = GetStarCostDisplay(card),
                 ["description"] = SafeGetCardDescription(card),
                 ["rarity"] = card.Rarity.ToString(),
                 ["pool"] = poolName,

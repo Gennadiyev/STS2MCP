@@ -223,6 +223,9 @@ def audit_static_card_glossary_metadata(repo: Path) -> None:
         fail("could not locate AddCardsFromPool for card glossary audit")
     body = match.group(0)
     required = [
+        "GetCostDisplay",
+        "star_cost",
+        "GetStarCostDisplay",
         "is_upgradable",
         "current_upgrade_level",
         "max_upgrade_level",
