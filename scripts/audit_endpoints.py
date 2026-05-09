@@ -141,6 +141,18 @@ def audit_static_formatters(repo: Path) -> None:
     print("formatters: card/relic metadata helpers enforced")
 
 
+def audit_static_error_shapes(repo: Path) -> None:
+    raw_error_writes: list[str] = []
+    for path in repo.glob("McpMod*.cs"):
+        text = path.read_text(encoding="utf-8")
+        if re.search(r'response\.StatusCode\s*=\s*500\s*;\s*SendJson\(\s*response\s*,\s*new Dictionary<string, object\?>', text, re.S):
+            raw_error_writes.append(path.name)
+
+    if raw_error_writes:
+        fail(f"500 handlers should use SendError for structured error bodies: {sorted(raw_error_writes)}")
+    print("errors: structured 500 response helpers enforced")
+
+
 def audit_live(base_url: str) -> None:
     root_status, root = load_json_url(base_url.rstrip("/") + "/")
     if root_status != 200 or not isinstance(root, dict):
@@ -218,6 +230,7 @@ def main() -> None:
     audit_docs(repo)
     audit_action_surface(repo)
     audit_static_formatters(repo)
+    audit_static_error_shapes(repo)
     if not args.skip_live:
         audit_live(args.base_url)
 

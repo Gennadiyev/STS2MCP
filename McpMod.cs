@@ -454,13 +454,7 @@ public static partial class McpMod
             GD.PrintErr($"[STS2 MCP] HandleGetMultiplayerState: {ex}");
             try
             {
-                response.StatusCode = 500;
-                SendJson(response, new Dictionary<string, object?>
-                {
-                    ["error"] = $"Failed to read multiplayer game state: {ex.Message}",
-                    ["exception_type"] = ex.GetType().FullName,
-                    ["stack_trace"] = ex.StackTrace
-                });
+                SendError(response, 500, $"Failed to read multiplayer game state: {ex.Message}");
             }
             catch { /* response may be unusable */ }
         }
@@ -555,13 +549,7 @@ public static partial class McpMod
             GD.PrintErr($"[STS2 MCP] HandleGetState: {ex}");
             try
             {
-                response.StatusCode = 500;
-                SendJson(response, new Dictionary<string, object?>
-                {
-                    ["error"] = $"Failed to read game state: {ex.Message}",
-                    ["exception_type"] = ex.GetType().FullName,
-                    ["stack_trace"] = ex.StackTrace
-                });
+                SendError(response, 500, $"Failed to read game state: {ex.Message}");
             }
             catch { /* response may be unusable */ }
         }
