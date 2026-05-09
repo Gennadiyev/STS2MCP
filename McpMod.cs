@@ -158,8 +158,13 @@ public static partial class McpMod
     private static string ParseDotEnvValue(string rawValue)
     {
         var value = rawValue.Trim();
-        if (value.Length >= 2 && value[0] == value[^1] && (value[0] == '\'' || value[0] == '"'))
-            return value[1..^1];
+        if (value.Length >= 2 && (value[0] == '\'' || value[0] == '"'))
+        {
+            var quote = value[0];
+            var closingQuoteIndex = value.IndexOf(quote, 1);
+            if (closingQuoteIndex != -1)
+                return value[1..closingQuoteIndex];
+        }
 
         var commentIndex = value.IndexOf('#');
         if (commentIndex >= 0)
