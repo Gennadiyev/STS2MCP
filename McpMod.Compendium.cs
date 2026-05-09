@@ -270,7 +270,7 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildRunHistorySection(CompendiumSnapshot snapshot)
     {
         var values = snapshot.RunHistoryProgressMembers;
-        var historyDirectory = FindRunHistoryDirectory(snapshot.ProfileRoot);
+        var historyDirectory = FindRunHistoryDirectory(snapshot);
         if (historyDirectory != null)
         {
             var files = Directory.GetFiles(historyDirectory, "*.run")
@@ -376,7 +376,7 @@ public static partial class McpMod
             ["id_format"] = "{save_scope}:profile{profile_id}:{start_time}"
         };
 
-        var currentRunPath = ResolveCurrentRunPath(snapshot.ProfileRoot);
+        var currentRunPath = ResolveCurrentRunPath(snapshot);
         if (currentRunPath == null || !File.Exists(currentRunPath))
         {
             result["limitation"] = "Run is in progress, but current_run.save was not found yet.";
@@ -450,11 +450,19 @@ public static partial class McpMod
         };
     }
 
-    private static string? FindRunHistoryDirectory(string profileRoot)
+    private static string? FindRunHistoryDirectory(CompendiumSnapshot snapshot)
     {
+        var saveDirectory = GetSaveDirectoryFromProgressPath(snapshot.ProgressPath);
+        if (saveDirectory != null)
+        {
+            var historyPath = Path.Combine(saveDirectory, "history");
+            if (Directory.Exists(historyPath))
+                return historyPath;
+        }
+
         foreach (var saveRoot in EnumerateSaveRoots())
         {
-            var historyPath = Path.Combine(saveRoot, profileRoot, "saves", "history");
+            var historyPath = Path.Combine(saveRoot, snapshot.ProfileRoot, "saves", "history");
             if (Directory.Exists(historyPath))
                 return historyPath;
         }
@@ -467,15 +475,16 @@ public static partial class McpMod
         var normalized = progressPath?.Replace('\\', '/');
         if (!string.IsNullOrWhiteSpace(normalized))
         {
-            var marker = $"/profile{profileId}/";
-            var index = normalized.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-            if (index >= 0)
-                return normalized[..(index + marker.Length - 1)];
-
-            if (normalized.StartsWith($"profile{profileId}/", StringComparison.OrdinalIgnoreCase))
-                return $"profile{profileId}";
-            if (normalized.StartsWith($"modded/profile{profileId}/", StringComparison.OrdinalIgnoreCase))
+            var moddedProfile = $"modded/profile{profileId}";
+            if (normalized.Contains($"{moddedProfile}/", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals(moddedProfile, StringComparison.OrdinalIgnoreCase))
                 return $"modded/profile{profileId}";
+
+            var profile = $"profile{profileId}";
+            if (normalized.Contains($"/{profile}/", StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith($"{profile}/", StringComparison.OrdinalIgnoreCase)
+                || normalized.Equals(profile, StringComparison.OrdinalIgnoreCase))
+                return $"profile{profileId}";
         }
 
         return $"profile{profileId}";
@@ -490,26 +499,58 @@ public static partial class McpMod
 
     private static IEnumerable<string> EnumerateSaveRoots()
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        if (string.IsNullOrWhiteSpace(appData))
-            yield break;
+        var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var steamRoots = EnumerateSteamDataRoots().ToList();
 
-        var steamRoot = Path.Combine(appData, "SlayTheSpire2", "steam");
-        if (!Directory.Exists(steamRoot))
-            yield break;
-
-        var activeSteamSaveRoot = GetActiveSteamSaveRoot(steamRoot);
-        if (activeSteamSaveRoot != null)
+        var activeSteamId = GetActiveSteamId();
+        if (!string.IsNullOrWhiteSpace(activeSteamId))
         {
-            yield return activeSteamSaveRoot;
-            yield break;
+            foreach (var steamRoot in steamRoots)
+            {
+                var accountRoot = Path.Combine(steamRoot, activeSteamId);
+                if (Directory.Exists(accountRoot) && yielded.Add(accountRoot))
+                    yield return accountRoot;
+            }
         }
 
-        foreach (var accountRoot in Directory.GetDirectories(steamRoot))
-            yield return accountRoot;
+        if (yielded.Count > 0)
+            yield break;
+
+        foreach (var steamRoot in steamRoots)
+        {
+            foreach (var accountRoot in Directory.GetDirectories(steamRoot))
+            {
+                if (yielded.Add(accountRoot))
+                    yield return accountRoot;
+            }
+        }
     }
 
-    private static string? GetActiveSteamSaveRoot(string steamRoot)
+    private static IEnumerable<string> EnumerateSteamDataRoots()
+    {
+        var candidates = new List<string?>();
+
+        candidates.Add(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
+        candidates.Add(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+        candidates.Add(Environment.GetEnvironmentVariable("XDG_DATA_HOME"));
+
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrWhiteSpace(home))
+            candidates.Add(Path.Combine(home, ".local", "share"));
+
+        var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var root in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(root))
+                continue;
+
+            var steamRoot = Path.Combine(root, "SlayTheSpire2", "steam");
+            if (Directory.Exists(steamRoot) && yielded.Add(steamRoot))
+                yield return steamRoot;
+        }
+    }
+
+    private static string? GetActiveSteamId()
     {
         try
         {
@@ -522,8 +563,7 @@ public static partial class McpMod
             if (string.IsNullOrWhiteSpace(steamId) || steamId == "0")
                 return null;
 
-            var accountRoot = Path.Combine(steamRoot, steamId);
-            return Directory.Exists(accountRoot) ? accountRoot : null;
+            return steamId;
         }
         catch
         {
@@ -540,6 +580,9 @@ public static partial class McpMod
     private static string? ResolveProfileProgressPath(int profileId)
     {
         var progressPath = GetProfileProgressPath(profileId);
+        if (!string.IsNullOrWhiteSpace(progressPath) && Path.IsPathRooted(progressPath))
+            return progressPath;
+
         var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
 
         foreach (var saveRoot in EnumerateSaveRoots())
@@ -552,16 +595,35 @@ public static partial class McpMod
         return progressPath;
     }
 
-    private static string? ResolveCurrentRunPath(string profileRoot)
+    private static string? ResolveCurrentRunPath(CompendiumSnapshot snapshot)
     {
+        var saveDirectory = GetSaveDirectoryFromProgressPath(snapshot.ProgressPath);
+        if (saveDirectory != null)
+        {
+            var currentRunPath = Path.Combine(saveDirectory, "current_run.save");
+            if (File.Exists(currentRunPath))
+                return currentRunPath;
+        }
+
         foreach (var saveRoot in EnumerateSaveRoots())
         {
-            var absolutePath = Path.Combine(saveRoot, profileRoot, "saves", "current_run.save");
+            var absolutePath = Path.Combine(saveRoot, snapshot.ProfileRoot, "saves", "current_run.save");
             if (File.Exists(absolutePath))
                 return absolutePath;
         }
 
         return null;
+    }
+
+    private static string? GetSaveDirectoryFromProgressPath(string? progressPath)
+    {
+        if (string.IsNullOrWhiteSpace(progressPath) || !Path.IsPathRooted(progressPath))
+            return null;
+
+        var saveDirectory = Path.GetDirectoryName(progressPath);
+        return !string.IsNullOrWhiteSpace(saveDirectory) && Directory.Exists(saveDirectory)
+            ? saveDirectory
+            : null;
     }
 
     private static object? ToJsonSafe(object? value, int depth, int maxItems)
