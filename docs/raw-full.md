@@ -1128,11 +1128,41 @@ Lists the three profile slots and identifies the active slot.
 
 ```json
 {
+  "status": "ok",
+  "kind": "profiles",
   "current_profile_id": 1,
+  "count": 3,
   "profiles": [
-    { "id": 1, "is_current": true, "has_data": true },
-    { "id": 2, "is_current": false, "has_data": false },
-    { "id": 3, "is_current": false, "has_data": true }
+    {
+      "id": 1,
+      "profile_id": 1,
+      "is_current": true,
+      "has_data": true,
+      "progress_path": "modded/profile1/saves/progress.save",
+      "resolved_progress_path": "C:/.../SlayTheSpire2/steam/<account>/modded/profile1/saves/progress.save",
+      "profile_root": "modded/profile1",
+      "save_scope": "modded"
+    },
+    {
+      "id": 2,
+      "profile_id": 2,
+      "is_current": false,
+      "has_data": false,
+      "progress_path": "modded/profile2/saves/progress.save",
+      "resolved_progress_path": "modded/profile2/saves/progress.save",
+      "profile_root": "modded/profile2",
+      "save_scope": "modded"
+    },
+    {
+      "id": 3,
+      "profile_id": 3,
+      "is_current": false,
+      "has_data": true,
+      "progress_path": "modded/profile3/saves/progress.save",
+      "resolved_progress_path": "C:/.../SlayTheSpire2/steam/<account>/modded/profile3/saves/progress.save",
+      "profile_root": "modded/profile3",
+      "save_scope": "modded"
+    }
   ]
 }
 ```

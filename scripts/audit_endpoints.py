@@ -386,6 +386,18 @@ def audit_static_save_roots(repo: Path) -> None:
         if required_fragment not in profile_body:
             fail(f"profile endpoint missing identity/run context: {required_fragment}")
 
+    profiles_match = re.search(
+        r"private static Dictionary<string, object\?> BuildProfilesSummary\(\).*?\n    private static Dictionary<string, object\?> ExecuteProfileAction",
+        profile,
+        re.S,
+    )
+    if not profiles_match:
+        fail("could not locate BuildProfilesSummary for profile slots audit")
+    profiles_body = profiles_match.group(0)
+    for required_fragment in ["status", "kind", "count", "profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope"]:
+        if required_fragment not in profiles_body:
+            fail(f"profiles endpoint missing structured slot context: {required_fragment}")
+
     for doc_name, doc_text in [("mcp/server.py", mcp_server), ("mcp/README.md", mcp_readme)]:
         for required_fragment in ["progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run"]:
             if required_fragment not in doc_text:
@@ -930,6 +942,18 @@ def audit_live(base_url: str) -> None:
             for required_field in ["profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope", "current_run"]:
                 if required_field not in data:
                     fail(f"{path} missing profile/save context field: {required_field}")
+        if path == "/api/v1/profiles":
+            if not isinstance(data, dict) or data.get("status") != "ok" or data.get("kind") != "profiles":
+                fail(f"{path} expected structured profiles status/kind, got {data}")
+            profiles = data.get("profiles")
+            if not isinstance(profiles, list) or data.get("count") != len(profiles):
+                fail(f"{path} expected profiles list with matching count, got {data}")
+            for profile_slot in profiles:
+                if not isinstance(profile_slot, dict):
+                    fail(f"{path} expected profile slot objects, got {profile_slot}")
+                for required_field in ["id", "profile_id", "is_current", "has_data", "progress_path", "resolved_progress_path", "profile_root", "save_scope"]:
+                    if required_field not in profile_slot:
+                        fail(f"{path} profile slot missing field {required_field}: {profile_slot}")
         if path == "/api/v1/bestiary":
             if not isinstance(data, dict) or data.get("status") != "ok" or data.get("kind") != "bestiary":
                 fail(f"{path} expected structured bestiary status/kind, got {data}")

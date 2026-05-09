@@ -396,7 +396,10 @@ async def get_glossary_keywords() -> str:
 async def list_profiles() -> str:
     """List the three profile slots and identify the active slot.
 
-    The has_data field indicates whether a slot currently has progress data.
+    The response includes status/kind/count plus per-slot profile_id,
+    progress_path, resolved_progress_path, profile_root, save_scope, and
+    has_data. The has_data field indicates whether a slot currently has
+    progress data.
     """
     try:
         return await _profiles_get()

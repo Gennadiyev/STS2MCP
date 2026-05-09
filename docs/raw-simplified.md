@@ -95,17 +95,20 @@ When a run is active, the response includes `current_run.run_id` in `{save_scope
 | `character_stats` | Per-character and global totals. |
 | `run_history` | Summaries of the active profile's saved `saves/history/*.run` files, capped to the 20 most recent entries. |
 
-`GET /api/v1/profiles` returns the three profile slots:
+`GET /api/v1/profiles` returns the three profile slots with `status`, `kind`, `count`, and per-slot save context fields (`progress_path`, `resolved_progress_path`, `profile_root`, `save_scope`):
 
 `GET /api/v1/profile` returns the active profile's progress with `profile_id`, save scope/path context, `resolved_progress_path`, and `current_run` when a run is active.
 
 ```json
 {
+  "status": "ok",
+  "kind": "profiles",
   "current_profile_id": 1,
+  "count": 3,
   "profiles": [
-    { "id": 1, "is_current": true, "has_data": true },
-    { "id": 2, "is_current": false, "has_data": false },
-    { "id": 3, "is_current": false, "has_data": true }
+    { "id": 1, "profile_id": 1, "is_current": true, "has_data": true, "progress_path": "modded/profile1/saves/progress.save", "resolved_progress_path": "C:/.../progress.save", "profile_root": "modded/profile1", "save_scope": "modded" },
+    { "id": 2, "profile_id": 2, "is_current": false, "has_data": false, "progress_path": "modded/profile2/saves/progress.save", "resolved_progress_path": "modded/profile2/saves/progress.save", "profile_root": "modded/profile2", "save_scope": "modded" },
+    { "id": 3, "profile_id": 3, "is_current": false, "has_data": true, "progress_path": "modded/profile3/saves/progress.save", "resolved_progress_path": "C:/.../progress.save", "profile_root": "modded/profile3", "save_scope": "modded" }
   ]
 }
 ```

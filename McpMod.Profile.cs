@@ -110,28 +110,39 @@ public static partial class McpMod
             var profileData = new Dictionary<string, object?>
             {
                 ["id"] = i,
+                ["profile_id"] = i,
                 ["is_current"] = i == sm.CurrentProfileId,
             };
 
+            string? path = null;
+            string? resolvedPath = null;
+            var profileRoot = $"profile{i}";
             try
             {
-                var path = ProgressSaveManager.GetProgressPathForProfile(i);
-                var resolvedPath = ResolveProfileProgressPath(i);
-                profileData["has_data"] = resolvedPath != null && File.Exists(resolvedPath);
-                profileData["path"] = path;
-                profileData["resolved_path"] = resolvedPath;
+                path = GetProfileProgressPath(i);
+                resolvedPath = ResolveProfileProgressPath(i);
+                profileRoot = GetProfileRootFromProgressPath(path, i);
             }
             catch
             {
-                profileData["has_data"] = false;
             }
+            profileData["has_data"] = resolvedPath != null && File.Exists(resolvedPath);
+            profileData["path"] = path;
+            profileData["resolved_path"] = resolvedPath;
+            profileData["progress_path"] = path;
+            profileData["resolved_progress_path"] = resolvedPath;
+            profileData["profile_root"] = profileRoot;
+            profileData["save_scope"] = GetSaveScope(profileRoot);
 
             profiles.Add(profileData);
         }
 
         return new Dictionary<string, object?>
         {
+            ["status"] = "ok",
+            ["kind"] = "profiles",
             ["current_profile_id"] = sm.CurrentProfileId,
+            ["count"] = profiles.Count,
             ["profiles"] = profiles
         };
     }
