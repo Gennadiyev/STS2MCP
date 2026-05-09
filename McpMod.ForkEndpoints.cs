@@ -306,7 +306,7 @@ public static partial class McpMod
             AddCardsFromPool(pool, poolName, result, seen);
         }
 
-        return result;
+        return SortDictionaryListByStringField(result, "id");
     }
 
     private static void AddCardsFromPool(
@@ -369,7 +369,7 @@ public static partial class McpMod
             AddRelicsFromPool(pool, poolName, result, seen);
         }
 
-        return result;
+        return SortDictionaryListByStringField(result, "id");
     }
 
     private static void AddRelicsFromPool(
@@ -420,7 +420,7 @@ public static partial class McpMod
             AddPotionsFromPool(pool, poolName, result, seen);
         }
 
-        return result;
+        return SortDictionaryListByStringField(result, "id");
     }
 
     private static void AddPotionsFromPool(

@@ -475,6 +475,14 @@ def audit_static_glossary_scope(repo: Path) -> None:
         )
         if not match or required not in match.group(0):
             fail(f"{method} must include active-run shared pool {required}")
+    for method in ["BuildGlossaryCards", "BuildGlossaryRelics", "BuildGlossaryPotions"]:
+        match = re.search(
+            rf"internal static object {method}\(\).*?(?=\n    internal static object|\n    private static|\n    internal static|\n\}})",
+            fork_endpoints,
+            re.S,
+        )
+        if not match or 'SortDictionaryListByStringField(result, "id")' not in match.group(0):
+            fail(f"{method} must return deterministically sorted item IDs")
 
     send_match = re.search(
         r"private static void SendGlossaryJson\(.*?\n    private static Dictionary<string, object\?> GlossaryError\(",
@@ -1354,6 +1362,8 @@ def audit_live(base_url: str) -> None:
                 fail(f"{path} expected status ok and kind {expected_kind}, got {data}")
             if not isinstance(data.get("items"), list) or data.get("count") != len(data["items"]):
                 fail(f"{path} expected items list with matching count, got {data}")
+            item_sort_key = "name" if expected_kind == "keywords" else "id"
+            assert_sorted_objects(path, "items", data["items"], item_sort_key)
             for required_field in ["profile_id", "progress_path", "resolved_progress_path", "profile_root", "save_scope"]:
                 if required_field not in data:
                     fail(f"{path} missing profile/save context field: {required_field}")
