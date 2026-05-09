@@ -271,16 +271,40 @@ public static partial class McpMod
 
             if (path == "/")
             {
-                SendJson(response, new { message = $"Hello from STS2 MCP v{Version}", status = "ok", bound_prefixes = _boundPrefixes });
+                if (request.HttpMethod == "GET")
+                {
+                    var endpoints = BuildEndpointIndex();
+                    SendJson(response, new
+                    {
+                        message = $"Hello from STS2 MCP v{Version}",
+                        status = "ok",
+                        kind = "api_index",
+                        version = Version,
+                        bound_prefixes = _boundPrefixes,
+                        endpoint_count = endpoints.Count,
+                        endpoints
+                    });
+                }
+                else
+                {
+                    SendMethodNotAllowed(response);
+                }
             }
             else if (path == "/api/v1/singleplayer")
             {
+                if (request.HttpMethod != "GET" && request.HttpMethod != "POST")
+                {
+                    SendMethodNotAllowed(response);
+                    return;
+                }
+
                 // Hard-block singleplayer endpoint during multiplayer runs
                 // to prevent calling the non-sync-safe end_turn path
                 if (IsMultiplayerRun())
                 {
                     SendError(response, 409,
-                        "Multiplayer run is active. Use /api/v1/multiplayer instead.");
+                        "Multiplayer run is active. Use /api/v1/multiplayer instead.",
+                        "multiplayer_run_active");
                     return;
                 }
 
@@ -289,15 +313,22 @@ public static partial class McpMod
                 else if (request.HttpMethod == "POST")
                     HandlePostAction(request, response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/multiplayer")
             {
+                if (request.HttpMethod != "GET" && request.HttpMethod != "POST")
+                {
+                    SendMethodNotAllowed(response);
+                    return;
+                }
+
                 // Guard: reject multiplayer endpoint during singleplayer runs
                 if (!IsMultiplayerRun())
                 {
                     SendError(response, 409,
-                        "Not in a multiplayer run. Use /api/v1/singleplayer instead.");
+                        "Not in a multiplayer run. Use /api/v1/singleplayer instead.",
+                        "not_multiplayer_run");
                     return;
                 }
 
@@ -306,14 +337,14 @@ public static partial class McpMod
                 else if (request.HttpMethod == "POST")
                     HandlePostMultiplayerAction(request, response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/settings")
             {
                 if (request.HttpMethod == "GET")
                     HandleGetSettings(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/profiles")
             {
@@ -322,70 +353,91 @@ public static partial class McpMod
                 else if (request.HttpMethod == "POST")
                     HandlePostProfiles(request, response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/profile")
             {
                 if (request.HttpMethod == "GET")
                     HandleGetProfile(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/compendium")
             {
                 if (request.HttpMethod == "GET")
                     HandleGetCompendium(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/bestiary")
             {
                 if (request.HttpMethod == "GET")
                     HandleGetBestiary(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/glossary/cards")
             {
                 if (request.HttpMethod == "GET")
                     HandleGetGlossaryCards(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/glossary/relics")
             {
                 if (request.HttpMethod == "GET")
                     HandleGetGlossaryRelics(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/glossary/potions")
             {
                 if (request.HttpMethod == "GET")
                     HandleGetGlossaryPotions(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else if (path == "/api/v1/glossary/keywords")
             {
                 if (request.HttpMethod == "GET")
                     HandleGetGlossaryKeywords(response);
                 else
-                    SendError(response, 405, "Method not allowed");
+                    SendMethodNotAllowed(response);
             }
             else
             {
-                SendError(response, 404, "Not found");
+                SendNotFound(response);
             }
         }
         catch (Exception ex)
         {
             try
             {
-                SendError(context.Response, 500, $"Internal error: {ex.Message}");
+                SendError(context.Response, 500, $"Internal error: {ex.Message}", "internal_error");
             }
             catch { /* response may already be closed */ }
         }
+    }
+
+    private static List<Dictionary<string, object?>> BuildEndpointIndex()
+    {
+        return new List<Dictionary<string, object?>>
+        {
+            new() { ["method"] = "GET", ["path"] = "/api/v1/singleplayer", ["description"] = "Read singleplayer state with status/kind envelope and active-run context" },
+            new() { ["method"] = "POST", ["path"] = "/api/v1/singleplayer", ["description"] = "Perform singleplayer action" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/multiplayer", ["description"] = "Read multiplayer state with status/kind envelope and active-run context" },
+            new() { ["method"] = "POST", ["path"] = "/api/v1/multiplayer", ["description"] = "Perform multiplayer action" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/settings", ["description"] = "Read settings and preferences" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/profile", ["description"] = "Read active profile progress plus normalized save/run context" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/compendium", ["description"] = "Read Compendium-shaped profile progress plus normalized save/run context" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/bestiary", ["description"] = "Read monster and encounter metadata" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/glossary/cards", ["description"] = "Read active-run card pool metadata plus profile/save/run context" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/glossary/relics", ["description"] = "Read active-run relic pool metadata plus profile/save/run context" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/glossary/potions", ["description"] = "Read active-run potion pool metadata plus profile/save/run context" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/glossary/keywords", ["description"] = "Read active-run keyword metadata plus profile/save/run context" },
+            new() { ["method"] = "GET", ["path"] = "/api/v1/profiles", ["description"] = "List profile slots plus normalized save context" },
+            new() { ["method"] = "POST", ["path"] = "/api/v1/profiles", ["description"] = "Switch or delete profile slots" }
+        };
     }
 
     // Called on HTTP thread (not main thread) as a best-effort guard.
@@ -401,9 +453,17 @@ public static partial class McpMod
         catch { return false; }
     }
 
+    private static void SendMethodNotAllowed(HttpListenerResponse response)
+        => SendError(response, 405, "Method not allowed", "method_not_allowed");
+
+    private static void SendNotFound(HttpListenerResponse response)
+        => SendError(response, 404, "Not found", "not_found");
+
     private static void HandleGetMultiplayerState(HttpListenerRequest request, HttpListenerResponse response)
     {
         string format = request.QueryString["format"] ?? "json";
+        if (!TryValidateStateFormat(response, format))
+            return;
 
         try
         {
@@ -425,13 +485,7 @@ public static partial class McpMod
             GD.PrintErr($"[STS2 MCP] HandleGetMultiplayerState: {ex}");
             try
             {
-                response.StatusCode = 500;
-                SendJson(response, new Dictionary<string, object?>
-                {
-                    ["error"] = $"Failed to read multiplayer game state: {ex.Message}",
-                    ["exception_type"] = ex.GetType().FullName,
-                    ["stack_trace"] = ex.StackTrace
-                });
+                SendError(response, 500, $"Failed to read multiplayer game state: {ex.Message}", "multiplayer_state_read_failed");
             }
             catch { /* response may be unusable */ }
         }
@@ -450,13 +504,18 @@ public static partial class McpMod
         }
         catch
         {
-            SendError(response, 400, "Invalid JSON");
+            SendError(response, 400, "Invalid JSON", "invalid_json");
             return;
         }
 
         if (parsed == null || !parsed.TryGetValue("action", out var actionElem))
         {
-            SendError(response, 400, "Missing 'action' field");
+            SendError(response, 400, "Missing 'action' field", "missing_action");
+            return;
+        }
+        if (actionElem.ValueKind != JsonValueKind.String)
+        {
+            SendError(response, 400, "'action' field must be a string", "invalid_action_type");
             return;
         }
 
@@ -474,11 +533,11 @@ public static partial class McpMod
                 var seed = parsed.TryGetValue("seed", out var seedElem) ? seedElem.GetString() : null;
                 var resultTask = RunOnMainThread(() => ExecuteMenuSelect(option, seed));
                 var result = resultTask.GetAwaiter().GetResult();
-                SendJson(response, result);
+                SendActionResultJson(response, result);
             }
             catch (Exception ex)
             {
-                SendError(response, 500, $"Menu action failed: {ex.Message}");
+                SendActionError(response, "Menu action failed", ex);
             }
             return;
         }
@@ -487,17 +546,19 @@ public static partial class McpMod
         {
             var resultTask = RunOnMainThread(() => ExecuteMultiplayerAction(action, parsed));
             var result = resultTask.GetAwaiter().GetResult();
-            SendJson(response, result);
+            SendActionResultJson(response, result);
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Multiplayer action failed: {ex.Message}");
+            SendActionError(response, "Multiplayer action failed", ex);
         }
     }
 
     private static void HandleGetState(HttpListenerRequest request, HttpListenerResponse response)
     {
         string format = request.QueryString["format"] ?? "json";
+        if (!TryValidateStateFormat(response, format))
+            return;
 
         try
         {
@@ -526,16 +587,19 @@ public static partial class McpMod
             GD.PrintErr($"[STS2 MCP] HandleGetState: {ex}");
             try
             {
-                response.StatusCode = 500;
-                SendJson(response, new Dictionary<string, object?>
-                {
-                    ["error"] = $"Failed to read game state: {ex.Message}",
-                    ["exception_type"] = ex.GetType().FullName,
-                    ["stack_trace"] = ex.StackTrace
-                });
+                SendError(response, 500, $"Failed to read game state: {ex.Message}", "singleplayer_state_read_failed");
             }
             catch { /* response may be unusable */ }
         }
+    }
+
+    private static bool TryValidateStateFormat(HttpListenerResponse response, string format)
+    {
+        if (format is "json" or "markdown")
+            return true;
+
+        SendError(response, 400, "Invalid format. Use: json, markdown", "invalid_format");
+        return false;
     }
 
     private static void HandlePostAction(HttpListenerRequest request, HttpListenerResponse response)
@@ -551,13 +615,18 @@ public static partial class McpMod
         }
         catch
         {
-            SendError(response, 400, "Invalid JSON");
+            SendError(response, 400, "Invalid JSON", "invalid_json");
             return;
         }
 
         if (parsed == null || !parsed.TryGetValue("action", out var actionElem))
         {
-            SendError(response, 400, "Missing 'action' field");
+            SendError(response, 400, "Missing 'action' field", "missing_action");
+            return;
+        }
+        if (actionElem.ValueKind != JsonValueKind.String)
+        {
+            SendError(response, 400, "'action' field must be a string", "invalid_action_type");
             return;
         }
 
@@ -572,11 +641,11 @@ public static partial class McpMod
                 var seed = parsed.TryGetValue("seed", out var seedElem) ? seedElem.GetString() : null;
                 var resultTask = RunOnMainThread(() => ExecuteMenuSelect(option, seed));
                 var result = resultTask.GetAwaiter().GetResult();
-                SendJson(response, result);
+                SendActionResultJson(response, result);
             }
             catch (Exception ex)
             {
-                SendError(response, 500, $"Menu action failed: {ex.Message}");
+                SendActionError(response, "Menu action failed", ex);
             }
             return;
         }
@@ -585,11 +654,43 @@ public static partial class McpMod
         {
             var resultTask = RunOnMainThread(() => ExecuteAction(action, parsed));
             var result = resultTask.GetAwaiter().GetResult();
-            SendJson(response, result);
+            SendActionResultJson(response, result);
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Action failed: {ex.Message}");
+            SendActionError(response, "Action failed", ex);
         }
+    }
+
+    private static void SendActionError(HttpListenerResponse response, string prefix, Exception ex)
+    {
+        var statusCode = ex is InvalidOperationException or FormatException or OverflowException
+            ? 400
+            : 500;
+        var errorCode = statusCode == 400 ? "invalid_action_payload" : "action_failed";
+        SendError(response, statusCode, $"{prefix}: {ex.Message}", errorCode);
+    }
+
+    private static void SendActionResultJson(HttpListenerResponse response, Dictionary<string, object?> result)
+    {
+        if (result.TryGetValue("status", out var status) && status as string == "error")
+        {
+            if (result.TryGetValue("error_code", out var errorCode))
+            {
+                response.StatusCode = (errorCode as string) switch
+                {
+                    "missing_menu_option" or "unknown_menu_option" or "unknown_action" or "unknown_multiplayer_action" => 400,
+                    "not_on_menu" or "run_not_in_progress" or "not_multiplayer_run" or "blocking_popup_active" => 409,
+                    "local_player_unavailable" => 409,
+                    "timeline_manual_action_required" => 409,
+                    _ => 400
+                };
+            }
+            else
+            {
+                response.StatusCode = 400;
+            }
+        }
+        SendJson(response, result);
     }
 }

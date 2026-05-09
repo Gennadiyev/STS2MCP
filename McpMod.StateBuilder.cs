@@ -31,6 +31,7 @@ using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Relics;
+using MegaCrit.Sts2.Core.Nodes.RestSite;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Screens.Shops;
 using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
@@ -60,14 +61,18 @@ public static partial class McpMod
 {
     private static Dictionary<string, object?> BuildGameState()
     {
-        var result = new Dictionary<string, object?>();
+        var result = new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["kind"] = "singleplayer_state"
+        };
         var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
 
         if (tree?.Root != null)
         {
             var ftueState = BuildVisibleFtueState(tree.Root);
             if (ftueState != null)
-                return ftueState;
+                return WithStateEnvelope(ftueState, "singleplayer_state");
         }
 
         if (!RunManager.Instance.IsInProgress)
@@ -600,6 +605,7 @@ public static partial class McpMod
             ["floor"] = runState.TotalFloor,
             ["ascension"] = runState.AscensionLevel
         };
+        result["current_run"] = BuildActiveRunContext();
 
         // Always include full player data (relics, potions, deck, etc.) on every screen
         var _player = LocalContext.GetMe(runState);
@@ -1066,6 +1072,10 @@ public static partial class McpMod
         battle["round"] = combatState.RoundNumber;
         battle["turn"] = combatState.CurrentSide.ToString().ToLower();
         battle["is_play_phase"] = CombatManager.Instance.IsPlayPhase;
+        battle["player_actions_disabled"] = CombatManager.Instance.PlayerActionsDisabled;
+        var endTurnBlockedReason = GetEndTurnBlockedReason();
+        battle["can_end_turn"] = endTurnBlockedReason == null;
+        battle["end_turn_blocked_reason"] = endTurnBlockedReason;
 
         // Enemies
         var enemies = new List<Dictionary<string, object?>>();
@@ -1080,6 +1090,24 @@ public static partial class McpMod
         battle["enemies"] = enemies;
 
         return battle;
+    }
+
+    private static string? GetEndTurnBlockedReason()
+    {
+        if (!CombatManager.Instance.IsInProgress)
+            return "NotInCombat";
+        if (!CombatManager.Instance.IsPlayPhase)
+            return "NotInPlayPhase";
+        if (CombatManager.Instance.PlayerActionsDisabled)
+            return "PlayerActionsDisabled";
+
+        var hand = NCombatRoom.Instance?.Ui?.Hand;
+        if (hand != null && hand.InCardPlay)
+            return "CardInPlay";
+        if (hand != null && hand.CurrentMode != NPlayerHand.Mode.Play)
+            return "HandSelectionMode";
+
+        return null;
     }
 
     private static Dictionary<string, object?> BuildPlayerState(Player player)
@@ -1112,7 +1140,7 @@ public static partial class McpMod
             int cardIndex = 0;
             foreach (var card in combatState.Hand.Cards)
             {
-                hand.Add(BuildCardState(card, cardIndex));
+                hand.Add(BuildCardState(card, cardIndex, player));
                 cardIndex++;
             }
             state["hand"] = hand;
@@ -1173,6 +1201,11 @@ public static partial class McpMod
 
         state["gold"] = player.Gold;
 
+        var deck = BuildDeckCardList(player);
+        state["deck_count"] = deck.Count;
+        if (deck.Count > 0)
+            state["deck"] = deck;
+
         // Powers (status effects)
         state["status"] = BuildPowersState(creature);
 
@@ -1185,6 +1218,7 @@ public static partial class McpMod
                 ["id"] = relic.Id.Entry,
                 ["name"] = SafeGetText(() => relic.Title),
                 ["description"] = SafeGetText(() => relic.DynamicDescription),
+                ["rarity"] = relic.Rarity.ToString(),
                 ["counter"] = relic.ShowCounter ? relic.DisplayAmount : null,
                 ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
             });
@@ -1198,14 +1232,24 @@ public static partial class McpMod
         {
             if (potion != null)
             {
+                var validTargets = BuildPotionTargetRefs(potion, player);
+                var blockedReason = GetPotionUseBlockedReason(potion, validTargets);
                 potions.Add(new Dictionary<string, object?>
                 {
                     ["id"] = potion.Id.Entry,
                     ["name"] = SafeGetText(() => potion.Title),
                     ["description"] = SafeGetText(() => potion.DynamicDescription),
+                    ["rarity"] = potion.Rarity.ToString(),
                     ["slot"] = slotIndex,
                     ["can_use_in_combat"] = potion.Usage == PotionUsage.CombatOnly || potion.Usage == PotionUsage.AnyTime,
+                    ["can_use"] = blockedReason == null,
+                    ["use_blocked_reason"] = blockedReason,
+                    ["can_discard"] = !potion.IsQueued,
+                    ["discard_blocked_reason"] = potion.IsQueued ? "AlreadyQueued" : null,
+                    ["requires_target"] = potion.TargetType == TargetType.AnyEnemy,
+                    ["valid_targets"] = validTargets,
                     ["target_type"] = potion.TargetType.ToString(),
+                    ["usage"] = potion.Usage.ToString(),
                     ["keywords"] = BuildHoverTips(potion.ExtraHoverTips)
                 });
             }
@@ -1215,6 +1259,83 @@ public static partial class McpMod
         state["max_potion_slots"] = player.MaxPotionCount;
 
         return state;
+    }
+
+    private static string? GetPotionUseBlockedReason(
+        PotionModel potion,
+        List<Dictionary<string, object?>> validTargets)
+    {
+        if (potion.IsQueued)
+            return "AlreadyQueued";
+        if (potion.Owner.Creature.IsDead)
+            return "PlayerDead";
+        if (!potion.PassesCustomUsabilityCheck)
+            return "CustomUsabilityCheckFailed";
+
+        var inCombat = CombatManager.Instance.IsInProgress;
+        if (potion.Usage == PotionUsage.CombatOnly)
+        {
+            if (!inCombat)
+                return "CombatOnly";
+            if (!CombatManager.Instance.IsPlayPhase)
+                return "NotInPlayPhase";
+        }
+        else if (potion.Usage == PotionUsage.Automatic)
+        {
+            return "Automatic";
+        }
+
+        if (inCombat && CombatManager.Instance.PlayerActionsDisabled)
+            return "PlayerActionsDisabled";
+
+        if (potion.TargetType == TargetType.AnyEnemy && !inCombat)
+            return "EnemyTargetRequiresCombat";
+
+        if (potion.TargetType == TargetType.AnyEnemy && validTargets.Count == 0)
+            return "NoValidTargets";
+
+        return null;
+    }
+
+    private static List<Dictionary<string, object?>> BuildPotionTargetRefs(PotionModel potion, Player player)
+    {
+        var targets = new List<Dictionary<string, object?>>();
+        if (potion.TargetType != TargetType.AnyEnemy)
+            return targets;
+
+        if (!CombatManager.Instance.IsInProgress)
+            return targets;
+
+        var combatState = player.Creature.CombatState;
+        return BuildEnemyTargetRefs(combatState);
+    }
+
+    private static List<Dictionary<string, object?>> BuildEnemyTargetRefs(CombatState? combatState)
+    {
+        var targets = new List<Dictionary<string, object?>>();
+        if (combatState == null)
+            return targets;
+
+        var entityCounts = new Dictionary<string, int>();
+        foreach (var creature in combatState.Enemies)
+        {
+            if (!creature.IsAlive)
+                continue;
+
+            var baseId = creature.Monster?.Id.Entry ?? "unknown";
+            if (!entityCounts.TryGetValue(baseId, out var count))
+                count = 0;
+            entityCounts[baseId] = count + 1;
+
+            targets.Add(new Dictionary<string, object?>
+            {
+                ["entity_id"] = $"{baseId}_{count}",
+                ["combat_id"] = creature.CombatId,
+                ["name"] = SafeGetText(() => creature.Monster?.Title)
+            });
+        }
+
+        return targets;
     }
 
     private static string GetCostDisplay(CardModel card)
@@ -1233,6 +1354,7 @@ public static partial class McpMod
     /// </summary>
     private static Dictionary<string, object?> BuildCardInfo(CardModel card, PileType pile = PileType.None)
     {
+        var upgradedPreview = SafeBuildUpgradedCardPreview(card);
         return new Dictionary<string, object?>
         {
             ["id"] = card.Id.Entry,
@@ -1243,38 +1365,138 @@ public static partial class McpMod
             ["description"] = SafeGetCardDescription(card, pile),
             ["rarity"] = card.Rarity.ToString(),
             ["is_upgraded"] = card.IsUpgraded,
+            ["is_upgradable"] = card.IsUpgradable,
+            ["current_upgrade_level"] = card.CurrentUpgradeLevel,
+            ["max_upgrade_level"] = card.MaxUpgradeLevel,
+            ["upgrade_preview_type"] = card.UpgradePreviewType.ToString(),
+            ["upgrade_preview_cost"] = upgradedPreview != null ? GetCostDisplay(upgradedPreview) : null,
+            ["upgrade_preview_star_cost"] = upgradedPreview != null ? GetStarCostDisplay(upgradedPreview) : null,
+            ["upgrade_preview_description"] = SafeGetCardUpgradePreviewDescription(card, pile),
             ["keywords"] = BuildHoverTips(card.HoverTips)
         };
     }
 
-    private static Dictionary<string, object?> BuildCardState(CardModel card, int index)
+    private static Dictionary<string, object?> BuildCardState(CardModel card, int index, Player player)
     {
         card.CanPlay(out var unplayableReason, out _);
+        string? blockedReason = unplayableReason != UnplayableReason.None
+            ? unplayableReason.ToString()
+            : null;
+
+        var combatReady = CombatManager.Instance.IsInProgress
+                          && CombatManager.Instance.IsPlayPhase
+                          && !CombatManager.Instance.PlayerActionsDisabled;
+        if (blockedReason == null && CombatManager.Instance.IsInProgress)
+        {
+            if (!CombatManager.Instance.IsPlayPhase)
+                blockedReason = "NotInPlayPhase";
+            else if (CombatManager.Instance.PlayerActionsDisabled)
+                blockedReason = "PlayerActionsDisabled";
+        }
 
         var state = BuildCardInfo(card);
         state["index"] = index;
         state["description"] = SafeGetCardDescription(card); // hand cards use default pile
         state["target_type"] = card.TargetType.ToString();
-        state["can_play"] = unplayableReason == UnplayableReason.None;
-        state["unplayable_reason"] = unplayableReason != UnplayableReason.None ? unplayableReason.ToString() : null;
+        state["requires_target"] = card.TargetType == TargetType.AnyEnemy;
+        state["valid_targets"] = card.TargetType == TargetType.AnyEnemy
+            ? BuildEnemyTargetRefs(player.Creature.CombatState)
+            : new List<Dictionary<string, object?>>();
+        state["can_play"] = combatReady && blockedReason == null;
+        state["unplayable_reason"] = blockedReason;
         return state;
     }
 
     private static List<Dictionary<string, object?>> BuildPileCardList(IEnumerable<CardModel> cards, PileType pile)
     {
         var list = new List<Dictionary<string, object?>>();
+        var index = 0;
         foreach (var card in cards)
         {
-            // Pile cards only need a subset - keep it lightweight
-            list.Add(new Dictionary<string, object?>
-            {
-                ["name"] = SafeGetText(() => card.Title),
-                ["cost"] = GetCostDisplay(card),
-                ["star_cost"] = GetStarCostDisplay(card),
-                ["description"] = SafeGetCardDescription(card, pile)
-            });
+            var cardInfo = BuildCardInfo(card, pile);
+            cardInfo["index"] = index++;
+            list.Add(cardInfo);
         }
         return list;
+    }
+
+    private static List<Dictionary<string, object?>> BuildDeckCardList(Player player)
+    {
+        var list = new List<Dictionary<string, object?>>();
+        var index = 0;
+        foreach (var card in GetPlayerDeckCards(player))
+        {
+            var cardInfo = BuildCardInfo(card);
+            cardInfo["index"] = index++;
+            list.Add(cardInfo);
+        }
+        return list;
+    }
+
+    private static IEnumerable<CardModel> GetPlayerDeckCards(Player player)
+    {
+        var deck = GetMemberValue(player, "Deck");
+        if (deck == null)
+            yield break;
+
+        var cards = GetMemberValue(deck, "Cards") ?? deck;
+        if (cards is not System.Collections.IEnumerable enumerable)
+            yield break;
+
+        foreach (var item in enumerable)
+        {
+            if (item is CardModel card)
+                yield return card;
+        }
+    }
+
+    private static object? GetMemberValue(object source, string memberName)
+    {
+        const System.Reflection.BindingFlags Flags =
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.Public |
+            System.Reflection.BindingFlags.NonPublic;
+
+        var type = source.GetType();
+        try
+        {
+            var property = type.GetProperty(memberName, Flags);
+            if (property != null)
+                return property.GetValue(source);
+        }
+        catch { }
+
+        try
+        {
+            var field = type.GetField(memberName, Flags);
+            if (field != null)
+                return field.GetValue(source);
+        }
+        catch { }
+
+        return null;
+    }
+
+    private static bool? GetBoolMemberValue(object source, string memberName)
+    {
+        var value = GetMemberValue(source, memberName);
+        return value is bool boolValue ? boolValue : null;
+    }
+
+    private static void AddCardHolderState(Dictionary<string, object?> cardInfo, Control holder)
+    {
+        var isSelected = GetBoolMemberValue(holder, "IsSelected")
+                         ?? GetBoolMemberValue(holder, "_isSelected");
+
+        cardInfo["is_selected"] = isSelected ?? false;
+        cardInfo["is_visible"] = IsNodeVisible(holder);
+        cardInfo["can_select"] = IsCardHolderSelectable(holder);
+    }
+
+    private static bool IsCardHolderSelectable(Control holder)
+    {
+        var isEnabled = GetBoolMemberValue(holder, "IsEnabled");
+        return (isEnabled ?? true) && IsNodeVisible(holder);
     }
 
     private static Dictionary<string, object?> BuildEnemyState(Creature creature, Dictionary<string, int> entityCounts)
@@ -1296,6 +1518,10 @@ public static partial class McpMod
             ["hp"] = creature.CurrentHp,
             ["max_hp"] = creature.MaxHp,
             ["block"] = creature.Block,
+            ["is_alive"] = creature.IsAlive,
+            ["is_visible"] = creature.IsAlive,
+            ["can_target"] = creature.IsAlive,
+            ["can_select"] = creature.IsAlive,
             ["status"] = BuildPowersState(creature)
         };
 
@@ -1337,7 +1563,7 @@ public static partial class McpMod
     {
         var state = new Dictionary<string, object?>();
 
-        var eventModel = eventRoom.CanonicalEvent;
+        var eventModel = eventRoom.LocalMutableEvent ?? eventRoom.CanonicalEvent;
         bool isAncient = eventModel is AncientEventModel;
         state["event_id"] = eventModel.Id.Entry;
         state["event_name"] = SafeGetText(() => eventModel.Title);
@@ -1364,7 +1590,9 @@ public static partial class McpMod
         var options = new List<Dictionary<string, object?>>();
         if (uiRoom != null)
         {
-            var buttons = FindAll<NEventOptionButton>(uiRoom);
+            var buttons = FindAll<NEventOptionButton>(uiRoom)
+                .Where(button => button.Visible && button.IsVisibleInTree())
+                .ToList();
             int index = 0;
             foreach (var button in buttons)
             {
@@ -1375,13 +1603,19 @@ public static partial class McpMod
                     ["title"] = SafeGetText(() => opt.Title),
                     ["description"] = SafeGetText(() => opt.Description),
                     ["is_locked"] = opt.IsLocked,
+                    ["is_enabled"] = button.IsEnabled,
+                    ["is_visible"] = true,
+                    ["can_choose"] = button.IsEnabled && !opt.IsLocked,
                     ["is_proceed"] = opt.IsProceed,
                     ["was_chosen"] = opt.WasChosen
                 };
                 if (opt.Relic != null)
                 {
+                    optData["relic_id"] = opt.Relic.Id.Entry;
                     optData["relic_name"] = SafeGetText(() => opt.Relic.Title);
                     optData["relic_description"] = SafeGetText(() => opt.Relic.DynamicDescription);
+                    optData["relic_rarity"] = opt.Relic.Rarity.ToString();
+                    optData["relic_keywords"] = BuildHoverTips(opt.Relic.HoverTipsExcludingRelic);
                 }
                 optData["keywords"] = BuildHoverTips(opt.HoverTips);
                 options.Add(optData);
@@ -1442,11 +1676,19 @@ public static partial class McpMod
         // Proceed button
         if (fakeMerchantNode != null)
         {
+            var inventoryUI = FindFirst<NMerchantInventory>(fakeMerchantNode);
+            var backButton = FindFirst<NBackButton>(fakeMerchantNode);
             var proceedButton = FindFirst<NProceedButton>(fakeMerchantNode);
-            shopState["can_proceed"] = proceedButton?.IsEnabled ?? false;
+            var inventoryOpen = inventoryUI?.IsOpen == true;
+            var canCloseInventory = inventoryOpen && IsControlVisibleOrActionable(backButton);
+            shopState["inventory_open"] = inventoryOpen;
+            shopState["can_close_inventory"] = canCloseInventory;
+            shopState["can_proceed"] = IsControlVisibleOrActionable(proceedButton) || canCloseInventory;
         }
         else
         {
+            shopState["inventory_open"] = false;
+            shopState["can_close_inventory"] = false;
             shopState["can_proceed"] = false;
         }
 
@@ -1477,13 +1719,15 @@ public static partial class McpMod
                 ["category"] = "relic",
                 ["price"] = entry.Cost,
                 ["is_stocked"] = entry.IsStocked,
-                ["can_afford"] = entry.EnoughGold
+                ["can_afford"] = entry.EnoughGold,
+                ["can_purchase"] = entry.IsStocked && entry.EnoughGold
             };
             if (entry.Model is { } relic)
             {
                 item["relic_id"] = relic.Id.Entry;
                 item["relic_name"] = SafeGetText(() => relic.Title);
                 item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
+                item["relic_rarity"] = relic.Rarity.ToString();
                 item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
             }
             items.Add(item);
@@ -1498,24 +1742,33 @@ public static partial class McpMod
     {
         var state = new Dictionary<string, object?>();
 
+        var optionButtons = NRestSiteRoom.Instance != null
+            ? FindAll<NRestSiteButton>(NRestSiteRoom.Instance)
+                .Where(button => button.Visible && button.IsVisibleInTree())
+                .ToList()
+            : new List<NRestSiteButton>();
         var options = new List<Dictionary<string, object?>>();
+
         int index = 0;
-        foreach (var opt in restSiteRoom.Options)
+        foreach (var button in optionButtons)
         {
+            var opt = button.Option;
             options.Add(new Dictionary<string, object?>
             {
                 ["index"] = index,
                 ["id"] = opt.OptionId,
                 ["name"] = SafeGetText(() => opt.Title),
                 ["description"] = SafeGetText(() => opt.Description),
-                ["is_enabled"] = opt.IsEnabled
+                ["is_enabled"] = opt.IsEnabled && button.IsEnabled,
+                ["is_visible"] = true,
+                ["can_choose"] = opt.IsEnabled && button.IsEnabled
             });
             index++;
         }
         state["options"] = options;
 
         var proceedButton = NRestSiteRoom.Instance?.ProceedButton;
-        state["can_proceed"] = proceedButton?.IsEnabled ?? false;
+        state["can_proceed"] = IsControlVisibleOrActionable(proceedButton);
 
         return state;
     }
@@ -1528,7 +1781,7 @@ public static partial class McpMod
         if (inventory == null)
         {
             state["items"] = new List<Dictionary<string, object?>>();
-            state["can_proceed"] = NMerchantRoom.Instance?.ProceedButton?.IsEnabled ?? false;
+            state["can_proceed"] = IsControlVisibleOrActionable(NMerchantRoom.Instance?.ProceedButton);
             state["error"] =
                 "Shop inventory is not ready yet (null). Often happens right after entering the merchant from the map; retry in a moment.";
             return state;
@@ -1547,6 +1800,7 @@ public static partial class McpMod
                 ["price"] = entry.Cost,
                 ["is_stocked"] = entry.IsStocked,
                 ["can_afford"] = entry.EnoughGold,
+                ["can_purchase"] = entry.IsStocked && entry.EnoughGold,
                 ["on_sale"] = entry.IsOnSale
             };
             if (entry.CreationResult?.Card is { } card)
@@ -1559,6 +1813,14 @@ public static partial class McpMod
                 item["card_star_cost"] = cardInfo["star_cost"];
                 item["card_rarity"] = cardInfo["rarity"];
                 item["card_description"] = cardInfo["description"];
+                item["card_is_upgraded"] = cardInfo["is_upgraded"];
+                item["card_is_upgradable"] = cardInfo["is_upgradable"];
+                item["card_current_upgrade_level"] = cardInfo["current_upgrade_level"];
+                item["card_max_upgrade_level"] = cardInfo["max_upgrade_level"];
+                item["card_upgrade_preview_type"] = cardInfo["upgrade_preview_type"];
+                item["card_upgrade_preview_cost"] = cardInfo["upgrade_preview_cost"];
+                item["card_upgrade_preview_star_cost"] = cardInfo["upgrade_preview_star_cost"];
+                item["card_upgrade_preview_description"] = cardInfo["upgrade_preview_description"];
                 item["keywords"] = cardInfo["keywords"];
             }
             items.Add(item);
@@ -1574,13 +1836,15 @@ public static partial class McpMod
                 ["category"] = "relic",
                 ["price"] = entry.Cost,
                 ["is_stocked"] = entry.IsStocked,
-                ["can_afford"] = entry.EnoughGold
+                ["can_afford"] = entry.EnoughGold,
+                ["can_purchase"] = entry.IsStocked && entry.EnoughGold
             };
             if (entry.Model is { } relic)
             {
                 item["relic_id"] = relic.Id.Entry;
                 item["relic_name"] = SafeGetText(() => relic.Title);
                 item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
+                item["relic_rarity"] = relic.Rarity.ToString();
                 item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
             }
             items.Add(item);
@@ -1596,13 +1860,17 @@ public static partial class McpMod
                 ["category"] = "potion",
                 ["price"] = entry.Cost,
                 ["is_stocked"] = entry.IsStocked,
-                ["can_afford"] = entry.EnoughGold
+                ["can_afford"] = entry.EnoughGold,
+                ["can_purchase"] = entry.IsStocked && entry.EnoughGold
             };
             if (entry.Model is { } potion)
             {
                 item["potion_id"] = potion.Id.Entry;
                 item["potion_name"] = SafeGetText(() => potion.Title);
                 item["potion_description"] = SafeGetText(() => potion.DynamicDescription);
+                item["potion_rarity"] = potion.Rarity.ToString();
+                item["potion_target_type"] = potion.TargetType.ToString();
+                item["potion_usage"] = potion.Usage.ToString();
                 item["keywords"] = BuildHoverTips(potion.ExtraHoverTips);
             }
             items.Add(item);
@@ -1618,14 +1886,22 @@ public static partial class McpMod
                 ["category"] = "card_removal",
                 ["price"] = removal.Cost,
                 ["is_stocked"] = removal.IsStocked,
-                ["can_afford"] = removal.EnoughGold
+                ["can_afford"] = removal.EnoughGold,
+                ["can_purchase"] = removal.IsStocked && removal.EnoughGold
             });
         }
 
         state["items"] = items;
 
-        var proceedButton = NMerchantRoom.Instance?.ProceedButton;
-        state["can_proceed"] = proceedButton?.IsEnabled ?? false;
+        var merchantRoomNode = NMerchantRoom.Instance;
+        var inventoryOpen = merchantRoomNode?.Inventory?.IsOpen == true;
+        var backButton = merchantRoomNode != null ? FindFirst<NBackButton>(merchantRoomNode) : null;
+        var canCloseInventory = inventoryOpen && IsControlVisibleOrActionable(backButton);
+        state["inventory_open"] = inventoryOpen;
+        state["can_close_inventory"] = canCloseInventory;
+
+        var proceedButton = merchantRoomNode?.ProceedButton;
+        state["can_proceed"] = IsControlVisibleOrActionable(proceedButton) || canCloseInventory;
 
         return state;
     }
@@ -1666,7 +1942,7 @@ public static partial class McpMod
         if (mapScreen != null)
         {
             var travelable = FindAll<NMapPoint>(mapScreen)
-                .Where(mp => mp.State == MapPointState.Travelable && mp.Point != null)
+                .Where(mp => mp.State == MapPointState.Travelable && mp.Point != null && mp.Visible && mp.IsVisibleInTree())
                 .OrderBy(mp => mp.Point!.coord.col)
                 .ToList();
 
@@ -1679,7 +1955,9 @@ public static partial class McpMod
                     ["index"] = index,
                     ["col"] = pt.coord.col,
                     ["row"] = pt.coord.row,
-                    ["type"] = pt.PointType.ToString()
+                    ["type"] = pt.PointType.ToString(),
+                    ["is_visible"] = true,
+                    ["can_travel"] = true
                 };
 
                 // 1-level lookahead
@@ -1744,19 +2022,22 @@ public static partial class McpMod
         var state = new Dictionary<string, object?>();
 
         // Reward items
-        var rewardButtons = FindAll<NRewardButton>(rewardsScreen);
+        var rewardButtons = FindAll<NRewardButton>(rewardsScreen)
+            .Where(button => button.Reward != null && button.IsEnabled && button.Visible && button.IsVisibleInTree())
+            .ToList();
         var items = new List<Dictionary<string, object?>>();
         int index = 0;
         foreach (var button in rewardButtons)
         {
-            if (button.Reward == null || !button.IsEnabled) continue;
-            var reward = button.Reward;
+            var reward = button.Reward!;
 
             var item = new Dictionary<string, object?>
             {
                 ["index"] = index,
                 ["type"] = GetRewardTypeName(reward),
-                ["description"] = SafeGetText(() => reward.Description)
+                ["description"] = SafeGetText(() => reward.Description),
+                ["is_visible"] = true,
+                ["can_claim"] = true
             };
 
             // Type-specific details
@@ -1767,6 +2048,18 @@ public static partial class McpMod
                 item["potion_id"] = potionReward.Potion.Id.Entry;
                 item["potion_name"] = SafeGetText(() => potionReward.Potion.Title);
                 item["potion_description"] = SafeGetText(() => potionReward.Potion.DynamicDescription);
+                item["potion_rarity"] = potionReward.Potion.Rarity.ToString();
+                item["potion_target_type"] = potionReward.Potion.TargetType.ToString();
+                item["potion_usage"] = potionReward.Potion.Usage.ToString();
+                item["keywords"] = BuildHoverTips(potionReward.Potion.ExtraHoverTips);
+            }
+            else if (reward is RelicReward relicReward && GetRelicRewardModel(relicReward) is { } relic)
+            {
+                item["relic_id"] = relic.Id.Entry;
+                item["relic_name"] = SafeGetText(() => relic.Title);
+                item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
+                item["relic_rarity"] = relic.Rarity.ToString();
+                item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
             }
 
             items.Add(item);
@@ -1776,16 +2069,45 @@ public static partial class McpMod
 
         // Proceed button
         var proceedButton = FindFirst<NProceedButton>(rewardsScreen);
-        state["can_proceed"] = proceedButton?.IsEnabled ?? false;
+        state["can_proceed"] = IsControlVisibleOrActionable(proceedButton);
 
         return state;
+    }
+
+    private static RelicModel? GetRelicRewardModel(RelicReward reward)
+    {
+        const System.Reflection.BindingFlags Flags =
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.Public |
+            System.Reflection.BindingFlags.NonPublic;
+
+        var type = reward.GetType();
+        foreach (var property in type.GetProperties(Flags))
+        {
+            if (!typeof(RelicModel).IsAssignableFrom(property.PropertyType))
+                continue;
+            try { return property.GetValue(reward) as RelicModel; }
+            catch { }
+        }
+
+        foreach (var field in type.GetFields(Flags))
+        {
+            if (!typeof(RelicModel).IsAssignableFrom(field.FieldType))
+                continue;
+            try { return field.GetValue(reward) as RelicModel; }
+            catch { }
+        }
+
+        return null;
     }
 
     private static Dictionary<string, object?> BuildCardRewardState(NCardRewardSelectionScreen cardScreen)
     {
         var state = new Dictionary<string, object?>();
 
-        var cardHolders = FindAllSortedByPosition<NCardHolder>(cardScreen);
+        var cardHolders = FindAllSortedByPosition<NCardHolder>(cardScreen)
+            .Where(holder => holder.CardModel != null && holder.Visible && holder.IsVisibleInTree())
+            .ToList();
         var cards = new List<Dictionary<string, object?>>();
         int index = 0;
         foreach (var holder in cardHolders)
@@ -1795,12 +2117,15 @@ public static partial class McpMod
 
             var cardInfo = BuildCardInfo(card);
             cardInfo["index"] = index;
+            AddCardHolderState(cardInfo, holder);
             cards.Add(cardInfo);
             index++;
         }
         state["cards"] = cards;
 
-        var altButtons = FindAll<NCardRewardAlternativeButton>(cardScreen);
+        var altButtons = FindAll<NCardRewardAlternativeButton>(cardScreen)
+            .Where(button => button.IsEnabled && button.Visible && button.IsVisibleInTree())
+            .ToList();
         state["can_skip"] = altButtons.Count > 0;
 
         return state;
@@ -1833,6 +2158,7 @@ public static partial class McpMod
         // Cards in the grid (sorted by visual position - MoveToFront can reorder children)
         var cardHolders = FindAllSortedByPosition<NGridCardHolder>(screen);
         var cards = new List<Dictionary<string, object?>>();
+        var selectedCards = new List<Dictionary<string, object?>>();
         int index = 0;
         foreach (var holder in cardHolders)
         {
@@ -1841,10 +2167,17 @@ public static partial class McpMod
 
             var cardInfo = BuildCardInfo(card);
             cardInfo["index"] = index;
+            AddCardHolderState(cardInfo, holder);
             cards.Add(cardInfo);
+            if (cardInfo["is_selected"] is true)
+                selectedCards.Add(new Dictionary<string, object?>(cardInfo));
             index++;
         }
         state["cards"] = cards;
+        state["selected_cards"] = selectedCards;
+        state["selected_count"] = selectedCards.Count;
+        state["min_select"] = GetMemberValue(screen, "MinSelect");
+        state["max_select"] = GetMemberValue(screen, "MaxSelect");
 
         // Preview container showing? (selection complete, awaiting confirm)
         // Upgrade screens use UpgradeSinglePreviewContainer / UpgradeMultiPreviewContainer
@@ -1855,6 +2188,24 @@ public static partial class McpMod
                             || (previewMulti?.Visible ?? false)
                             || (previewGeneric?.Visible ?? false);
         state["preview_showing"] = previewShowing;
+
+        var previewCards = new List<Dictionary<string, object?>>();
+        if (previewShowing)
+        {
+            int previewIndex = 0;
+            foreach (var holder in FindAllSortedByPosition<NPreviewCardHolder>(screen)
+                         .Where(holder => holder.Visible && holder.IsVisibleInTree()))
+            {
+                var card = holder.CardModel;
+                if (card == null) continue;
+
+                var cardInfo = BuildCardInfo(card);
+                cardInfo["index"] = previewIndex;
+                previewCards.Add(cardInfo);
+                previewIndex++;
+            }
+        }
+        state["preview_cards"] = previewCards;
 
         // Button states - when a preview is open, cancel goes through the
         // preview container's Cancel / PreviewCancel button (same path as
@@ -1868,14 +2219,14 @@ public static partial class McpMod
                 {
                     var cancelBtn = container.GetNodeOrNull<NBackButton>("Cancel")
                                     ?? container.GetNodeOrNull<NBackButton>("%PreviewCancel");
-                    if (cancelBtn?.IsEnabled == true) { canCancel = true; break; }
+                    if (IsControlVisibleOrActionable(cancelBtn)) { canCancel = true; break; }
                 }
             }
         }
         if (!canCancel)
         {
             var closeButton = screen.GetNodeOrNull<NBackButton>("%Close");
-            canCancel = closeButton?.IsEnabled ?? false;
+            canCancel = IsControlVisibleOrActionable(closeButton);
         }
         state["can_cancel"] = canCancel;
 
@@ -1887,20 +2238,20 @@ public static partial class McpMod
             {
                 var confirm = container.GetNodeOrNull<NConfirmButton>("Confirm")
                               ?? container.GetNodeOrNull<NConfirmButton>("%PreviewConfirm");
-                if (confirm?.IsEnabled == true) { canConfirm = true; break; }
+                if (IsControlVisibleOrActionable(confirm)) { canConfirm = true; break; }
             }
         }
         if (!canConfirm)
         {
             var mainConfirm = screen.GetNodeOrNull<NConfirmButton>("Confirm")
                               ?? screen.GetNodeOrNull<NConfirmButton>("%Confirm");
-            if (mainConfirm?.IsEnabled == true) canConfirm = true;
+            if (IsControlVisibleOrActionable(mainConfirm)) canConfirm = true;
         }
         // Fallback: search entire screen tree for any enabled confirm button
         // (covers subclasses like NDeckEnchantSelectScreen)
         if (!canConfirm)
         {
-            canConfirm = FindAll<NConfirmButton>(screen).Any(b => b.IsEnabled && b.IsVisibleInTree());
+            canConfirm = FindAll<NConfirmButton>(screen).Any(IsControlVisibleOrActionable);
         }
         state["can_confirm"] = canConfirm;
 
@@ -1924,13 +2275,14 @@ public static partial class McpMod
 
             var cardInfo = BuildCardInfo(card);
             cardInfo["index"] = index;
+            AddCardHolderState(cardInfo, holder);
             cards.Add(cardInfo);
             index++;
         }
         state["cards"] = cards;
 
         var skipButton = screen.GetNodeOrNull<NClickableControl>("SkipButton");
-        state["can_skip"] = skipButton?.IsEnabled == true && skipButton.Visible;
+        state["can_skip"] = IsControlVisibleOrActionable(skipButton);
         state["preview_showing"] = false;
         state["can_confirm"] = false;
         state["can_cancel"] = state["can_skip"];
@@ -1947,7 +2299,8 @@ public static partial class McpMod
 
         var bundles = new List<Dictionary<string, object?>>();
         int index = 0;
-        foreach (var bundle in FindAll<NCardBundle>(screen))
+        foreach (var bundle in FindAll<NCardBundle>(screen)
+                     .Where(bundle => bundle.Visible && bundle.IsVisibleInTree()))
         {
             var cards = new List<Dictionary<string, object?>>();
             int cardIndex = 0;
@@ -1963,7 +2316,9 @@ public static partial class McpMod
             {
                 ["index"] = index,
                 ["card_count"] = cards.Count,
-                ["cards"] = cards
+                ["cards"] = cards,
+                ["is_visible"] = true,
+                ["can_select"] = bundle.Hitbox.IsEnabled && IsNodeVisible(bundle.Hitbox)
             });
             index++;
         }
@@ -1978,7 +2333,8 @@ public static partial class McpMod
         if (previewCardsContainer != null)
         {
             int previewIndex = 0;
-            foreach (var holder in FindAll<NPreviewCardHolder>(previewCardsContainer))
+            foreach (var holder in FindAll<NPreviewCardHolder>(previewCardsContainer)
+                         .Where(holder => IsNodeVisible(holder)))
             {
                 var card = holder.CardModel;
                 if (card == null) continue;
@@ -1993,8 +2349,8 @@ public static partial class McpMod
 
         var cancelButton = screen.GetNodeOrNull<NBackButton>("%Cancel");
         var confirmButton = screen.GetNodeOrNull<NConfirmButton>("%Confirm");
-        state["can_cancel"] = cancelButton?.IsEnabled == true;
-        state["can_confirm"] = confirmButton?.IsEnabled == true;
+        state["can_cancel"] = IsControlVisibleOrActionable(cancelButton);
+        state["can_confirm"] = IsControlVisibleOrActionable(confirmButton);
 
         return state;
     }
@@ -2033,6 +2389,7 @@ public static partial class McpMod
             var cardInfo = BuildCardInfo(card);
             cardInfo["index"] = index;
             cardInfo["description"] = SafeGetCardDescription(card); // hand cards use default pile
+            AddCardHolderState(cardInfo, holder);
             selectableCards.Add(cardInfo);
             index++;
         }
@@ -2049,11 +2406,10 @@ public static partial class McpMod
             {
                 var card = holder.CardModel;
                 if (card == null) continue;
-                selectedCards.Add(new Dictionary<string, object?>
-                {
-                    ["index"] = selIdx,
-                    ["name"] = SafeGetText(() => card.Title)
-                });
+                var cardInfo = BuildCardInfo(card);
+                cardInfo["index"] = selIdx;
+                cardInfo["description"] = SafeGetCardDescription(card);
+                selectedCards.Add(cardInfo);
                 selIdx++;
             }
             if (selectedCards.Count > 0)
@@ -2062,7 +2418,7 @@ public static partial class McpMod
 
         // Confirm button state
         var confirmBtn = hand.GetNodeOrNull<NConfirmButton>("%SelectModeConfirmButton");
-        state["can_confirm"] = confirmBtn?.IsEnabled ?? false;
+        state["can_confirm"] = IsControlVisibleOrActionable(confirmBtn);
 
         return state;
     }
@@ -2073,7 +2429,9 @@ public static partial class McpMod
 
         state["prompt"] = "Choose a relic.";
 
-        var relicHolders = FindAll<NRelicBasicHolder>(screen);
+        var relicHolders = FindAll<NRelicBasicHolder>(screen)
+            .Where(holder => holder.Relic?.Model != null && holder.IsEnabled && holder.Visible && holder.IsVisibleInTree())
+            .ToList();
         var relics = new List<Dictionary<string, object?>>();
         int index = 0;
         foreach (var holder in relicHolders)
@@ -2088,6 +2446,8 @@ public static partial class McpMod
                 ["name"] = SafeGetText(() => relic.Title),
                 ["description"] = SafeGetText(() => relic.DynamicDescription),
                 ["rarity"] = relic.Rarity.ToString(),
+                ["is_visible"] = true,
+                ["can_select"] = holder.IsEnabled,
                 ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
             });
             index++;
@@ -2095,7 +2455,7 @@ public static partial class McpMod
         state["relics"] = relics;
 
         var skipButton = screen.GetNodeOrNull<NClickableControl>("SkipButton");
-        state["can_skip"] = skipButton?.IsEnabled == true && skipButton.Visible;
+        state["can_skip"] = skipButton?.IsEnabled == true && skipButton.Visible && skipButton.IsVisibleInTree();
 
         return state;
     }
@@ -2128,12 +2488,13 @@ public static partial class McpMod
         var clickableCells = new List<Dictionary<string, object?>>();
         foreach (var cell in cells.OrderBy(c => c.Entity.Y).ThenBy(c => c.Entity.X))
         {
+            var cellVisible = cell.Visible && cell.IsVisibleInTree();
             var cellState = new Dictionary<string, object?>
             {
                 ["x"] = cell.Entity.X,
                 ["y"] = cell.Entity.Y,
                 ["is_hidden"] = cell.Entity.IsHidden,
-                ["is_clickable"] = cell.Entity.IsHidden && cell.Visible,
+                ["is_clickable"] = cell.Entity.IsHidden && cellVisible,
                 ["is_highlighted"] = cell.Entity.IsHighlighted,
                 ["is_hovered"] = cell.Entity.IsHovered
             };
@@ -2145,7 +2506,7 @@ public static partial class McpMod
             }
 
             cellStates.Add(cellState);
-            if (cell.Entity.IsHidden && cell.Visible)
+            if (cell.Entity.IsHidden && cellVisible)
             {
                 clickableCells.Add(new Dictionary<string, object?>
                 {
@@ -2175,16 +2536,16 @@ public static partial class McpMod
         }
         state["revealed_items"] = revealedItems;
 
-        var bigButton = screen.GetNodeOrNull<Godot.Control>("%BigDivinationButton");
-        var smallButton = screen.GetNodeOrNull<Godot.Control>("%SmallDivinationButton");
-        bool bigVisible = bigButton?.Visible == true;
-        bool smallVisible = smallButton?.Visible == true;
+        var bigButton = screen.GetNodeOrNull<NClickableControl>("%BigDivinationButton");
+        var smallButton = screen.GetNodeOrNull<NClickableControl>("%SmallDivinationButton");
+        bool bigUsable = bigButton?.Visible == true && bigButton.IsVisibleInTree() && bigButton.IsEnabled;
+        bool smallUsable = smallButton?.Visible == true && smallButton.IsVisibleInTree() && smallButton.IsEnabled;
         bool bigActive = bigButton?.GetNodeOrNull<Godot.Control>("%Outline")?.Visible == true;
         bool smallActive = smallButton?.GetNodeOrNull<Godot.Control>("%Outline")?.Visible == true;
 
         state["tool"] = bigActive ? "big" : smallActive ? "small" : "none";
-        state["can_use_big_tool"] = bigVisible;
-        state["can_use_small_tool"] = smallVisible;
+        state["can_use_big_tool"] = bigUsable;
+        state["can_use_small_tool"] = smallUsable;
 
         var divinationsLeft = screen.GetNodeOrNull<Godot.Control>("%DivinationsLeft");
         if (divinationsLeft != null)
@@ -2195,7 +2556,7 @@ public static partial class McpMod
         }
 
         var proceedButton = screen.GetNodeOrNull<NProceedButton>("%ProceedButton");
-        state["can_proceed"] = proceedButton?.IsEnabled == true;
+        state["can_proceed"] = proceedButton?.IsEnabled == true && proceedButton.Visible && proceedButton.IsVisibleInTree();
 
         return state;
     }
@@ -2227,7 +2588,7 @@ public static partial class McpMod
         if (relicCollection?.Visible == true)
         {
             var holders = FindAll<NTreasureRoomRelicHolder>(relicCollection)
-                .Where(h => h.IsEnabled && h.Visible)
+                .Where(h => h.IsEnabled && h.Visible && h.IsVisibleInTree())
                 .ToList();
 
             var relics = new List<Dictionary<string, object?>>();
@@ -2243,6 +2604,8 @@ public static partial class McpMod
                     ["name"] = SafeGetText(() => relic.Title),
                     ["description"] = SafeGetText(() => relic.DynamicDescription),
                     ["rarity"] = relic.Rarity.ToString(),
+                    ["is_visible"] = true,
+                    ["can_claim"] = holder.IsEnabled,
                     ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
                 });
                 index++;
@@ -2250,7 +2613,7 @@ public static partial class McpMod
             state["relics"] = relics;
         }
 
-        state["can_proceed"] = treasureUI.ProceedButton?.IsEnabled ?? false;
+        state["can_proceed"] = IsControlVisibleOrActionable(treasureUI.ProceedButton);
 
         return state;
     }

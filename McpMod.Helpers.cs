@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Godot;
@@ -19,6 +20,36 @@ public static partial class McpMod
     {
         try { return StripRichTextTags(card.GetDescriptionForPile(pile)).Replace("\n", " "); }
         catch { return SafeGetText(() => card.Description)?.Replace("\n", " "); }
+    }
+
+    private static CardModel? SafeBuildUpgradedCardPreview(CardModel card)
+    {
+        if (!card.IsUpgradable)
+            return null;
+
+        try
+        {
+            var preview = card.IsMutable
+                ? (CardModel)card.MutableClone()
+                : card.ToMutable();
+            preview.UpgradeInternal();
+            return preview;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? SafeGetCardUpgradePreviewDescription(CardModel card, PileType pile = PileType.Hand)
+    {
+        var preview = SafeBuildUpgradedCardPreview(card);
+        if (preview != null)
+            return SafeGetCardDescription(preview, pile);
+
+        return card.IsUpgradable
+            ? SafeGetText(() => card.GetDescriptionForUpgradePreview())?.Replace("\n", " ")
+            : null;
     }
 
     internal static string? SafeGetText(Func<object?> getter)
@@ -89,16 +120,63 @@ public static partial class McpMod
         response.Close();
     }
 
-    internal static void SendError(HttpListenerResponse response, int statusCode, string message)
+    internal static void SendError(HttpListenerResponse response, int statusCode, string message, string? errorCode = null)
     {
         response.StatusCode = statusCode;
-        SendJson(response, new Dictionary<string, object?> { ["error"] = message });
+        var data = new Dictionary<string, object?>
+        {
+            ["status"] = "error",
+            ["error"] = message
+        };
+        if (!string.IsNullOrWhiteSpace(errorCode))
+            data["error_code"] = errorCode;
+        SendJson(response, data);
     }
 
-    private static Dictionary<string, object?> Error(string message)
+    internal static void SendReadResultJson(HttpListenerResponse response, object result)
     {
-        return new Dictionary<string, object?> { ["status"] = "error", ["error"] = message };
+        if (result is Dictionary<string, object?> data
+            && data.TryGetValue("status", out var status)
+            && status as string == "error")
+        {
+            response.StatusCode = data.TryGetValue("error_code", out var errorCode)
+                ? (errorCode as string) switch
+                {
+                    "save_manager_unavailable" or "settings_data_unavailable" or "profile_data_unavailable" => 503,
+                    _ => 500
+                }
+                : 500;
+        }
+
+        SendJson(response, result);
     }
+
+    private static Dictionary<string, object?> Error(
+        string message,
+        string? errorCode = null,
+        [CallerFilePath] string callerFilePath = "")
+    {
+        var data = new Dictionary<string, object?> { ["status"] = "error", ["error"] = message };
+        if (string.IsNullOrWhiteSpace(errorCode)
+            && (callerFilePath.EndsWith("McpMod.Actions.cs", StringComparison.Ordinal)
+                || callerFilePath.EndsWith("McpMod.MultiplayerActions.cs", StringComparison.Ordinal)))
+        {
+            errorCode = "action_error";
+        }
+        if (!string.IsNullOrWhiteSpace(errorCode))
+            data["error_code"] = errorCode;
+        return data;
+    }
+
+    private static Dictionary<string, object?> WithStateEnvelope(Dictionary<string, object?> state, string kind)
+    {
+        state.TryAdd("status", "ok");
+        state.TryAdd("kind", kind);
+        return state;
+    }
+
+    private static string? NormalizePathForJson(string? path)
+        => string.IsNullOrWhiteSpace(path) ? path : path.Replace('\\', '/');
 
     private static object? GetInstanceFieldValue(object source, string fieldName)
     {

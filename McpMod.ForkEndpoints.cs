@@ -2,10 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Runtime.CompilerServices;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
+using MegaCrit.Sts2.Core.Models.CardPools;
 using MegaCrit.Sts2.Core.Models.Events;
 using MegaCrit.Sts2.Core.Models.Monsters;
+using MegaCrit.Sts2.Core.Models.PotionPools;
 using MegaCrit.Sts2.Core.Models.RelicPools;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
@@ -14,60 +17,71 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
+    private const string RunNotInProgressErrorCode = "run_not_in_progress";
+    private const string RunStateUnavailableErrorCode = "run_state_unavailable";
+
     private static void HandleGetSettings(HttpListenerResponse response)
     {
         try
         {
-            var dataTask = RunOnMainThread(() =>
-            {
-                var sm = SaveManager.Instance;
-                var settings = sm.SettingsSave;
-                var prefs = sm.PrefsSave;
-
-                return new Dictionary<string, object?>
-                {
-                    ["display"] = new Dictionary<string, object?>
-                    {
-                        ["fullscreen"] = settings.Fullscreen,
-                        ["resolution"] = $"{settings.WindowSize.X}x{settings.WindowSize.Y}",
-                        ["fps_limit"] = settings.FpsLimit,
-                        ["vsync"] = settings.VSync.ToString(),
-                        ["msaa"] = settings.Msaa,
-                        ["aspect_ratio"] = settings.AspectRatioSetting.ToString(),
-                        ["target_display"] = settings.TargetDisplay,
-                        ["limit_fps_background"] = settings.LimitFpsInBackground,
-                    },
-                    ["audio"] = new Dictionary<string, object?>
-                    {
-                        ["master"] = settings.VolumeMaster,
-                        ["bgm"] = settings.VolumeBgm,
-                        ["sfx"] = settings.VolumeSfx,
-                        ["ambience"] = settings.VolumeAmbience,
-                    },
-                    ["gameplay"] = new Dictionary<string, object?>
-                    {
-                        ["fast_mode"] = prefs.FastMode.ToString(),
-                        ["screen_shake"] = prefs.ScreenShakeOptionIndex,
-                        ["show_run_timer"] = prefs.ShowRunTimer,
-                        ["show_card_indices"] = prefs.ShowCardIndices,
-                        ["text_effects"] = prefs.TextEffectsEnabled,
-                        ["long_press"] = prefs.IsLongPressEnabled,
-                    },
-                    ["mods"] = new Dictionary<string, object?>
-                    {
-                        ["enabled"] = settings.ModSettings?.PlayerAgreedToModLoading ?? false,
-                    },
-                    ["language"] = settings.Language,
-                    ["skip_intro"] = settings.SkipIntroLogo,
-                };
-            });
-
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            var dataTask = RunOnMainThread(BuildSettings);
+            SendReadResultJson(response, dataTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Failed to read settings: {ex.Message}");
+            SendError(response, 500, $"Failed to read settings: {ex.Message}", "settings_read_failed");
         }
+    }
+
+    internal static object BuildSettings()
+    {
+        var sm = SaveManager.Instance;
+        if (sm == null)
+            return Error("Save manager is not available", "save_manager_unavailable");
+
+        var settings = sm.SettingsSave;
+        var prefs = sm.PrefsSave;
+        if (settings == null || prefs == null)
+            return Error("Settings data is not available", "settings_data_unavailable");
+
+        return new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["kind"] = "settings",
+            ["display"] = new Dictionary<string, object?>
+            {
+                ["fullscreen"] = settings.Fullscreen,
+                ["resolution"] = $"{settings.WindowSize.X}x{settings.WindowSize.Y}",
+                ["fps_limit"] = settings.FpsLimit,
+                ["vsync"] = settings.VSync.ToString(),
+                ["msaa"] = settings.Msaa,
+                ["aspect_ratio"] = settings.AspectRatioSetting.ToString(),
+                ["target_display"] = settings.TargetDisplay,
+                ["limit_fps_background"] = settings.LimitFpsInBackground,
+            },
+            ["audio"] = new Dictionary<string, object?>
+            {
+                ["master"] = settings.VolumeMaster,
+                ["bgm"] = settings.VolumeBgm,
+                ["sfx"] = settings.VolumeSfx,
+                ["ambience"] = settings.VolumeAmbience,
+            },
+            ["gameplay"] = new Dictionary<string, object?>
+            {
+                ["fast_mode"] = prefs.FastMode.ToString(),
+                ["screen_shake"] = prefs.ScreenShakeOptionIndex,
+                ["show_run_timer"] = prefs.ShowRunTimer,
+                ["show_card_indices"] = prefs.ShowCardIndices,
+                ["text_effects"] = prefs.TextEffectsEnabled,
+                ["long_press"] = prefs.IsLongPressEnabled,
+            },
+            ["mods"] = new Dictionary<string, object?>
+            {
+                ["enabled"] = settings.ModSettings?.PlayerAgreedToModLoading ?? false,
+            },
+            ["language"] = settings.Language,
+            ["skip_intro"] = settings.SkipIntroLogo,
+        };
     }
 
     private static void HandleGetBestiary(HttpListenerResponse response)
@@ -79,7 +93,7 @@ public static partial class McpMod
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Failed to build bestiary: {ex.Message}");
+            SendError(response, 500, $"Failed to build bestiary: {ex.Message}", "bestiary_build_failed");
         }
     }
 
@@ -87,12 +101,12 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(BuildGlossaryCards);
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            var dataTask = RunOnMainThread(() => BuildGlossaryPayload("cards", BuildGlossaryCards));
+            SendGlossaryJson(response, dataTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Failed to build glossary: {ex.Message}");
+            SendError(response, 500, $"Failed to build glossary: {ex.Message}", "glossary_build_failed");
         }
     }
 
@@ -100,12 +114,12 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(BuildGlossaryKeywords);
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            var dataTask = RunOnMainThread(() => BuildGlossaryPayload("keywords", BuildGlossaryKeywords));
+            SendGlossaryJson(response, dataTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Failed to build glossary: {ex.Message}");
+            SendError(response, 500, $"Failed to build glossary: {ex.Message}", "glossary_build_failed");
         }
     }
 
@@ -113,12 +127,12 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(BuildGlossaryPotions);
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            var dataTask = RunOnMainThread(() => BuildGlossaryPayload("potions", BuildGlossaryPotions));
+            SendGlossaryJson(response, dataTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Failed to build glossary: {ex.Message}");
+            SendError(response, 500, $"Failed to build glossary: {ex.Message}", "glossary_build_failed");
         }
     }
 
@@ -126,176 +140,333 @@ public static partial class McpMod
     {
         try
         {
-            var dataTask = RunOnMainThread(BuildGlossaryRelics);
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            var dataTask = RunOnMainThread(() => BuildGlossaryPayload("relics", BuildGlossaryRelics));
+            SendGlossaryJson(response, dataTask.GetAwaiter().GetResult());
         }
         catch (Exception ex)
         {
-            SendError(response, 500, $"Failed to build glossary: {ex.Message}");
+            SendError(response, 500, $"Failed to build glossary: {ex.Message}", "glossary_build_failed");
         }
+    }
+
+    private sealed class GlossaryPayload
+    {
+        public string Kind { get; init; } = "";
+        public object Data { get; init; } = new();
+        public int ProfileId { get; init; }
+        public string? ProgressPath { get; init; }
+        public string? ResolvedProgressPath { get; init; }
+        public string ProfileRoot { get; init; } = "";
+        public string SaveScope { get; init; } = "vanilla";
+        public string NetType { get; init; } = "";
+        public List<Dictionary<string, object?>> Players { get; init; } = new();
+    }
+
+    private static GlossaryPayload BuildGlossaryPayload(string kind, Func<object> buildData)
+    {
+        var profileId = SaveManager.Instance?.CurrentProfileId ?? 0;
+        var progressPath = GetProfileProgressPath(profileId);
+        var resolvedProgressPath = ResolveProfileProgressPath(profileId);
+        var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
+
+        var data = buildData();
+        if (data is Dictionary<string, object?> error && error.TryGetValue("error_code", out _))
+        {
+            return new GlossaryPayload
+            {
+                Kind = kind,
+                Data = error,
+                ProfileId = profileId,
+                ProgressPath = progressPath,
+                ResolvedProgressPath = resolvedProgressPath,
+                ProfileRoot = profileRoot,
+                SaveScope = GetSaveScope(profileRoot),
+                NetType = SafeGetNetTypeName()
+            };
+        }
+
+        var runState = RunManager.Instance.DebugOnlyGetState();
+        var players = runState?.Players.Select((player, index) => new Dictionary<string, object?>
+        {
+            ["index"] = index,
+            ["character"] = player.Character?.Id.Entry,
+            ["character_name"] = SafeGetText(() => player.Character?.Title)
+        }).ToList() ?? new List<Dictionary<string, object?>>();
+
+        return new GlossaryPayload
+        {
+            Kind = kind,
+            Data = data,
+            ProfileId = profileId,
+            ProgressPath = progressPath,
+            ResolvedProgressPath = resolvedProgressPath,
+            ProfileRoot = profileRoot,
+            SaveScope = GetSaveScope(profileRoot),
+            NetType = SafeGetNetTypeName(),
+            Players = players
+        };
+    }
+
+    private static string SafeGetNetTypeName()
+    {
+        try
+        {
+            return RunManager.Instance?.NetService?.Type.ToString() ?? "";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private static void SendGlossaryJson(HttpListenerResponse response, GlossaryPayload payload)
+    {
+        var data = payload.Data;
+        if (data is Dictionary<string, object?> error
+            && error.TryGetValue("error_code", out var errorCode))
+        {
+            response.StatusCode = (errorCode as string) switch
+            {
+                RunNotInProgressErrorCode => 409,
+                RunStateUnavailableErrorCode => 503,
+                _ => 500
+            };
+
+            error["kind"] = payload.Kind;
+            error["scope"] = "active_run";
+            error["profile_id"] = payload.ProfileId;
+            error["progress_path"] = NormalizePathForJson(payload.ProgressPath);
+            error["resolved_progress_path"] = NormalizePathForJson(payload.ResolvedProgressPath);
+            error["profile_root"] = NormalizePathForJson(payload.ProfileRoot);
+            error["save_scope"] = payload.SaveScope;
+            error["net_type"] = payload.NetType;
+            SendJson(response, data);
+            return;
+        }
+
+        if (data is not List<Dictionary<string, object?>> items)
+        {
+            SendJson(response, data);
+            return;
+        }
+
+        SendJson(response, new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["kind"] = payload.Kind,
+            ["scope"] = "active_run",
+            ["count"] = items.Count,
+            ["profile_id"] = payload.ProfileId,
+            ["progress_path"] = NormalizePathForJson(payload.ProgressPath),
+            ["resolved_progress_path"] = NormalizePathForJson(payload.ResolvedProgressPath),
+            ["profile_root"] = NormalizePathForJson(payload.ProfileRoot),
+            ["save_scope"] = payload.SaveScope,
+            ["current_run"] = BuildCurrentRunContext(
+                isRunInProgress: true,
+                profileId: payload.ProfileId,
+                saveScope: payload.SaveScope,
+                progressPath: payload.ProgressPath,
+                profileRoot: payload.ProfileRoot),
+            ["net_type"] = payload.NetType,
+            ["players"] = payload.Players,
+            ["items"] = items
+        });
+    }
+
+    private static Dictionary<string, object?> GlossaryError(string message, string errorCode)
+    {
+        return new Dictionary<string, object?>
+        {
+            ["status"] = "error",
+            ["error"] = message,
+            ["error_code"] = errorCode
+        };
     }
 
     internal static object BuildGlossaryCards()
     {
-        if (!RunManager.Instance.IsInProgress)
-            return new Dictionary<string, object?> { ["error"] = "No run in progress." };
+        if (RunManager.Instance?.IsInProgress != true)
+            return GlossaryError("No run in progress.", RunNotInProgressErrorCode);
 
         var runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
-            return new Dictionary<string, object?> { ["error"] = "Could not read run state." };
+            return GlossaryError("Could not read run state.", RunStateUnavailableErrorCode);
 
         var result = new List<Dictionary<string, object?>>();
         var seen = new HashSet<string>();
+
+        foreach (var pool in ModelDb.AllSharedCardPools)
+            AddCardsFromPool(pool, SafeGetText(() => pool.Title) ?? pool.Id.Entry, result, seen);
 
         foreach (var player in runState.Players)
         {
             var pool = player.Character?.CardPool;
             if (pool == null) continue;
             var poolName = SafeGetText(() => pool.Title) ?? "Unknown";
-
-            foreach (var card in pool.AllCards)
-            {
-                var id = card.Id.Entry;
-                if (seen.Contains(id)) continue;
-                seen.Add(id);
-
-                string costDisplay;
-                if (card.EnergyCost.CostsX)
-                    costDisplay = "X";
-                else
-                    costDisplay = card.EnergyCost.GetAmountToSpend().ToString();
-
-                result.Add(new Dictionary<string, object?>
-                {
-                    ["id"] = id,
-                    ["name"] = SafeGetText(() => card.Title),
-                    ["type"] = card.Type.ToString(),
-                    ["cost"] = costDisplay,
-                    ["description"] = SafeGetCardDescription(card),
-                    ["rarity"] = card.Rarity.ToString(),
-                    ["pool"] = poolName,
-                    ["keywords"] = BuildHoverTips(card.HoverTips)
-                });
-            }
+            AddCardsFromPool(pool, poolName, result, seen);
         }
 
-        return result;
+        return SortDictionaryListByStringField(result, "id");
+    }
+
+    private static void AddCardsFromPool(
+        CardPoolModel pool,
+        string poolName,
+        List<Dictionary<string, object?>> result,
+        HashSet<string> seen)
+    {
+        foreach (var card in pool.AllCards)
+        {
+            var id = card.Id.Entry;
+            if (seen.Contains(id)) continue;
+            seen.Add(id);
+
+            var upgradedPreview = SafeBuildUpgradedCardPreview(card);
+            result.Add(new Dictionary<string, object?>
+            {
+                ["id"] = id,
+                ["name"] = SafeGetText(() => card.Title),
+                ["type"] = card.Type.ToString(),
+                ["cost"] = GetCostDisplay(card),
+                ["star_cost"] = GetStarCostDisplay(card),
+                ["description"] = SafeGetCardDescription(card),
+                ["rarity"] = card.Rarity.ToString(),
+                ["pool"] = poolName,
+                ["is_upgraded"] = card.IsUpgraded,
+                ["is_upgradable"] = card.IsUpgradable,
+                ["current_upgrade_level"] = card.CurrentUpgradeLevel,
+                ["max_upgrade_level"] = card.MaxUpgradeLevel,
+                ["upgrade_preview_type"] = card.UpgradePreviewType.ToString(),
+                ["upgrade_preview_cost"] = upgradedPreview != null ? GetCostDisplay(upgradedPreview) : null,
+                ["upgrade_preview_star_cost"] = upgradedPreview != null ? GetStarCostDisplay(upgradedPreview) : null,
+                ["upgrade_preview_description"] = SafeGetCardUpgradePreviewDescription(card),
+                ["keywords"] = BuildHoverTips(card.HoverTips)
+            });
+        }
     }
 
     internal static object BuildGlossaryRelics()
     {
-        if (!RunManager.Instance.IsInProgress)
-            return new Dictionary<string, object?> { ["error"] = "No run in progress." };
+        if (RunManager.Instance?.IsInProgress != true)
+            return GlossaryError("No run in progress.", RunNotInProgressErrorCode);
 
         var runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
-            return new Dictionary<string, object?> { ["error"] = "Could not read run state." };
+            return GlossaryError("Could not read run state.", RunStateUnavailableErrorCode);
 
         var result = new List<Dictionary<string, object?>>();
         var seen = new HashSet<string>();
 
+        var sharedPool = ModelDb.RelicPool<SharedRelicPool>();
+        AddRelicsFromPool(sharedPool, "Shared", result, seen);
+
         foreach (var player in runState.Players)
         {
-            var pool = player.Character?.RelicPool;
-            if (pool == null) continue;
-            var poolName = SafeGetText(() => player.Character.Title) ?? "Unknown";
-
-            foreach (var relic in pool.AllRelics)
-            {
-                var id = relic.Id.Entry;
-                if (seen.Contains(id)) continue;
-                seen.Add(id);
-
-                result.Add(new Dictionary<string, object?>
-                {
-                    ["id"] = id,
-                    ["name"] = SafeGetText(() => relic.Title),
-                    ["description"] = SafeGetText(() => relic.DynamicDescription),
-                    ["rarity"] = relic.Rarity.ToString(),
-                    ["pool"] = poolName,
-                    ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
-                });
-            }
+            var character = player.Character;
+            if (character == null || character.RelicPool == null) continue;
+            var pool = character.RelicPool;
+            var poolName = SafeGetText(() => character.Title) ?? "Unknown";
+            AddRelicsFromPool(pool, poolName, result, seen);
         }
 
-        foreach (var type in typeof(RelicModel).Assembly.GetTypes())
+        return SortDictionaryListByStringField(result, "id");
+    }
+
+    private static void AddRelicsFromPool(
+        RelicPoolModel pool,
+        string poolName,
+        List<Dictionary<string, object?>> result,
+        HashSet<string> seen)
+    {
+        foreach (var relic in pool.AllRelics)
         {
-            if (type.IsAbstract || !type.IsSubclassOf(typeof(RelicModel))) continue;
-            try
+            var id = relic.Id.Entry;
+            if (seen.Contains(id)) continue;
+            seen.Add(id);
+
+            result.Add(new Dictionary<string, object?>
             {
-                var instance = (RelicModel)Activator.CreateInstance(type)!;
-                if (instance.CanonicalInstance is not { } canonical) continue;
-                var id = canonical.Id.Entry;
-                if (seen.Contains(id)) continue;
-                seen.Add(id);
-
-                result.Add(new Dictionary<string, object?>
-                {
-                    ["id"] = id,
-                    ["name"] = SafeGetText(() => canonical.Title),
-                    ["description"] = SafeGetText(() => canonical.DynamicDescription),
-                    ["rarity"] = canonical.Rarity.ToString(),
-                    ["pool"] = canonical.Pool?.Id.Category ?? "Shared",
-                    ["keywords"] = BuildHoverTips(canonical.HoverTipsExcludingRelic)
-                });
-            }
-            catch { }
+                ["id"] = id,
+                ["name"] = SafeGetText(() => relic.Title),
+                ["description"] = SafeGetText(() => relic.DynamicDescription),
+                ["rarity"] = relic.Rarity.ToString(),
+                ["pool"] = poolName,
+                ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
+            });
         }
-
-        return result;
     }
 
     internal static object BuildGlossaryPotions()
     {
-        if (!RunManager.Instance.IsInProgress)
-            return new Dictionary<string, object?> { ["error"] = "No run in progress." };
+        if (RunManager.Instance?.IsInProgress != true)
+            return GlossaryError("No run in progress.", RunNotInProgressErrorCode);
 
         var runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
-            return new Dictionary<string, object?> { ["error"] = "Could not read run state." };
+            return GlossaryError("Could not read run state.", RunStateUnavailableErrorCode);
 
         var result = new List<Dictionary<string, object?>>();
         var seen = new HashSet<string>();
 
+        var sharedPool = ModelDb.PotionPool<SharedPotionPool>();
+        AddPotionsFromPool(sharedPool, "Shared", result, seen);
+
         foreach (var player in runState.Players)
         {
-            var pool = player.Character?.PotionPool;
-            if (pool == null) continue;
-            var poolName = SafeGetText(() => player.Character.Title) ?? "Unknown";
-
-            foreach (var potion in pool.AllPotions)
-            {
-                var id = potion.Id.Entry;
-                if (seen.Contains(id)) continue;
-                seen.Add(id);
-
-                result.Add(new Dictionary<string, object?>
-                {
-                    ["id"] = id,
-                    ["name"] = SafeGetText(() => potion.Title),
-                    ["description"] = SafeGetText(() => potion.DynamicDescription),
-                    ["rarity"] = potion.Rarity.ToString(),
-                    ["target_type"] = potion.TargetType.ToString(),
-                    ["usage"] = potion.Usage.ToString(),
-                    ["pool"] = poolName,
-                    ["keywords"] = BuildHoverTips(potion.ExtraHoverTips)
-                });
-            }
+            var character = player.Character;
+            if (character == null || character.PotionPool == null) continue;
+            var pool = character.PotionPool;
+            var poolName = SafeGetText(() => character.Title) ?? "Unknown";
+            AddPotionsFromPool(pool, poolName, result, seen);
         }
 
-        return result;
+        return SortDictionaryListByStringField(result, "id");
+    }
+
+    private static void AddPotionsFromPool(
+        PotionPoolModel pool,
+        string poolName,
+        List<Dictionary<string, object?>> result,
+        HashSet<string> seen)
+    {
+        foreach (var potion in pool.AllPotions)
+        {
+            var id = potion.Id.Entry;
+            if (seen.Contains(id)) continue;
+            seen.Add(id);
+
+            result.Add(new Dictionary<string, object?>
+            {
+                ["id"] = id,
+                ["name"] = SafeGetText(() => potion.Title),
+                ["description"] = SafeGetText(() => potion.DynamicDescription),
+                ["rarity"] = potion.Rarity.ToString(),
+                ["target_type"] = potion.TargetType.ToString(),
+                ["usage"] = potion.Usage.ToString(),
+                ["pool"] = poolName,
+                ["keywords"] = BuildHoverTips(potion.ExtraHoverTips)
+            });
+        }
     }
 
     internal static object BuildGlossaryKeywords()
     {
-        if (!RunManager.Instance.IsInProgress)
-            return new Dictionary<string, object?> { ["error"] = "No run in progress." };
+        if (RunManager.Instance?.IsInProgress != true)
+            return GlossaryError("No run in progress.", RunNotInProgressErrorCode);
 
         var runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
-            return new Dictionary<string, object?> { ["error"] = "Could not read run state." };
+            return GlossaryError("Could not read run state.", RunStateUnavailableErrorCode);
 
-        var keywords = new Dictionary<string, string>();
+        var keywords = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var pool in ModelDb.AllSharedCardPools)
+            foreach (var card in pool.AllCards)
+                AddKeywordTips(card.HoverTips, keywords);
+        foreach (var relic in ModelDb.RelicPool<SharedRelicPool>().AllRelics)
+            AddKeywordTips(relic.HoverTipsExcludingRelic, keywords);
+        foreach (var potion in ModelDb.PotionPool<SharedPotionPool>().AllPotions)
+            AddKeywordTips(potion.ExtraHoverTips, keywords);
 
         foreach (var player in runState.Players)
         {
@@ -303,44 +474,26 @@ public static partial class McpMod
             if (cardPool != null)
             {
                 foreach (var card in cardPool.AllCards)
-                    foreach (var tip in card.HoverTips)
-                        if (tip is HoverTip ht)
-                        {
-                            var title = SafeGetText(() => ht.Title);
-                            if (!string.IsNullOrEmpty(title))
-                                keywords[title!] = SafeGetText(() => ht.Description) ?? "";
-                        }
+                    AddKeywordTips(card.HoverTips, keywords);
             }
 
             var relicPool = player.Character?.RelicPool;
             if (relicPool != null)
             {
                 foreach (var relic in relicPool.AllRelics)
-                    foreach (var tip in relic.HoverTips)
-                        if (tip is HoverTip ht)
-                        {
-                            var title = SafeGetText(() => ht.Title);
-                            if (!string.IsNullOrEmpty(title))
-                                keywords[title!] = SafeGetText(() => ht.Description) ?? "";
-                        }
+                    AddKeywordTips(relic.HoverTipsExcludingRelic, keywords);
             }
 
             var potionPool = player.Character?.PotionPool;
             if (potionPool != null)
             {
                 foreach (var potion in potionPool.AllPotions)
-                    foreach (var tip in potion.HoverTips)
-                        if (tip is HoverTip ht)
-                        {
-                            var title = SafeGetText(() => ht.Title);
-                            if (!string.IsNullOrEmpty(title))
-                                keywords[title!] = SafeGetText(() => ht.Description) ?? "";
-                        }
+                    AddKeywordTips(potion.ExtraHoverTips, keywords);
             }
         }
 
         var result = new List<Dictionary<string, object?>>();
-        foreach (var kv in keywords.OrderBy(k => k.Key))
+        foreach (var kv in keywords.OrderBy(k => k.Key, StringComparer.Ordinal))
         {
             result.Add(new Dictionary<string, object?>
             {
@@ -352,9 +505,31 @@ public static partial class McpMod
         return result;
     }
 
+    private static void AddKeywordTips(IEnumerable<IHoverTip>? tips, Dictionary<string, string> keywords)
+    {
+        if (tips == null)
+            return;
+
+        foreach (var tip in IHoverTip.RemoveDupes(tips))
+        {
+            try
+            {
+                if (tip is not HoverTip ht)
+                    continue;
+
+                var title = SafeGetText(() => ht.Title);
+                if (!string.IsNullOrEmpty(title))
+                    keywords.TryAdd(title!, SafeGetText(() => ht.Description) ?? "");
+            }
+            catch
+            {
+                // Hover-tip getters can throw during state transitions; skip unstable tips.
+            }
+        }
+    }
+
     internal static object BuildBestiary()
     {
-        var result = new Dictionary<string, object?>();
         var bindFlags = System.Reflection.BindingFlags.Public
             | System.Reflection.BindingFlags.NonPublic
             | System.Reflection.BindingFlags.Instance;
@@ -372,7 +547,7 @@ public static partial class McpMod
 
             try
             {
-                var instance = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(type);
+                var instance = RuntimeHelpers.GetUninitializedObject(type);
                 var minHp = type.GetProperty("MinInitialHp")?.GetValue(instance);
                 var maxHp = type.GetProperty("MaxInitialHp")?.GetValue(instance);
                 if (minHp != null) entry["min_hp"] = minHp;
@@ -393,11 +568,13 @@ public static partial class McpMod
                 }
             }
             if (moves.Count > 0)
-                entry["moves"] = moves;
+                entry["moves"] = moves
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(move => move, StringComparer.Ordinal)
+                    .ToList();
 
             monsters.Add(entry);
         }
-        result["monsters"] = monsters;
 
         var encounters = new List<Dictionary<string, object?>>();
         foreach (var type in typeof(EncounterModel).Assembly.GetTypes())
@@ -412,7 +589,7 @@ public static partial class McpMod
 
             try
             {
-                var instance = System.Runtime.Serialization.FormatterServices.GetUninitializedObject(type);
+                var instance = RuntimeHelpers.GetUninitializedObject(type);
                 var roomType = type.GetProperty("RoomType")?.GetValue(instance);
                 var isWeak = type.GetProperty("IsWeak")?.GetValue(instance);
                 var minGold = type.GetProperty("MinGoldReward")?.GetValue(instance);
@@ -447,12 +624,30 @@ public static partial class McpMod
                     matchingMonsters.Add(monsterClass);
             }
             if (matchingMonsters.Count > 0)
-                entry["likely_monsters"] = matchingMonsters;
+                entry["likely_monsters"] = matchingMonsters
+                    .Distinct(StringComparer.Ordinal)
+                    .OrderBy(monster => monster, StringComparer.Ordinal)
+                    .ToList();
 
             encounters.Add(entry);
         }
-        result["encounters"] = encounters;
 
-        return result;
+        var orderedMonsters = monsters
+            .OrderBy(entry => entry.TryGetValue("id", out var id) ? id?.ToString() : "", StringComparer.Ordinal)
+            .ToList();
+        var orderedEncounters = encounters
+            .OrderBy(entry => entry.TryGetValue("id", out var id) ? id?.ToString() : "", StringComparer.Ordinal)
+            .ToList();
+
+        return new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["kind"] = "bestiary",
+            ["source"] = "reflected MonsterModel and EncounterModel metadata",
+            ["monster_count"] = orderedMonsters.Count,
+            ["encounter_count"] = orderedEncounters.Count,
+            ["monsters"] = orderedMonsters,
+            ["encounters"] = orderedEncounters
+        };
     }
 }
