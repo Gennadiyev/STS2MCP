@@ -17,6 +17,8 @@ HTTP API on `localhost:15526`. No authentication.
 - `GET /api/v1/profiles` — list profile slots
 - `POST /api/v1/profiles` — switch or delete profile slots
 
+HTTP error responses include `status: "error"` and `error`. Some route-specific errors also include `error_code`.
+
 Singleplayer and multiplayer endpoints are mutually exclusive (HTTP 409 if mismatched). The mismatch response includes `error_code`: `multiplayer_run_active` when singleplayer is called during a multiplayer run, or `not_multiplayer_run` when multiplayer is called outside one.
 
 ## GET — Query Parameters
@@ -57,7 +59,7 @@ Every JSON response includes:
 
 ## POST — Actions
 
-All POST requests use JSON body with `"action"` field. All responses include `{ "status": "ok" | "error", "message": "..." }`.
+All POST requests use JSON body with `"action"` field. Action responses include `{ "status": "ok" | "error" }`; successful actions usually include `message`, and failed actions include `error`.
 
 ### Menu / Game Over
 

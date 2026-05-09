@@ -92,7 +92,11 @@ public static partial class McpMod
     internal static void SendError(HttpListenerResponse response, int statusCode, string message, string? errorCode = null)
     {
         response.StatusCode = statusCode;
-        var data = new Dictionary<string, object?> { ["error"] = message };
+        var data = new Dictionary<string, object?>
+        {
+            ["status"] = "error",
+            ["error"] = message
+        };
         if (!string.IsNullOrWhiteSpace(errorCode))
             data["error_code"] = errorCode;
         SendJson(response, data);
