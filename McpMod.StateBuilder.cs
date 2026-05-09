@@ -1266,13 +1266,27 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildCardState(CardModel card, int index)
     {
         card.CanPlay(out var unplayableReason, out _);
+        string? blockedReason = unplayableReason != UnplayableReason.None
+            ? unplayableReason.ToString()
+            : null;
+
+        var combatReady = CombatManager.Instance.IsInProgress
+                          && CombatManager.Instance.IsPlayPhase
+                          && !CombatManager.Instance.PlayerActionsDisabled;
+        if (blockedReason == null && CombatManager.Instance.IsInProgress)
+        {
+            if (!CombatManager.Instance.IsPlayPhase)
+                blockedReason = "NotInPlayPhase";
+            else if (CombatManager.Instance.PlayerActionsDisabled)
+                blockedReason = "PlayerActionsDisabled";
+        }
 
         var state = BuildCardInfo(card);
         state["index"] = index;
         state["description"] = SafeGetCardDescription(card); // hand cards use default pile
         state["target_type"] = card.TargetType.ToString();
-        state["can_play"] = unplayableReason == UnplayableReason.None;
-        state["unplayable_reason"] = unplayableReason != UnplayableReason.None ? unplayableReason.ToString() : null;
+        state["can_play"] = combatReady && blockedReason == null;
+        state["unplayable_reason"] = blockedReason;
         return state;
     }
 

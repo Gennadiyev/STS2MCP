@@ -131,7 +131,7 @@ Always present at the top level (except `menu`). Contains everything about the l
   "description": "Deal 6 damage.",
   "target_type": "AnyEnemy", // None, Self, AnyEnemy, AllEnemies, etc.
   "can_play": true,
-  "unplayable_reason": null, // e.g. "NotEnoughEnergy", "Unplayable", null if playable
+  "unplayable_reason": null, // e.g. "NotEnoughEnergy", "NotInPlayPhase", "PlayerActionsDisabled", null if playable
   "is_upgraded": false,
   "is_upgradable": true,
   "current_upgrade_level": 0,

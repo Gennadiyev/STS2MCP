@@ -248,6 +248,18 @@ def audit_static_card_glossary_metadata(repo: Path) -> None:
     if missing_state:
         fail(f"state card serialization missing upgrade metadata: {missing_state}")
 
+    card_state_match = re.search(
+        r"private static Dictionary<string, object\?> BuildCardState\(.*?\n    private static List<Dictionary<string, object\?>> BuildPileCardList\(",
+        state_builder,
+        re.S,
+    )
+    if not card_state_match:
+        fail("could not locate BuildCardState for can_play audit")
+    card_state_body = card_state_match.group(0)
+    for required_guard in ["IsPlayPhase", "PlayerActionsDisabled", "NotInPlayPhase"]:
+        if required_guard not in card_state_body:
+            fail(f"hand card can_play missing action guard: {required_guard}")
+
     helpers = (repo / "McpMod.Helpers.cs").read_text(encoding="utf-8")
     helper_match = re.search(
         r"private static CardModel\? SafeBuildUpgradedCardPreview\(.*?\n    private static string\? SafeGetCardUpgradePreviewDescription\(",
