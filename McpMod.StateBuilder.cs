@@ -1777,6 +1777,14 @@ public static partial class McpMod
                 item["potion_usage"] = potionReward.Potion.Usage.ToString();
                 item["keywords"] = BuildHoverTips(potionReward.Potion.ExtraHoverTips);
             }
+            else if (reward is RelicReward relicReward && GetRelicRewardModel(relicReward) is { } relic)
+            {
+                item["relic_id"] = relic.Id.Entry;
+                item["relic_name"] = SafeGetText(() => relic.Title);
+                item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
+                item["relic_rarity"] = relic.Rarity.ToString();
+                item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
+            }
 
             items.Add(item);
             index++;
@@ -1788,6 +1796,33 @@ public static partial class McpMod
         state["can_proceed"] = proceedButton?.IsEnabled ?? false;
 
         return state;
+    }
+
+    private static RelicModel? GetRelicRewardModel(RelicReward reward)
+    {
+        const System.Reflection.BindingFlags Flags =
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.Public |
+            System.Reflection.BindingFlags.NonPublic;
+
+        var type = reward.GetType();
+        foreach (var property in type.GetProperties(Flags))
+        {
+            if (!typeof(RelicModel).IsAssignableFrom(property.PropertyType))
+                continue;
+            try { return property.GetValue(reward) as RelicModel; }
+            catch { }
+        }
+
+        foreach (var field in type.GetFields(Flags))
+        {
+            if (!typeof(RelicModel).IsAssignableFrom(field.FieldType))
+                continue;
+            try { return field.GetValue(reward) as RelicModel; }
+            catch { }
+        }
+
+        return null;
     }
 
     private static Dictionary<string, object?> BuildCardRewardState(NCardRewardSelectionScreen cardScreen)

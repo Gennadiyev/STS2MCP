@@ -453,6 +453,16 @@ Appears after combat ends or when triggered by events (e.g. TheFutureOfPotions, 
       },
       {
         "index": 2,
+        "type": "relic",
+        "description": "Obtain a relic.",
+        "relic_id": "VAJRA",
+        "relic_name": "Vajra",
+        "relic_description": "At the start of each combat, gain 1 Strength.",
+        "relic_rarity": "Common",
+        "keywords": [ /* Keyword Objects */ ]
+      },
+      {
+        "index": 3,
         "type": "card",
         "description": "Add a card to your deck."
         // Card rewards open the card_reward screen when claimed
