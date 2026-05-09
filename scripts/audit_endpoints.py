@@ -484,6 +484,17 @@ def audit_static_glossary_scope(repo: Path) -> None:
     for required_fragment in ["run_not_in_progress", "run_state_unavailable", "HTTP 503"]:
         if required_fragment not in docs:
             fail(f"docs missing glossary error contract: {required_fragment}")
+    keyword_tip_match = re.search(
+        r"private static void AddKeywordTips\(.*?\n    \}",
+        fork_endpoints,
+        re.S,
+    )
+    if not keyword_tip_match:
+        fail("could not locate AddKeywordTips for glossary keyword stability audit")
+    keyword_tip_body = keyword_tip_match.group(0)
+    for required_fragment in ["IEnumerable<IHoverTip>?", "tips == null", "IHoverTip.RemoveDupes", "catch"]:
+        if required_fragment not in keyword_tip_body:
+            fail(f"glossary keyword collection must be null/transition safe: {required_fragment}")
 
     print("glossary: active-run shared/scoped pools and profile context enforced")
 

@@ -505,16 +505,26 @@ public static partial class McpMod
         return result;
     }
 
-    private static void AddKeywordTips(IEnumerable<object> tips, Dictionary<string, string> keywords)
+    private static void AddKeywordTips(IEnumerable<IHoverTip>? tips, Dictionary<string, string> keywords)
     {
-        foreach (var tip in tips)
-        {
-            if (tip is not HoverTip ht)
-                continue;
+        if (tips == null)
+            return;
 
-            var title = SafeGetText(() => ht.Title);
-            if (!string.IsNullOrEmpty(title))
-                keywords[title!] = SafeGetText(() => ht.Description) ?? "";
+        foreach (var tip in IHoverTip.RemoveDupes(tips))
+        {
+            try
+            {
+                if (tip is not HoverTip ht)
+                    continue;
+
+                var title = SafeGetText(() => ht.Title);
+                if (!string.IsNullOrEmpty(title))
+                    keywords[title!] = SafeGetText(() => ht.Description) ?? "";
+            }
+            catch
+            {
+                // Hover-tip getters can throw during state transitions; skip unstable tips.
+            }
         }
     }
 
