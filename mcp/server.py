@@ -454,6 +454,7 @@ async def use_potion(slot: int, target: str | None = None) -> str:
     """Use a potion from the player's potion slots.
 
     Works both during and outside of combat. Combat-only potions require an active battle.
+    Enemy-targeted potions require combat and a target from state `valid_targets`.
 
     Args:
         slot: Potion slot index (as shown in game state).
@@ -959,6 +960,8 @@ async def mp_combat_undo_end_turn() -> str:
 @mcp.tool()
 async def mp_use_potion(slot: int, target: str | None = None) -> str:
     """[Multiplayer] Use a potion from the local player's potion slots.
+
+    Enemy-targeted potions require combat and a target from state `valid_targets`.
 
     Args:
         slot: Potion slot index (as shown in game state).

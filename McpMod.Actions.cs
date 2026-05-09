@@ -209,6 +209,8 @@ public static partial class McpMod
         switch (potion.TargetType)
         {
             case TargetType.AnyEnemy:
+                if (!inCombat)
+                    return Error("Enemy-targeted potions can only be used in combat");
                 if (!data.TryGetValue("target", out var targetElem))
                     return Error("Potion requires a target enemy. Provide 'target' with an entity_id.");
                 string targetId = targetElem.GetString() ?? "";

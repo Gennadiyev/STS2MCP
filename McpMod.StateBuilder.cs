@@ -1205,6 +1205,8 @@ public static partial class McpMod
         {
             if (potion != null)
             {
+                var validTargets = BuildPotionTargetRefs(potion, player);
+                var blockedReason = GetPotionUseBlockedReason(potion, validTargets);
                 potions.Add(new Dictionary<string, object?>
                 {
                     ["id"] = potion.Id.Entry,
@@ -1213,6 +1215,10 @@ public static partial class McpMod
                     ["rarity"] = potion.Rarity.ToString(),
                     ["slot"] = slotIndex,
                     ["can_use_in_combat"] = potion.Usage == PotionUsage.CombatOnly || potion.Usage == PotionUsage.AnyTime,
+                    ["can_use"] = blockedReason == null,
+                    ["use_blocked_reason"] = blockedReason,
+                    ["requires_target"] = potion.TargetType == TargetType.AnyEnemy,
+                    ["valid_targets"] = validTargets,
                     ["target_type"] = potion.TargetType.ToString(),
                     ["usage"] = potion.Usage.ToString(),
                     ["keywords"] = BuildHoverTips(potion.ExtraHoverTips)
@@ -1224,6 +1230,74 @@ public static partial class McpMod
         state["max_potion_slots"] = player.MaxPotionCount;
 
         return state;
+    }
+
+    private static string? GetPotionUseBlockedReason(
+        PotionModel potion,
+        List<Dictionary<string, object?>> validTargets)
+    {
+        if (potion.IsQueued)
+            return "AlreadyQueued";
+        if (potion.Owner.Creature.IsDead)
+            return "PlayerDead";
+        if (!potion.PassesCustomUsabilityCheck)
+            return "CustomUsabilityCheckFailed";
+
+        var inCombat = CombatManager.Instance.IsInProgress;
+        if (potion.Usage == PotionUsage.CombatOnly)
+        {
+            if (!inCombat)
+                return "CombatOnly";
+            if (!CombatManager.Instance.IsPlayPhase)
+                return "NotInPlayPhase";
+        }
+        else if (potion.Usage == PotionUsage.Automatic)
+        {
+            return "Automatic";
+        }
+
+        if (inCombat && CombatManager.Instance.PlayerActionsDisabled)
+            return "PlayerActionsDisabled";
+
+        if (potion.TargetType == TargetType.AnyEnemy && validTargets.Count == 0)
+            return "NoValidTargets";
+
+        return null;
+    }
+
+    private static List<Dictionary<string, object?>> BuildPotionTargetRefs(PotionModel potion, Player player)
+    {
+        var targets = new List<Dictionary<string, object?>>();
+        if (potion.TargetType != TargetType.AnyEnemy)
+            return targets;
+
+        if (!CombatManager.Instance.IsInProgress)
+            return targets;
+
+        var combatState = player.Creature.CombatState;
+        if (combatState == null)
+            return targets;
+
+        var entityCounts = new Dictionary<string, int>();
+        foreach (var creature in combatState.Enemies)
+        {
+            if (!creature.IsAlive)
+                continue;
+
+            var baseId = creature.Monster?.Id.Entry ?? "unknown";
+            if (!entityCounts.TryGetValue(baseId, out var count))
+                count = 0;
+            entityCounts[baseId] = count + 1;
+
+            targets.Add(new Dictionary<string, object?>
+            {
+                ["entity_id"] = $"{baseId}_{count}",
+                ["combat_id"] = creature.CombatId,
+                ["name"] = SafeGetText(() => creature.Monster?.Title)
+            });
+        }
+
+        return targets;
     }
 
     private static string GetCostDisplay(CardModel card)

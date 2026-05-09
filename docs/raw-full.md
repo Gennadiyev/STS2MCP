@@ -109,6 +109,10 @@ Always present at the top level (except `menu`). Contains everything about the l
       "rarity": "Common",
       "slot": 0,             // Potion slot index (use this for use_potion action)
       "can_use_in_combat": true,
+      "can_use": true,       // true when use_potion can run now, assuming any required target is supplied
+      "use_blocked_reason": null, // e.g. "CombatOnly", "Automatic", "AlreadyQueued", "PlayerDead", "CustomUsabilityCheckFailed", "NotInPlayPhase", "PlayerActionsDisabled", "NoValidTargets"
+      "requires_target": false,
+      "valid_targets": [],   // For AnyEnemy potions: [{ "entity_id": "JAW_WORM_0", "combat_id": 12, "name": "Jaw Worm" }]
       "target_type": "None", // None, Self, AnyEnemy, AnyAlly, AnyPlayer, etc.
       "usage": "Manual",
       "keywords": [ /* Keyword Objects */ ]
@@ -1189,7 +1193,7 @@ Use a potion from the potion belt.
 | `slot` | int | Yes | Potion slot index |
 | `target` | string | For `AnyEnemy` potions | `entity_id` of the target enemy |
 
-**Errors:** Empty slot, combat-only potion used outside combat, automatic potion, already queued, player dead.
+**Errors:** Empty slot, combat-only potion used outside combat, automatic potion, already queued, player dead, custom usability blocked, missing/invalid target, enemy-targeted potion outside combat.
 
 ### `discard_potion`
 

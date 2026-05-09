@@ -544,6 +544,29 @@ def audit_state_surface(repo: Path) -> None:
     if "IsVisibleInTree" not in crystal_action_body:
         fail("crystal_sphere actions missing visible-in-tree guards")
 
+    player_state_match = re.search(
+        r"private static Dictionary<string, object\?> BuildPlayerState\(.*?\n    private static string GetCostDisplay\(",
+        state_builder,
+        re.S,
+    )
+    if not player_state_match:
+        fail("could not locate BuildPlayerState for potion audit")
+    player_state_body = player_state_match.group(0)
+    potion_action_match = re.search(
+        r"private static Dictionary<string, object\?> ExecuteUsePotion\(.*?\n    private static Dictionary<string, object\?> ExecuteDiscardPotion\(",
+        actions,
+        re.S,
+    )
+    if not potion_action_match:
+        fail("could not locate ExecuteUsePotion for potion audit")
+    potion_action_body = potion_action_match.group(0)
+    for required_fragment in ["can_use", "use_blocked_reason", "requires_target", "valid_targets", "GetPotionUseBlockedReason"]:
+        if required_fragment not in player_state_body:
+            fail(f"potion state missing use readiness metadata: {required_fragment}")
+    for required_fragment in ["IsQueued", "PassesCustomUsabilityCheck", "PlayerActionsDisabled", "Enemy-targeted potions can only be used in combat"]:
+        if required_fragment not in potion_action_body:
+            fail(f"use_potion action missing readiness guard: {required_fragment}")
+
     print(f"states: {len(state_types)} documented, markdown coverage enforced")
 
 
