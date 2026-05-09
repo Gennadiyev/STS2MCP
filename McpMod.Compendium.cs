@@ -14,12 +14,17 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
+    private static readonly object _runHistoryMembersLock = new();
+    private static Type? _runHistoryMembersType;
+    private static MemberInfo[]? _runHistoryMembers;
+
     private static void HandleGetCompendium(HttpListenerResponse response)
     {
         try
         {
-            var dataTask = RunOnMainThread(BuildCompendium);
-            SendJson(response, dataTask.GetAwaiter().GetResult());
+            var snapshotTask = RunOnMainThread(BuildCompendiumSnapshot);
+            var snapshot = snapshotTask.GetAwaiter().GetResult();
+            SendJson(response, BuildCompendiumResponse(snapshot));
         }
         catch (Exception ex)
         {
@@ -29,10 +34,19 @@ public static partial class McpMod
 
     internal static object BuildCompendium()
     {
+        return BuildCompendiumResponse(BuildCompendiumSnapshot());
+    }
+
+    private static CompendiumSnapshot BuildCompendiumSnapshot()
+    {
         var progress = SaveManager.Instance?.Progress;
         var saveManager = SaveManager.Instance;
         if (progress == null || saveManager == null)
-            return new Dictionary<string, object?> { ["error"] = "No profile data available." };
+            return new CompendiumSnapshot { Error = "No profile data available." };
+
+        var profileId = saveManager.CurrentProfileId;
+        var progressPath = GetProfileProgressPath(profileId);
+        var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
 
         var cardStats = progress.CardStats.Select(kv => new Dictionary<string, object?>
         {
@@ -56,12 +70,48 @@ public static partial class McpMod
             ["playtime"] = kv.Value.Playtime
         }).ToList();
 
-        var runHistory = BuildRunHistorySection(progress, saveManager.CurrentProfileId);
+        return new CompendiumSnapshot
+        {
+            ProfileId = profileId,
+            ProgressPath = progressPath,
+            ProfileRoot = profileRoot,
+            SaveScope = GetSaveScope(profileRoot),
+            IsRunInProgress = RunManager.Instance?.IsInProgress == true,
+            DiscoveredCards = progress.DiscoveredCards.Select(id => id.Entry).ToList(),
+            DiscoveredRelics = progress.DiscoveredRelics.Select(id => id.Entry).ToList(),
+            DiscoveredPotions = progress.DiscoveredPotions.Select(id => id.Entry).ToList(),
+            CardStats = cardStats,
+            CharacterStats = characterStats,
+            EncounterStats = BuildEncounterStats(progress),
+            EnemyStats = BuildEnemyStats(progress),
+            RunHistoryProgressMembers = BuildRunHistoryProgressMembers(progress),
+            GlobalStats = new Dictionary<string, object?>
+            {
+                ["total_playtime"] = progress.TotalPlaytime,
+                ["total_unlocks"] = progress.TotalUnlocks,
+                ["current_score"] = progress.CurrentScore,
+                ["floors_climbed"] = progress.FloorsClimbed,
+                ["architect_damage"] = progress.ArchitectDamage,
+                ["total_wins"] = progress.Wins,
+                ["total_losses"] = progress.Losses,
+                ["fastest_victory"] = progress.FastestVictory,
+                ["best_win_streak"] = progress.BestWinStreak,
+                ["number_of_runs"] = progress.NumberOfRuns
+            }
+        };
+    }
+
+    private static object BuildCompendiumResponse(CompendiumSnapshot snapshot)
+    {
+        if (snapshot.Error != null)
+            return new Dictionary<string, object?> { ["error"] = snapshot.Error };
+
+        var runHistory = BuildRunHistorySection(snapshot);
 
         return new Dictionary<string, object?>
         {
-            ["profile_id"] = saveManager.CurrentProfileId,
-            ["current_run"] = BuildCurrentRunContext(saveManager.CurrentProfileId),
+            ["profile_id"] = snapshot.ProfileId,
+            ["current_run"] = BuildCurrentRunContext(snapshot),
             ["source"] = "SaveManager.Progress plus model metadata endpoints",
             ["sections"] = new Dictionary<string, object?>
             {
@@ -72,8 +122,8 @@ public static partial class McpMod
                     ["source"] = "/api/v1/profile card_stats and discovered_cards",
                     ["detail_endpoint"] = "/api/v1/glossary/cards",
                     ["detail_endpoint_requires_run"] = true,
-                    ["discovered_ids"] = progress.DiscoveredCards.Select(id => id.Entry).ToList(),
-                    ["stats"] = cardStats
+                    ["discovered_ids"] = snapshot.DiscoveredCards,
+                    ["stats"] = snapshot.CardStats
                 },
                 ["relic_collection"] = new Dictionary<string, object?>
                 {
@@ -82,7 +132,7 @@ public static partial class McpMod
                     ["source"] = "/api/v1/profile discovered_relics",
                     ["detail_endpoint"] = "/api/v1/glossary/relics",
                     ["detail_endpoint_requires_run"] = true,
-                    ["discovered_ids"] = progress.DiscoveredRelics.Select(id => id.Entry).ToList(),
+                    ["discovered_ids"] = snapshot.DiscoveredRelics,
                     ["limitation"] = "Profile exposes discovered relic IDs; per-relic obtained counts are not exposed by a typed API here."
                 },
                 ["potion_lab"] = new Dictionary<string, object?>
@@ -92,7 +142,7 @@ public static partial class McpMod
                     ["source"] = "/api/v1/profile discovered_potions",
                     ["detail_endpoint"] = "/api/v1/glossary/potions",
                     ["detail_endpoint_requires_run"] = true,
-                    ["discovered_ids"] = progress.DiscoveredPotions.Select(id => id.Entry).ToList(),
+                    ["discovered_ids"] = snapshot.DiscoveredPotions,
                     ["limitation"] = "Profile exposes discovered potion IDs; per-potion lab UI metadata is not exposed by a typed API here."
                 },
                 ["bestiary"] = new Dictionary<string, object?>
@@ -101,8 +151,8 @@ public static partial class McpMod
                     ["status"] = "locked_in_ui",
                     ["source"] = "/api/v1/bestiary model metadata",
                     ["detail_endpoint"] = "/api/v1/bestiary",
-                    ["encounter_stats"] = BuildEncounterStats(progress),
-                    ["enemy_stats"] = BuildEnemyStats(progress),
+                    ["encounter_stats"] = snapshot.EncounterStats,
+                    ["enemy_stats"] = snapshot.EnemyStats,
                     ["limitation"] = "The current game UI labels Bestiary as future/locked; the endpoint exposes reflected model metadata and profile fight stats when available."
                 },
                 ["character_stats"] = new Dictionary<string, object?>
@@ -110,24 +160,31 @@ public static partial class McpMod
                     ["ui_label"] = "Character Stats",
                     ["status"] = "exposed",
                     ["source"] = "/api/v1/profile characters and global totals",
-                    ["characters"] = characterStats,
-                    ["global"] = new Dictionary<string, object?>
-                    {
-                        ["total_playtime"] = progress.TotalPlaytime,
-                        ["total_unlocks"] = progress.TotalUnlocks,
-                        ["current_score"] = progress.CurrentScore,
-                        ["floors_climbed"] = progress.FloorsClimbed,
-                        ["architect_damage"] = progress.ArchitectDamage,
-                        ["total_wins"] = progress.Wins,
-                        ["total_losses"] = progress.Losses,
-                        ["fastest_victory"] = progress.FastestVictory,
-                        ["best_win_streak"] = progress.BestWinStreak,
-                        ["number_of_runs"] = progress.NumberOfRuns
-                    }
+                    ["characters"] = snapshot.CharacterStats,
+                    ["global"] = snapshot.GlobalStats
                 },
                 ["run_history"] = runHistory
             }
         };
+    }
+
+    private sealed class CompendiumSnapshot
+    {
+        public string? Error { get; init; }
+        public int ProfileId { get; init; }
+        public string? ProgressPath { get; init; }
+        public string ProfileRoot { get; init; } = "";
+        public string SaveScope { get; init; } = "vanilla";
+        public bool IsRunInProgress { get; init; }
+        public List<string> DiscoveredCards { get; init; } = new();
+        public List<string> DiscoveredRelics { get; init; } = new();
+        public List<string> DiscoveredPotions { get; init; } = new();
+        public List<Dictionary<string, object?>> CardStats { get; init; } = new();
+        public List<Dictionary<string, object?>> CharacterStats { get; init; } = new();
+        public List<Dictionary<string, object?>> EncounterStats { get; init; } = new();
+        public List<Dictionary<string, object?>> EnemyStats { get; init; } = new();
+        public Dictionary<string, object?> RunHistoryProgressMembers { get; init; } = new();
+        public Dictionary<string, object?> GlobalStats { get; init; } = new();
     }
 
     private static List<Dictionary<string, object?>> BuildEncounterStats(dynamic progress)
@@ -171,16 +228,10 @@ public static partial class McpMod
         return entry;
     }
 
-    private static Dictionary<string, object?> BuildRunHistorySection(object progress, int profileId)
+    private static Dictionary<string, object?> BuildRunHistoryProgressMembers(object progress)
     {
-        var members = progress.GetType()
-            .GetMembers(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-            .Where(member => member.Name.Contains("RunHistory", StringComparison.OrdinalIgnoreCase)
-                || member.Name.Contains("RunHistories", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
         var values = new Dictionary<string, object?>();
-        foreach (var member in members)
+        foreach (var member in GetRunHistoryMembers(progress.GetType()))
         {
             try
             {
@@ -195,8 +246,30 @@ public static partial class McpMod
             }
             catch { }
         }
+        return values;
+    }
 
-        var historyDirectory = FindRunHistoryDirectory(profileId);
+    private static MemberInfo[] GetRunHistoryMembers(Type progressType)
+    {
+        lock (_runHistoryMembersLock)
+        {
+            if (_runHistoryMembersType == progressType && _runHistoryMembers != null)
+                return _runHistoryMembers;
+
+            _runHistoryMembersType = progressType;
+            _runHistoryMembers = progressType
+                .GetMembers(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .Where(member => member.Name.Contains("RunHistory", StringComparison.OrdinalIgnoreCase)
+                    || member.Name.Contains("RunHistories", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            return _runHistoryMembers;
+        }
+    }
+
+    private static Dictionary<string, object?> BuildRunHistorySection(CompendiumSnapshot snapshot)
+    {
+        var values = snapshot.RunHistoryProgressMembers;
+        var historyDirectory = FindRunHistoryDirectory(snapshot.ProfileRoot);
         if (historyDirectory != null)
         {
             var files = Directory.GetFiles(historyDirectory, "*.run")
@@ -211,7 +284,7 @@ public static partial class McpMod
                 ["source"] = "Profile save history files",
                 ["history_path"] = historyDirectory,
                 ["entry_count"] = files.Count,
-                ["entries"] = files.Take(20).Select(file => BuildRunHistoryEntry(file, profileId)).ToList(),
+                ["entries"] = files.Take(20).Select(file => BuildRunHistoryEntry(file, snapshot.ProfileId, snapshot.SaveScope)).ToList(),
                 ["progress_members"] = values.Count > 0 ? values : null,
                 ["limitation"] = files.Count > 20
                     ? "Only the 20 most recent run files are summarized; use history_path to inspect older local run files."
@@ -231,10 +304,8 @@ public static partial class McpMod
         };
     }
 
-    private static Dictionary<string, object?> BuildRunHistoryEntry(FileInfo file, int profileId)
+    private static Dictionary<string, object?> BuildRunHistoryEntry(FileInfo file, int profileId, string saveScope)
     {
-        var profileRoot = GetProfileRootFromProgressPath(GetProfileProgressPath(profileId), profileId);
-        var saveScope = GetSaveScope(profileRoot);
         var entry = new Dictionary<string, object?>
         {
             ["id"] = Path.GetFileNameWithoutExtension(file.Name),
@@ -246,7 +317,8 @@ public static partial class McpMod
 
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllText(file.FullName));
+            using var stream = file.OpenRead();
+            using var document = JsonDocument.Parse(stream);
             var root = document.RootElement;
 
             CopyJsonScalar(root, entry, "start_time");
@@ -290,22 +362,20 @@ public static partial class McpMod
         return entry;
     }
 
-    private static Dictionary<string, object?>? BuildCurrentRunContext(int profileId)
+    private static Dictionary<string, object?>? BuildCurrentRunContext(CompendiumSnapshot snapshot)
     {
-        if (RunManager.Instance?.IsInProgress != true)
+        if (!snapshot.IsRunInProgress)
             return null;
 
-        var profileRoot = GetProfileRootFromProgressPath(GetProfileProgressPath(profileId), profileId);
-        var saveScope = GetSaveScope(profileRoot);
         var result = new Dictionary<string, object?>
         {
             ["is_in_progress"] = true,
-            ["profile_id"] = profileId,
-            ["save_scope"] = saveScope,
+            ["profile_id"] = snapshot.ProfileId,
+            ["save_scope"] = snapshot.SaveScope,
             ["id_format"] = "{save_scope}:profile{profile_id}:{start_time}"
         };
 
-        var currentRunPath = ResolveCurrentRunPath(profileId);
+        var currentRunPath = ResolveCurrentRunPath(snapshot.ProfileRoot);
         if (currentRunPath == null || !File.Exists(currentRunPath))
         {
             result["limitation"] = "Run is in progress, but current_run.save was not found yet.";
@@ -316,7 +386,8 @@ public static partial class McpMod
 
         try
         {
-            using var document = JsonDocument.Parse(File.ReadAllText(currentRunPath));
+            using var stream = File.OpenRead(currentRunPath);
+            using var document = JsonDocument.Parse(stream);
             var root = document.RootElement;
 
             CopyJsonScalar(root, result, "start_time");
@@ -334,7 +405,7 @@ public static partial class McpMod
                 result["seed"] = GetJsonValue(seed);
 
             if (result.TryGetValue("start_time", out var startTime) && startTime != null)
-                result["run_id"] = $"{saveScope}:profile{profileId}:{startTime}";
+                result["run_id"] = $"{snapshot.SaveScope}:profile{snapshot.ProfileId}:{startTime}";
         }
         catch (Exception ex)
         {
@@ -378,11 +449,8 @@ public static partial class McpMod
         };
     }
 
-    private static string? FindRunHistoryDirectory(int profileId)
+    private static string? FindRunHistoryDirectory(string profileRoot)
     {
-        var progressPath = GetProfileProgressPath(profileId);
-        var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
-
         foreach (var saveRoot in EnumerateSaveRoots())
         {
             var historyPath = Path.Combine(saveRoot, profileRoot, "saves", "history");
@@ -454,11 +522,8 @@ public static partial class McpMod
         return progressPath;
     }
 
-    private static string? ResolveCurrentRunPath(int profileId)
+    private static string? ResolveCurrentRunPath(string profileRoot)
     {
-        var progressPath = GetProfileProgressPath(profileId);
-        var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
-
         foreach (var saveRoot in EnumerateSaveRoots())
         {
             var absolutePath = Path.Combine(saveRoot, profileRoot, "saves", "current_run.save");
