@@ -74,6 +74,13 @@ To audit the documented and live HTTP endpoint surface:
 python3 scripts/audit_endpoints.py
 ```
 
+To run the focused MCP bridge tests for endpoint error propagation and
+multiplayer menu retry behavior:
+
+```bash
+uv run --project mcp python scripts/test_mcp_server.py
+```
+
 ### 2. Give Your AI Instructions to Interact with the Game
 
 **Clone or download the repository**, then:
