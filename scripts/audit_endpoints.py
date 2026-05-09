@@ -182,8 +182,23 @@ def audit_static_error_shapes(repo: Path) -> None:
     print("errors: structured 500 response helpers enforced")
 
 
+def audit_static_glossary_scope(repo: Path) -> None:
+    fork_endpoints = (repo / "McpMod.ForkEndpoints.cs").read_text(encoding="utf-8")
+    relic_match = re.search(
+        r"internal static object BuildGlossaryRelics\(\).*?\n    internal static object BuildGlossaryPotions\(\)",
+        fork_endpoints,
+        re.S,
+    )
+    if not relic_match:
+        fail("could not locate BuildGlossaryRelics for scope audit")
+    if "Assembly.GetTypes()" in relic_match.group(0) or "typeof(RelicModel)" in relic_match.group(0):
+        fail("relic glossary must stay scoped to active run relic pools, not reflected assembly-wide relics")
+    print("glossary: active-run relic scope enforced")
+
+
 def audit_state_surface(repo: Path) -> None:
     state_builder = (repo / "McpMod.StateBuilder.cs").read_text(encoding="utf-8")
+    multiplayer_state = (repo / "McpMod.MultiplayerState.cs").read_text(encoding="utf-8")
     formatting = (repo / "McpMod.Formatting.cs").read_text(encoding="utf-8")
     docs = "\n".join(
         [
@@ -194,6 +209,12 @@ def audit_state_surface(repo: Path) -> None:
     )
 
     state_types = set(re.findall(r'\["state_type"\]\s*=\s*"([^"]+)"', state_builder))
+    multiplayer_state_types = set(re.findall(r'\["state_type"\]\s*=\s*"([^"]+)"', multiplayer_state))
+    missing_mp_parity = sorted(state_types - multiplayer_state_types)
+    if missing_mp_parity:
+        fail(f"multiplayer state surface missing singleplayer states: {missing_mp_parity}")
+
+    state_types |= multiplayer_state_types
     missing_docs = sorted(state_type for state_type in state_types if state_type not in docs)
     if missing_docs:
         fail(f"state types missing docs: {missing_docs}")
@@ -341,6 +362,7 @@ def main() -> None:
     audit_mcp_tool_docs(repo)
     audit_static_formatters(repo)
     audit_static_error_shapes(repo)
+    audit_static_glossary_scope(repo)
     audit_state_surface(repo)
     if not args.skip_live:
         audit_live(args.base_url)

@@ -7,7 +7,6 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Events;
 using MegaCrit.Sts2.Core.Models.Monsters;
-using MegaCrit.Sts2.Core.Models.RelicPools;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
 
@@ -314,30 +313,6 @@ public static partial class McpMod
                     ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
                 });
             }
-        }
-
-        foreach (var type in typeof(RelicModel).Assembly.GetTypes())
-        {
-            if (type.IsAbstract || !type.IsSubclassOf(typeof(RelicModel))) continue;
-            try
-            {
-                var instance = (RelicModel)Activator.CreateInstance(type)!;
-                if (instance.CanonicalInstance is not { } canonical) continue;
-                var id = canonical.Id.Entry;
-                if (seen.Contains(id)) continue;
-                seen.Add(id);
-
-                result.Add(new Dictionary<string, object?>
-                {
-                    ["id"] = id,
-                    ["name"] = SafeGetText(() => canonical.Title),
-                    ["description"] = SafeGetText(() => canonical.DynamicDescription),
-                    ["rarity"] = canonical.Rarity.ToString(),
-                    ["pool"] = canonical.Pool?.Id.Category ?? "Shared",
-                    ["keywords"] = BuildHoverTips(canonical.HoverTipsExcludingRelic)
-                });
-            }
-            catch { }
         }
 
         return result;

@@ -14,6 +14,7 @@ using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
+using MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
@@ -117,6 +118,15 @@ public static partial class McpMod
         {
             result["state_type"] = "rewards";
             result["rewards"] = BuildRewardsState(rewardsScreen, runState);
+        }
+        else if (topOverlay is NGameOverScreen)
+        {
+            result["state_type"] = "game_over";
+            result["game_over"] = new Dictionary<string, object?>
+            {
+                ["message"] = "Run ended.",
+                ["options"] = new List<string> { "main_menu" }
+            };
         }
         else if (topOverlay is IOverlayScreen
                  && topOverlay is not NRewardsScreen
