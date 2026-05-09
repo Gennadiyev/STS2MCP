@@ -119,14 +119,42 @@ def assert_context_paths_normalized(path: str, data: object) -> None:
 def audit_docs(repo: Path) -> None:
     raw_full = (repo / "docs" / "raw-full.md").read_text(encoding="utf-8")
     mcp_mod = (repo / "McpMod.cs").read_text(encoding="utf-8")
-    documented = set(re.findall(r"- `(GET|POST)\s+([^`]+)`", raw_full))
     expected = set(EXPECTED_ENDPOINTS)
+
+    documented = set(re.findall(r"- `(GET|POST)\s+([^`]+)`", raw_full))
     missing = sorted(expected - documented)
     extra = sorted(documented - expected)
     if missing:
         fail(f"docs/raw-full.md is missing endpoints: {missing}")
     if extra:
         fail(f"docs/raw-full.md documents unexpected endpoints: {extra}")
+
+    indexed = set(re.findall(r'\["method"\]\s*=\s*"(GET|POST)"\s*,\s*\["path"\]\s*=\s*"([^"]+)"', mcp_mod))
+    missing_index = sorted(expected - indexed)
+    extra_index = sorted(indexed - expected)
+    if missing_index:
+        fail(f"BuildEndpointIndex is missing endpoints: {missing_index}")
+    if extra_index:
+        fail(f"BuildEndpointIndex advertises unexpected endpoints: {extra_index}")
+
+    routed_paths = set(re.findall(r'path\s*==\s*"(/api/v1/[^"]+)"', mcp_mod))
+    expected_paths = {path for _, path in expected}
+    missing_routes = sorted(expected_paths - routed_paths)
+    extra_routes = sorted(routed_paths - expected_paths)
+    if missing_routes:
+        fail(f"HTTP route table is missing paths: {missing_routes}")
+    if extra_routes:
+        fail(f"HTTP route table includes unexpected paths: {extra_routes}")
+
+    for method, path in EXPECTED_ENDPOINTS:
+        path_pos = mcp_mod.find(f'path == "{path}"')
+        if path_pos == -1:
+            fail(f"could not locate route block for {method} {path}")
+        next_pos = mcp_mod.find("else if (path ==", path_pos + 1)
+        block = mcp_mod[path_pos: next_pos if next_pos != -1 else mcp_mod.find("else\n", path_pos)]
+        if f'request.HttpMethod == "{method}"' not in block:
+            fail(f"HTTP route table missing {method} handling for {path}")
+
     for required_fragment in [
         "status/kind envelope and active-run context",
         "normalized save/run context",
