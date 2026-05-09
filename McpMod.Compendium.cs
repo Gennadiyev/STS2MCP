@@ -516,14 +516,13 @@ public static partial class McpMod
         if (yielded.Count > 0)
             yield break;
 
-        foreach (var steamRoot in steamRoots)
-        {
-            foreach (var accountRoot in Directory.GetDirectories(steamRoot))
-            {
-                if (yielded.Add(accountRoot))
-                    yield return accountRoot;
-            }
-        }
+        var accountRoots = steamRoots
+            .SelectMany(Directory.GetDirectories)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (accountRoots.Count == 1 && yielded.Add(accountRoots[0]))
+            yield return accountRoots[0];
     }
 
     private static IEnumerable<string> EnumerateSteamDataRoots()
