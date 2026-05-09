@@ -1808,6 +1808,18 @@ def audit_live(base_url: str) -> None:
         assert_error_body("/api/v1/profiles", status, data)
         if status != 409 or data.get("error_code") != "active_profile_delete":
             fail(f"/api/v1/profiles expected HTTP 409 active_profile_delete, got HTTP {status}: {data}")
+        status, profile_data = load_json_url(base_url.rstrip() + "/api/v1/profile")
+        if status == 200 and isinstance(profile_data, dict):
+            current_run = profile_data.get("current_run")
+            if isinstance(current_run, dict) and current_run.get("is_in_progress") is True:
+                status, data = load_json_url(
+                    base_url.rstrip() + "/api/v1/profiles",
+                    "POST",
+                    json.dumps({"action": "switch", "profile_id": current_profile_id}).encode("utf-8"),
+                )
+                assert_error_body("/api/v1/profiles", status, data)
+                if status != 409 or data.get("error_code") != "run_in_progress":
+                    fail(f"/api/v1/profiles expected HTTP 409 run_in_progress during active run, got HTTP {status}: {data}")
 
     for body in (b"{", b"{}"):
         status, data = load_json_url(base_url.rstrip("/") + "/api/v1/multiplayer", "POST", body)
