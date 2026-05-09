@@ -475,6 +475,8 @@ def audit_static_glossary_scope(repo: Path) -> None:
         )
         if not match or required not in match.group(0):
             fail(f"{method} must include active-run shared pool {required}")
+        if "RunManager.Instance?.IsInProgress != true" not in match.group(0):
+            fail(f"{method} must handle missing RunManager as run_not_in_progress")
     for method in ["BuildGlossaryCards", "BuildGlossaryRelics", "BuildGlossaryPotions"]:
         match = re.search(
             rf"internal static object {method}\(\).*?(?=\n    internal static object|\n    private static|\n    internal static|\n\}})",

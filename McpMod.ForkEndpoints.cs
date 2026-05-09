@@ -285,7 +285,7 @@ public static partial class McpMod
 
     internal static object BuildGlossaryCards()
     {
-        if (!RunManager.Instance.IsInProgress)
+        if (RunManager.Instance?.IsInProgress != true)
             return GlossaryError("No run in progress.", RunNotInProgressErrorCode);
 
         var runState = RunManager.Instance.DebugOnlyGetState();
@@ -347,7 +347,7 @@ public static partial class McpMod
 
     internal static object BuildGlossaryRelics()
     {
-        if (!RunManager.Instance.IsInProgress)
+        if (RunManager.Instance?.IsInProgress != true)
             return GlossaryError("No run in progress.", RunNotInProgressErrorCode);
 
         var runState = RunManager.Instance.DebugOnlyGetState();
@@ -398,7 +398,7 @@ public static partial class McpMod
 
     internal static object BuildGlossaryPotions()
     {
-        if (!RunManager.Instance.IsInProgress)
+        if (RunManager.Instance?.IsInProgress != true)
             return GlossaryError("No run in progress.", RunNotInProgressErrorCode);
 
         var runState = RunManager.Instance.DebugOnlyGetState();
@@ -451,7 +451,7 @@ public static partial class McpMod
 
     internal static object BuildGlossaryKeywords()
     {
-        if (!RunManager.Instance.IsInProgress)
+        if (RunManager.Instance?.IsInProgress != true)
             return GlossaryError("No run in progress.", RunNotInProgressErrorCode);
 
         var runState = RunManager.Instance.DebugOnlyGetState();
