@@ -1472,11 +1472,16 @@ public static partial class McpMod
     {
         var isSelected = GetBoolMemberValue(holder, "IsSelected")
                          ?? GetBoolMemberValue(holder, "_isSelected");
-        var isEnabled = GetBoolMemberValue(holder, "IsEnabled");
 
         cardInfo["is_selected"] = isSelected ?? false;
-        cardInfo["is_visible"] = holder.Visible && holder.IsVisibleInTree();
-        cardInfo["can_select"] = (isEnabled ?? true) && holder.Visible && holder.IsVisibleInTree();
+        cardInfo["is_visible"] = IsNodeVisible(holder);
+        cardInfo["can_select"] = IsCardHolderSelectable(holder);
+    }
+
+    private static bool IsCardHolderSelectable(Control holder)
+    {
+        var isEnabled = GetBoolMemberValue(holder, "IsEnabled");
+        return (isEnabled ?? true) && IsNodeVisible(holder);
     }
 
     private static Dictionary<string, object?> BuildEnemyState(Creature creature, Dictionary<string, int> entityCounts)
@@ -2199,14 +2204,14 @@ public static partial class McpMod
                 {
                     var cancelBtn = container.GetNodeOrNull<NBackButton>("Cancel")
                                     ?? container.GetNodeOrNull<NBackButton>("%PreviewCancel");
-                    if (cancelBtn?.IsEnabled == true) { canCancel = true; break; }
+                    if (IsControlVisibleOrActionable(cancelBtn)) { canCancel = true; break; }
                 }
             }
         }
         if (!canCancel)
         {
             var closeButton = screen.GetNodeOrNull<NBackButton>("%Close");
-            canCancel = closeButton?.IsEnabled ?? false;
+            canCancel = IsControlVisibleOrActionable(closeButton);
         }
         state["can_cancel"] = canCancel;
 
@@ -2218,20 +2223,20 @@ public static partial class McpMod
             {
                 var confirm = container.GetNodeOrNull<NConfirmButton>("Confirm")
                               ?? container.GetNodeOrNull<NConfirmButton>("%PreviewConfirm");
-                if (confirm?.IsEnabled == true) { canConfirm = true; break; }
+                if (IsControlVisibleOrActionable(confirm)) { canConfirm = true; break; }
             }
         }
         if (!canConfirm)
         {
             var mainConfirm = screen.GetNodeOrNull<NConfirmButton>("Confirm")
                               ?? screen.GetNodeOrNull<NConfirmButton>("%Confirm");
-            if (mainConfirm?.IsEnabled == true) canConfirm = true;
+            if (IsControlVisibleOrActionable(mainConfirm)) canConfirm = true;
         }
         // Fallback: search entire screen tree for any enabled confirm button
         // (covers subclasses like NDeckEnchantSelectScreen)
         if (!canConfirm)
         {
-            canConfirm = FindAll<NConfirmButton>(screen).Any(b => b.IsEnabled && b.IsVisibleInTree());
+            canConfirm = FindAll<NConfirmButton>(screen).Any(IsControlVisibleOrActionable);
         }
         state["can_confirm"] = canConfirm;
 
@@ -2262,7 +2267,7 @@ public static partial class McpMod
         state["cards"] = cards;
 
         var skipButton = screen.GetNodeOrNull<NClickableControl>("SkipButton");
-        state["can_skip"] = skipButton?.IsEnabled == true && skipButton.Visible;
+        state["can_skip"] = IsControlVisibleOrActionable(skipButton);
         state["preview_showing"] = false;
         state["can_confirm"] = false;
         state["can_cancel"] = state["can_skip"];
@@ -2298,7 +2303,7 @@ public static partial class McpMod
                 ["card_count"] = cards.Count,
                 ["cards"] = cards,
                 ["is_visible"] = true,
-                ["can_select"] = bundle.Hitbox.IsEnabled
+                ["can_select"] = bundle.Hitbox.IsEnabled && IsNodeVisible(bundle.Hitbox)
             });
             index++;
         }
@@ -2313,7 +2318,8 @@ public static partial class McpMod
         if (previewCardsContainer != null)
         {
             int previewIndex = 0;
-            foreach (var holder in FindAll<NPreviewCardHolder>(previewCardsContainer))
+            foreach (var holder in FindAll<NPreviewCardHolder>(previewCardsContainer)
+                         .Where(holder => IsNodeVisible(holder)))
             {
                 var card = holder.CardModel;
                 if (card == null) continue;
@@ -2328,8 +2334,8 @@ public static partial class McpMod
 
         var cancelButton = screen.GetNodeOrNull<NBackButton>("%Cancel");
         var confirmButton = screen.GetNodeOrNull<NConfirmButton>("%Confirm");
-        state["can_cancel"] = cancelButton?.IsEnabled == true;
-        state["can_confirm"] = confirmButton?.IsEnabled == true;
+        state["can_cancel"] = IsControlVisibleOrActionable(cancelButton);
+        state["can_confirm"] = IsControlVisibleOrActionable(confirmButton);
 
         return state;
     }
@@ -2397,7 +2403,7 @@ public static partial class McpMod
 
         // Confirm button state
         var confirmBtn = hand.GetNodeOrNull<NConfirmButton>("%SelectModeConfirmButton");
-        state["can_confirm"] = confirmBtn?.IsEnabled ?? false;
+        state["can_confirm"] = IsControlVisibleOrActionable(confirmBtn);
 
         return state;
     }

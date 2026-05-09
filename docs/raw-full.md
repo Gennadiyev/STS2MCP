@@ -1240,11 +1240,11 @@ Select a card during in-combat hand selection (exhaust, discard, upgrade prompts
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `card_index` | int | Yes | Index in the selectable hand cards |
+| `card_index` | int | Yes | Index in the hand-selection cards; the card must be visible and report `can_select: true` |
 
 ### `combat_confirm_selection`
 
-Confirm the in-combat hand card selection.
+Confirm the in-combat hand card selection when the visible confirm button is enabled.
 
 ```json
 { "action": "combat_confirm_selection" }
@@ -1370,7 +1370,7 @@ Select a card in a card selection overlay.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `index` | int | Yes | 0-based card index in the grid |
+| `index` | int | Yes | 0-based card index in the grid; the card must be visible and report `can_select: true` |
 
 **Behavior varies by screen type:**
 - Grid screens (transform, upgrade, select): toggles selection. When enough cards are selected, a preview may appear.
@@ -1384,7 +1384,7 @@ Confirm card selection (grid screens only).
 { "action": "confirm_selection" }
 ```
 
-Checks preview containers first, then main confirm button. Not needed for choose-a-card screens.
+Checks visible enabled preview containers first, then the visible enabled main confirm button. Not needed for choose-a-card screens.
 
 ### `cancel_selection`
 
@@ -1395,9 +1395,9 @@ Cancel or close the card selection overlay.
 ```
 
 **Behavior:**
-- If a preview is showing: cancels back to the selection grid.
-- For choose-a-card screens: clicks the skip button (if available).
-- Otherwise: closes the selection screen (if cancellation is allowed).
+- If a preview is showing: cancels back to the selection grid when the visible cancel button is enabled.
+- For choose-a-card screens: clicks the visible skip button when it is enabled.
+- Otherwise: closes the selection screen when the visible close button is enabled.
 
 ### `select_bundle`
 
@@ -1409,11 +1409,11 @@ Open a bundle preview in the bundle selection screen.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `index` | int | Yes | 0-based bundle index |
+| `index` | int | Yes | 0-based bundle index; the bundle must be visible and report `can_select: true` |
 
 ### `confirm_bundle_selection`
 
-Confirm the currently previewed bundle.
+Confirm the currently previewed bundle when the visible confirm button is enabled.
 
 ```json
 { "action": "confirm_bundle_selection" }
@@ -1421,7 +1421,7 @@ Confirm the currently previewed bundle.
 
 ### `cancel_bundle_selection`
 
-Cancel the bundle preview.
+Cancel the bundle preview when the visible cancel button is enabled.
 
 ```json
 { "action": "cancel_bundle_selection" }

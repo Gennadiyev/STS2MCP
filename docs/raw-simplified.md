@@ -125,8 +125,8 @@ When a run is active, the response includes `current_run.run_id` in `{save_scope
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `combat_select_card` | `card_index`: int | Select/deselect a card during "choose a card to exhaust/discard" prompts. |
-| `combat_confirm_selection` | _(none)_ | Confirm the hand card selection. |
+| `combat_select_card` | `card_index`: int | Select/deselect a visible hand card whose `can_select` is true during selection prompts. |
+| `combat_confirm_selection` | _(none)_ | Confirm the hand card selection when the visible confirm button is enabled. |
 
 ### Rewards (`rewards`)
 
@@ -180,17 +180,17 @@ When a run is active, the response includes `current_run.run_id` in `{save_scope
 
 | Action | Parameters | When to Use |
 |---|---|---|
-| `select_card` | `index`: int | Grid screens: toggle card selection unless a preview is open. Choose-a-card: pick immediately. |
-| `confirm_selection` | _(none)_ | Confirm (for grid screens with preview). Not needed for choose-a-card. |
-| `cancel_selection` | _(none)_ | Cancel preview, skip (choose-a-card), or close screen. |
+| `select_card` | `index`: int | Grid screens: toggle a visible card whose `can_select` is true unless a preview is open. Choose-a-card: pick immediately when `can_select` is true. |
+| `confirm_selection` | _(none)_ | Confirm only when the visible confirm button is enabled. Not needed for choose-a-card. |
+| `cancel_selection` | _(none)_ | Cancel preview, skip (choose-a-card), or close screen when the visible cancel/skip button is enabled. |
 
 ### Bundle Selection Overlay (`bundle_select`)
 
 | Action | Parameters | When to Use |
 |---|---|---|
 | `select_bundle` | `index`: int | Open a visible enabled bundle preview. |
-| `confirm_bundle_selection` | _(none)_ | Confirm the previewed bundle. |
-| `cancel_bundle_selection` | _(none)_ | Cancel the bundle preview. |
+| `confirm_bundle_selection` | _(none)_ | Confirm the previewed bundle when the visible confirm button is enabled. |
+| `cancel_bundle_selection` | _(none)_ | Cancel the bundle preview when the visible cancel button is enabled. |
 
 ### Relic Selection Overlay (`relic_select`)
 

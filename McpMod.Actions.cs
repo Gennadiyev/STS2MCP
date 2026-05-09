@@ -645,11 +645,18 @@ public static partial class McpMod
             if (grid == null)
                 return Error("Card grid not found in selection screen");
 
-            var holders = FindAllSortedByPosition<NGridCardHolder>(gridScreen);
+            var holders = FindAllSortedByPosition<NGridCardHolder>(gridScreen)
+                .Where(holder => holder.CardModel != null)
+                .ToList();
             if (index < 0 || index >= holders.Count)
                 return Error($"Card index {index} out of range ({holders.Count} cards available)");
 
             var holder = holders[index];
+            if (holder.CardModel == null)
+                return Error($"Card index {index} does not contain a card");
+            if (!IsCardHolderSelectable(holder))
+                return Error($"Card index {index} is not selectable");
+
             string cardName = SafeGetText(() => holder.CardModel?.Title) ?? "unknown";
             grid.EmitSignal(NCardGrid.SignalName.HolderPressed, holder);
 
@@ -661,11 +668,18 @@ public static partial class McpMod
         }
         else if (overlay is NChooseACardSelectionScreen chooseScreen)
         {
-            var holders = FindAllSortedByPosition<NGridCardHolder>(chooseScreen);
+            var holders = FindAllSortedByPosition<NGridCardHolder>(chooseScreen)
+                .Where(holder => holder.CardModel != null)
+                .ToList();
             if (index < 0 || index >= holders.Count)
                 return Error($"Card index {index} out of range ({holders.Count} cards available)");
 
             var holder = holders[index];
+            if (holder.CardModel == null)
+                return Error($"Card index {index} does not contain a card");
+            if (!IsCardHolderSelectable(holder))
+                return Error($"Card index {index} is not selectable");
+
             string cardName = SafeGetText(() => holder.CardModel?.Title) ?? "unknown";
             holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
 
@@ -696,7 +710,7 @@ public static partial class McpMod
             {
                 var confirm = container.GetNodeOrNull<NConfirmButton>("Confirm")
                               ?? container.GetNodeOrNull<NConfirmButton>("%PreviewConfirm");
-                if (confirm is { IsEnabled: true })
+                if (IsControlVisibleOrActionable(confirm))
                 {
                     confirm.ForceClick();
                     return new Dictionary<string, object?>
@@ -711,7 +725,7 @@ public static partial class McpMod
         // Try main confirm button
         var mainConfirm = screen.GetNodeOrNull<NConfirmButton>("Confirm")
                           ?? screen.GetNodeOrNull<NConfirmButton>("%Confirm");
-        if (mainConfirm is { IsEnabled: true })
+        if (IsControlVisibleOrActionable(mainConfirm))
         {
             mainConfirm.ForceClick();
             return new Dictionary<string, object?>
@@ -727,7 +741,7 @@ public static partial class McpMod
         var allConfirmButtons = FindAll<NConfirmButton>(screen);
         foreach (var btn in allConfirmButtons)
         {
-            if (btn.IsEnabled && btn.IsVisibleInTree())
+            if (IsControlVisibleOrActionable(btn))
             {
                 btn.ForceClick();
                 return new Dictionary<string, object?>
@@ -749,7 +763,7 @@ public static partial class McpMod
         if (overlay is NChooseACardSelectionScreen chooseScreen)
         {
             var skipButton = chooseScreen.GetNodeOrNull<NClickableControl>("SkipButton");
-            if (skipButton is { IsEnabled: true })
+            if (IsControlVisibleOrActionable(skipButton))
             {
                 skipButton.ForceClick();
                 return new Dictionary<string, object?>
@@ -772,7 +786,7 @@ public static partial class McpMod
             {
                 var cancelBtn = container.GetNodeOrNull<NBackButton>("Cancel")
                                 ?? container.GetNodeOrNull<NBackButton>("%PreviewCancel");
-                if (cancelBtn is { IsEnabled: true })
+                if (IsControlVisibleOrActionable(cancelBtn))
                 {
                     cancelBtn.ForceClick();
                     return new Dictionary<string, object?>
@@ -786,7 +800,7 @@ public static partial class McpMod
 
         // Close the screen entirely
         var closeButton = screen.GetNodeOrNull<NBackButton>("%Close");
-        if (closeButton is { IsEnabled: true })
+        if (IsControlVisibleOrActionable(closeButton))
         {
             closeButton.ForceClick();
             return new Dictionary<string, object?>
@@ -814,7 +828,10 @@ public static partial class McpMod
             return Error("A bundle preview is already open - confirm or cancel it first");
 
         var bundles = FindAll<NCardBundle>(screen)
-            .Where(bundle => bundle.Visible && bundle.IsVisibleInTree() && bundle.Hitbox.IsEnabled)
+            .Where(bundle => bundle.Visible
+                             && bundle.IsVisibleInTree()
+                             && bundle.Hitbox.IsEnabled
+                             && IsNodeVisible(bundle.Hitbox))
             .ToList();
         if (index < 0 || index >= bundles.Count)
             return Error($"Bundle index {index} out of range ({bundles.Count} bundles available)");
@@ -834,7 +851,7 @@ public static partial class McpMod
             return Error("No bundle selection screen is open");
 
         var confirmButton = screen.GetNodeOrNull<NConfirmButton>("%Confirm");
-        if (confirmButton is not { IsEnabled: true })
+        if (!IsControlVisibleOrActionable(confirmButton))
             return Error("Bundle confirm button is not enabled");
 
         confirmButton.ForceClick();
@@ -852,7 +869,7 @@ public static partial class McpMod
             return Error("No bundle selection screen is open");
 
         var cancelButton = screen.GetNodeOrNull<NBackButton>("%Cancel");
-        if (cancelButton is not { IsEnabled: true })
+        if (!IsControlVisibleOrActionable(cancelButton))
             return Error("Bundle cancel button is not enabled");
 
         cancelButton.ForceClick();
@@ -873,11 +890,18 @@ public static partial class McpMod
             return Error("Missing 'card_index' (index of the card in hand)");
 
         int index = indexElem.GetInt32();
-        var holders = hand.ActiveHolders;
+        var holders = hand.ActiveHolders
+            .Where(holder => holder.CardModel != null)
+            .ToList();
         if (index < 0 || index >= holders.Count)
             return Error($"Card index {index} out of range ({holders.Count} selectable cards)");
 
         var holder = holders[index];
+        if (holder.CardModel == null)
+            return Error($"Card index {index} does not contain a card");
+        if (!IsCardHolderSelectable(holder))
+            return Error($"Card index {index} is not selectable");
+
         string cardName = SafeGetText(() => holder.CardModel?.Title) ?? "unknown";
 
         // Emit the Pressed signal - same path the game UI uses
@@ -897,7 +921,7 @@ public static partial class McpMod
             return Error("No in-combat card selection is active");
 
         var confirmBtn = hand.GetNodeOrNull<NConfirmButton>("%SelectModeConfirmButton");
-        if (confirmBtn == null || !confirmBtn.IsEnabled)
+        if (!IsControlVisibleOrActionable(confirmBtn))
             return Error("Confirm button is not enabled - select more cards first");
 
         confirmBtn.ForceClick();

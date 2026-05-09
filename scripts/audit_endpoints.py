@@ -384,6 +384,29 @@ def audit_state_surface(repo: Path) -> None:
     select_action_body = select_action_match.group(0)
     if "preview is already open" not in select_action_body or "%PreviewContainer" not in select_action_body:
         fail("select_card must reject grid selection while a preview is open")
+    for required_fragment in ["IsCardHolderSelectable", "does not contain a card", "is not selectable"]:
+        if required_fragment not in select_action_body:
+            fail(f"select_card action missing selectable-card guard: {required_fragment}")
+    confirm_action_match = re.search(
+        r"private static Dictionary<string, object\?> ExecuteConfirmSelection\(.*?\n    private static Dictionary<string, object\?> ExecuteCancelSelection\(",
+        actions,
+        re.S,
+    )
+    if not confirm_action_match:
+        fail("could not locate ExecuteConfirmSelection for visible button audit")
+    confirm_action_body = confirm_action_match.group(0)
+    if "IsControlVisibleOrActionable" not in confirm_action_body:
+        fail("confirm_selection action must require visible enabled buttons")
+    cancel_action_match = re.search(
+        r"private static Dictionary<string, object\?> ExecuteCancelSelection\(.*?\n    private static Dictionary<string, object\?> ExecuteSelectBundle\(",
+        actions,
+        re.S,
+    )
+    if not cancel_action_match:
+        fail("could not locate ExecuteCancelSelection for visible button audit")
+    cancel_action_body = cancel_action_match.group(0)
+    if "IsControlVisibleOrActionable" not in cancel_action_body:
+        fail("cancel_selection action must require visible enabled buttons")
 
     card_reward_match = re.search(
         r"private static Dictionary<string, object\?> BuildCardRewardState\(.*?\n    private static Dictionary<string, object\?> BuildCardSelectState\(",
@@ -499,6 +522,56 @@ def audit_state_surface(repo: Path) -> None:
     for required_fragment in ["IsVisibleInTree", "Hitbox.IsEnabled"]:
         if required_fragment not in bundle_action_body:
             fail(f"bundle_select action missing visibility/enabled guard: {required_fragment}")
+    bundle_confirm_match = re.search(
+        r"private static Dictionary<string, object\?> ExecuteConfirmBundleSelection\(.*?\n    private static Dictionary<string, object\?> ExecuteCancelBundleSelection\(",
+        actions,
+        re.S,
+    )
+    if not bundle_confirm_match:
+        fail("could not locate ExecuteConfirmBundleSelection for visible button audit")
+    if "IsControlVisibleOrActionable" not in bundle_confirm_match.group(0):
+        fail("confirm_bundle_selection action must require a visible enabled button")
+    bundle_cancel_match = re.search(
+        r"private static Dictionary<string, object\?> ExecuteCancelBundleSelection\(.*?\n    private static Dictionary<string, object\?> ExecuteCombatSelectCard\(",
+        actions,
+        re.S,
+    )
+    if not bundle_cancel_match:
+        fail("could not locate ExecuteCancelBundleSelection for visible button audit")
+    if "IsControlVisibleOrActionable" not in bundle_cancel_match.group(0):
+        fail("cancel_bundle_selection action must require a visible enabled button")
+
+    hand_state_match = re.search(
+        r"private static Dictionary<string, object\?> BuildHandSelectState\(.*?\n    private static Dictionary<string, object\?> BuildRelicSelectState\(",
+        state_builder,
+        re.S,
+    )
+    if not hand_state_match:
+        fail("could not locate BuildHandSelectState for hand-select audit")
+    hand_state_body = hand_state_match.group(0)
+    for required_fragment in ["AddCardHolderState", "IsControlVisibleOrActionable"]:
+        if required_fragment not in hand_state_body:
+            fail(f"hand_select state missing selectable/confirm metadata: {required_fragment}")
+    hand_action_match = re.search(
+        r"private static Dictionary<string, object\?> ExecuteCombatSelectCard\(.*?\n    private static Dictionary<string, object\?> ExecuteCombatConfirmSelection\(",
+        actions,
+        re.S,
+    )
+    if not hand_action_match:
+        fail("could not locate ExecuteCombatSelectCard for hand-select audit")
+    hand_action_body = hand_action_match.group(0)
+    for required_fragment in ["IsCardHolderSelectable", "does not contain a card", "is not selectable"]:
+        if required_fragment not in hand_action_body:
+            fail(f"combat_select_card action missing selectable-card guard: {required_fragment}")
+    hand_confirm_match = re.search(
+        r"private static Dictionary<string, object\?> ExecuteCombatConfirmSelection\(.*?\n    private static Dictionary<string, object\?> ExecuteSelectRelic\(",
+        actions,
+        re.S,
+    )
+    if not hand_confirm_match:
+        fail("could not locate ExecuteCombatConfirmSelection for hand-select audit")
+    if "IsControlVisibleOrActionable" not in hand_confirm_match.group(0):
+        fail("combat_confirm_selection action must require a visible enabled button")
 
     treasure_state_match = re.search(
         r"private static Dictionary<string, object\?> BuildTreasureState\(.*?\n    private static string GetRewardTypeName\(",
