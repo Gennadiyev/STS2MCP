@@ -192,6 +192,12 @@ def audit_live(base_url: str) -> None:
         if status != expected_status:
             fail(f"{path} expected HTTP {expected_status} for validation check, got {status}: {data}")
 
+    for body in (b"{", b"{}"):
+        status, data = load_json_url(base_url.rstrip("/") + "/api/v1/multiplayer", "POST", body)
+        assert_error_body("/api/v1/multiplayer", status, data)
+        if status not in {400, 409}:
+            fail(f"/api/v1/multiplayer expected HTTP 400 in MP or 409 outside MP, got {status}: {data}")
+
     status, data = load_json_url(base_url.rstrip("/") + "/api/v1/settings", "POST", b"{}")
     assert_error_body("/api/v1/settings", status, data)
     if status != 405:
