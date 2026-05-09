@@ -1601,6 +1601,8 @@ def audit_live(base_url: str) -> None:
                 ]:
                     if required_field not in data:
                         fail(f"{path} missing global profile total field: {required_field}")
+                    if not isinstance(data[required_field], int):
+                        fail(f"{path} global profile total {required_field} should be int, got {data[required_field]!r}")
                 for field in ["characters", "card_stats", "encounter_stats", "enemy_stats", "ancient_stats", "achievements", "epochs"]:
                     assert_sorted_objects(path, field, data.get(field), "id")
                 profile_field_contracts = {
@@ -1614,10 +1616,50 @@ def audit_live(base_url: str) -> None:
                 }
                 for field, required_fields in profile_field_contracts.items():
                     assert_objects_have_fields(path, field, data.get(field), required_fields)
+                for item in data.get("characters", []):
+                    if isinstance(item, dict):
+                        if not isinstance(item.get("id"), str) or not item["id"]:
+                            fail(f"{path} character stat id should be non-empty string: {item}")
+                        for numeric_field in ["max_ascension", "preferred_ascension", "total_wins", "total_losses", "fastest_win_time", "best_win_streak", "current_win_streak", "playtime"]:
+                            if not isinstance(item.get(numeric_field), int):
+                                fail(f"{path} character stat {numeric_field} should be int: {item}")
+                for field, numeric_fields in {
+                    "card_stats": ["times_picked", "times_skipped", "times_won", "times_lost"],
+                    "encounter_stats": ["total_wins", "total_losses"],
+                    "enemy_stats": ["total_wins", "total_losses"],
+                    "ancient_stats": ["total_visits", "total_wins", "total_losses"],
+                }.items():
+                    for item in data.get(field, []):
+                        if isinstance(item, dict):
+                            if not isinstance(item.get("id"), str) or not item["id"]:
+                                fail(f"{path} {field} id should be non-empty string: {item}")
+                            for numeric_field in numeric_fields:
+                                if not isinstance(item.get(numeric_field), int):
+                                    fail(f"{path} {field}.{numeric_field} should be int: {item}")
                 for field in ["encounter_stats", "enemy_stats", "ancient_stats"]:
                     for item in data.get(field, []):
                         if isinstance(item, dict) and item.get("by_character") is not None:
                             assert_objects_have_fields(path, f"{field}.by_character", item["by_character"], ["character", "wins", "losses"])
+                            for by_character in item["by_character"]:
+                                if not isinstance(by_character.get("character"), str) or not by_character["character"]:
+                                    fail(f"{path} {field}.by_character character should be non-empty string: {by_character}")
+                                for numeric_field in ["wins", "losses"]:
+                                    if not isinstance(by_character.get(numeric_field), int):
+                                        fail(f"{path} {field}.by_character {numeric_field} should be int: {by_character}")
+                for item in data.get("achievements", []):
+                    if isinstance(item, dict):
+                        if not isinstance(item.get("id"), str) or not item["id"]:
+                            fail(f"{path} achievement id should be non-empty string: {item}")
+                        if not isinstance(item.get("unlocked_at"), int):
+                            fail(f"{path} achievement unlocked_at should be int: {item}")
+                for item in data.get("epochs", []):
+                    if isinstance(item, dict):
+                        if not isinstance(item.get("id"), str) or not item["id"]:
+                            fail(f"{path} epoch id should be non-empty string: {item}")
+                        if not isinstance(item.get("state"), str) or not item["state"]:
+                            fail(f"{path} epoch state should be non-empty string: {item}")
+                        if not isinstance(item.get("obtained"), int):
+                            fail(f"{path} epoch obtained should be int: {item}")
                 for field in ["discovered_cards", "discovered_relics", "discovered_potions", "discovered_events", "discovered_acts"]:
                     assert_sorted_strings(path, field, data.get(field))
             if path == "/api/v1/compendium":
