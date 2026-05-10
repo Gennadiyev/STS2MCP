@@ -7,6 +7,7 @@
 | `get_game_state(format?, wait_for_actionable?, wait_timeout?, poll_interval?)` | General | Get current game state (`markdown` or `json`), optionally waiting through transient non-actionable states |
 | `log_agent_decision(summary, reasoning?, intended_action?, alternatives?, confidence?, tags?)` | General | Add a structured decision annotation to the run log |
 | `log_external_token_usage(usage_json)` | General | Attach exact/external model token usage to a run log event or tool call |
+| `log_model_message(role, content, source?, turn_id?, turn_index?, message_id?, related_tool_call_id?, related_event_id?, state_sha256?, content_preview?, exact_*_tokens?, token_source?, model?)` | General | Attach prompt/completion/message records to a stable conversation turn |
 | `menu_select(option, seed?)` | General | Select a visible menu/game-over option |
 | `get_profile()` | Profiles | Get active profile progress |
 | `list_profiles()` | Profiles | List profile slots and active slot |
@@ -88,6 +89,7 @@ Logged events include:
 - `state_poll` and `state_poll_final_format` for smart polling decisions.
 - `agent_decision` entries from `log_agent_decision`.
 - `external_token_usage` entries from `log_external_token_usage`.
+- `model_message` entries from `log_model_message`.
 
 Tool and HTTP results include length, byte count, SHA-256, preview text, truncation status, and estimated token count. Keys containing `authorization`, `cookie`, `password`, `secret`, `token`, `api_key`, or `apikey` are redacted before writing.
 
@@ -116,7 +118,23 @@ By default these counts use a deterministic regex estimator (`generic_regex_v1`)
 }
 ```
 
-The summary artifact rolls up totals by tool name, event type, state type, game mode, action category, run phase, and floor where available. It also tracks hidden polling cost, largest payloads, repeated-state cost, invalid-action cost, replay artifact size/token metadata, and externally supplied usage records.
+Use `log_model_message` to attach first-class prompt and turn structure:
+
+```json
+{
+  "role": "user",
+  "content": "Choose the best card to play.",
+  "source": "agent-wrapper",
+  "turn_id": "run-1-turn-7",
+  "turn_index": 7,
+  "message_id": "msg-007-user",
+  "state_sha256": "..."
+}
+```
+
+Message roles are `system`, `user`, `assistant`, `tool`, `developer`, and `external`. Each `model_message` record stores `message_id`, `turn_id`, `turn_index`, role/source, content hash, bounded preview metadata, estimated tokens, optional exact token usage, privacy flags, and related `tool_call_id` / `event_id` links when supplied. If `turn_id` or `message_id` is omitted, the bridge generates stable IDs for the current run. Set `content_preview=false` to keep hashes and counts while omitting prompt preview text.
+
+The summary artifact rolls up totals by tool name, event type, state type, game mode, action category, run phase, floor, token source, turn, role, and message source where available. It also tracks total prompts, total turns, average tokens per turn, tool-result token share, hidden polling token share, hidden polling cost, largest prompts, largest payloads, repeated-state cost, invalid-action cost, replay artifact size/token metadata, and externally supplied usage records.
 
 Logging options:
 
@@ -138,12 +156,13 @@ python validate_run_log.py --self-test
 python validate_run_log.py logs/run_<timestamp>-<id>.jsonl
 ```
 
-The validator checks JSONL parseability, strictly increasing sequence numbers, unique `event_id` values, non-decreasing monotonic time, token field consistency, summary rollup consistency, and a deterministic tokenizer fixture.
+The validator checks JSONL parseability, strictly increasing sequence numbers, unique `event_id` values, non-decreasing monotonic time, token field consistency, summary rollup consistency, model-message roles, monotonic first-seen turn ordering, message-to-turn linkage, external-usage-to-message reconciliation, and a deterministic tokenizer fixture.
 
 Privacy notes:
 
 - Token counts are computed after recursive redaction for structured arguments and metadata.
 - Response text is counted before preview truncation, but full response text is stored only with `--log-full-text`.
+- `log_model_message` stores prompt previews by default. Pass `content_preview=false` when clients need hash/token accounting without prompt text snippets.
 - External usage records may reveal provider/model information supplied by the client; redact those fields client-side if needed.
 
 ## Smart State Polling

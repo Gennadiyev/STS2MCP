@@ -62,6 +62,7 @@ class RunLogger:
         self._sequence = 0
         self._started_at = time.monotonic()
         self._lock = asyncio.Lock()
+        self._turn_indices: dict[str, int] = {}
         self._summary = self._new_summary()
 
     def start(self, metadata: dict[str, Any] | None = None) -> None:
@@ -102,6 +103,7 @@ class RunLogger:
             "by_action_category": {},
             "by_run_phase": {},
             "by_floor": {},
+            "by_token_source": {},
             "polling": {
                 "poll_events": 0,
                 "hidden_poll_events": 0,
@@ -128,6 +130,21 @@ class RunLogger:
                 "log_bytes": 0,
                 "summary_bytes": 0,
                 "summary_estimated_tokens": 0,
+            },
+            "conversation": {
+                "total_prompts": 0,
+                "total_turns": 0,
+                "total_messages": 0,
+                "model_messages": 0,
+                "tool_result_messages": 0,
+                "agent_decision_messages": 0,
+                "average_tokens_per_turn": 0.0,
+                "tool_result_token_share": 0.0,
+                "hidden_polling_token_share": 0.0,
+                "by_turn": {},
+                "by_role": {},
+                "by_source": {},
+                "largest_prompts": [],
             },
         }
 
@@ -180,6 +197,17 @@ class RunLogger:
             self._write_sync(record)
             self._update_summary(record)
             self.write_summary()
+
+    def resolve_turn(self, turn_id: str | None = None, turn_index: int | None = None) -> tuple[str, int]:
+        if turn_id is None or not str(turn_id).strip():
+            if turn_index is not None:
+                turn_id = f"turn-{turn_index}"
+            else:
+                turn_id = f"turn-{len(self._turn_indices) + 1}"
+        turn_id = str(turn_id)
+        if turn_id not in self._turn_indices:
+            self._turn_indices[turn_id] = int(turn_index) if turn_index is not None else len(self._turn_indices) + 1
+        return turn_id, self._turn_indices[turn_id]
 
     def redact(self, value: Any) -> Any:
         if isinstance(value, dict):
@@ -297,8 +325,23 @@ class RunLogger:
             return self.token_estimator.usage(hidden_poll_tokens=int(payload.get("hidden_poll_tokens") or 0))
         if event_type == "external_token_usage":
             return TokenEstimator.normalize_external_usage(payload, self.token_profile)
+        if event_type == "model_message":
+            return self._model_message_usage(payload)
 
         return self.token_estimator.empty_usage()
+
+    def _model_message_usage(self, payload: dict[str, Any]) -> dict[str, Any]:
+        supplied = payload.get("exact_token_usage")
+        if isinstance(supplied, dict):
+            return TokenEstimator.normalize_external_usage(supplied, self.token_profile)
+
+        content_tokens = self._summary_estimated_tokens(payload.get("content"))
+        role = str(payload.get("role") or "external").lower()
+        if role == "assistant":
+            return self.token_estimator.usage(output_tokens=content_tokens)
+        if role == "tool":
+            return self.token_estimator.usage(tool_response_tokens=content_tokens)
+        return self.token_estimator.usage(input_tokens=content_tokens)
 
     @staticmethod
     def _summary_estimated_tokens(summary: Any) -> int:
@@ -322,6 +365,7 @@ class RunLogger:
         ):
             if value := context.get(key):
                 self._add_group_tokens(self._summary[group_name], str(value), usage)
+        self._add_group_tokens(self._summary["by_token_source"], str(record.get("token_source") or "unknown"), usage)
 
         if record["event_type"] == "state_poll":
             self._summary["polling"]["poll_events"] += 1
@@ -341,11 +385,19 @@ class RunLogger:
                     self._summary["external_usage"]["reconciled_tool_call_ids"].append(payload["related_tool_call_id"])
                 if payload.get("related_event_id"):
                     self._summary["external_usage"]["reconciled_event_ids"].append(payload["related_event_id"])
+                if payload.get("related_message_id"):
+                    self._summary["external_usage"].setdefault("reconciled_message_ids", []).append(payload["related_message_id"])
 
         if context.get("invalid_action"):
             self._summary["invalid_actions"]["events"] += 1
             self._summary["invalid_actions"]["tokens"] += usage["total_tokens"]
 
+        if record["event_type"] == "agent_decision":
+            self._summary["conversation"]["agent_decision_messages"] += 1
+        if record["event_type"] == "model_message":
+            self._update_conversation_summary(record, usage)
+
+        self._update_conversation_derived()
         self._track_largest_payload(record, context)
 
     @staticmethod
@@ -467,6 +519,95 @@ class RunLogger:
             largest.append(entry)
             largest.sort(key=lambda item: item["estimated_tokens"], reverse=True)
             del largest[10:]
+
+    def _update_conversation_summary(self, record: dict[str, Any], usage: dict[str, int]) -> None:
+        payload = record.get("payload", {})
+        if not isinstance(payload, dict):
+            return
+
+        conversation = self._summary["conversation"]
+        role = str(payload.get("role") or "external").lower()
+        source = str(payload.get("source") or "unknown")
+        turn_id = str(payload.get("turn_id") or "turn-unknown")
+        turn_index = int(payload.get("turn_index") or 0)
+
+        conversation["total_messages"] += 1
+        if role in {"system", "user", "developer", "external"}:
+            conversation["total_prompts"] += 1
+        if role == "assistant":
+            conversation["model_messages"] += 1
+        if role == "tool":
+            conversation["tool_result_messages"] += 1
+
+        self._add_group_tokens(conversation["by_role"], role, usage)
+        self._add_group_tokens(conversation["by_source"], source, usage)
+
+        turn = conversation["by_turn"].setdefault(
+            turn_id,
+            {
+                "turn_id": turn_id,
+                "turn_index": turn_index,
+                "start_timestamp": record["timestamp"],
+                "end_timestamp": record["timestamp"],
+                "start_monotonic_ms": record["monotonic_ms"],
+                "end_monotonic_ms": record["monotonic_ms"],
+                "elapsed_ms": 0,
+                "event_ids": [],
+                "message_ids": [],
+                "related_tool_call_ids": [],
+                "state_hashes": [],
+                "roles": {},
+                **{field: 0 for field in TOKEN_FIELDS},
+            },
+        )
+        turn["start_timestamp"] = min(turn["start_timestamp"], record["timestamp"])
+        turn["end_timestamp"] = max(turn["end_timestamp"], record["timestamp"])
+        turn["start_monotonic_ms"] = min(float(turn["start_monotonic_ms"]), float(record["monotonic_ms"]))
+        turn["end_monotonic_ms"] = max(float(turn["end_monotonic_ms"]), float(record["monotonic_ms"]))
+        turn["elapsed_ms"] = round(float(turn["end_monotonic_ms"]) - float(turn["start_monotonic_ms"]), 3)
+        turn["event_ids"].append(record["event_id"])
+        if payload.get("message_id"):
+            turn["message_ids"].append(payload["message_id"])
+        if payload.get("related_tool_call_id"):
+            turn["related_tool_call_ids"].append(payload["related_tool_call_id"])
+        if payload.get("state_sha256"):
+            turn["state_hashes"].append(payload["state_sha256"])
+        turn["roles"][role] = turn["roles"].get(role, 0) + 1
+        for field, value in usage.items():
+            turn[field] += value
+
+        content = payload.get("content")
+        content_tokens = self._summary_estimated_tokens(content)
+        if role in {"system", "user", "developer", "external"} and content_tokens:
+            prompt_entry = {
+                "event_id": record["event_id"],
+                "message_id": payload.get("message_id"),
+                "turn_id": turn_id,
+                "turn_index": turn_index,
+                "role": role,
+                "source": source,
+                "estimated_tokens": content_tokens,
+                "length": content.get("length") if isinstance(content, dict) else None,
+                "sha256": content.get("sha256") if isinstance(content, dict) else None,
+                "privacy": payload.get("privacy", {}),
+            }
+            largest_prompts = conversation["largest_prompts"]
+            largest_prompts.append(prompt_entry)
+            largest_prompts.sort(key=lambda item: item["estimated_tokens"], reverse=True)
+            del largest_prompts[10:]
+
+    def _update_conversation_derived(self) -> None:
+        conversation = self._summary["conversation"]
+        conversation["total_turns"] = len(conversation["by_turn"])
+        total_tokens = int(self._summary["totals"]["total_tokens"] or 0)
+        turn_count = int(conversation["total_turns"] or 0)
+        conversation["average_tokens_per_turn"] = round(total_tokens / turn_count, 3) if turn_count else 0.0
+        conversation["tool_result_token_share"] = (
+            round(self._summary["totals"]["tool_response_tokens"] / total_tokens, 6) if total_tokens else 0.0
+        )
+        conversation["hidden_polling_token_share"] = (
+            round(self._summary["totals"]["hidden_poll_tokens"] / total_tokens, 6) if total_tokens else 0.0
+        )
 
     def _write_sync(self, record: dict[str, Any]) -> None:
         with self.path.open("a", encoding="utf-8") as handle:

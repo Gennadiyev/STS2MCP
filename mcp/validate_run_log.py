@@ -82,7 +82,7 @@ def _usage_from_records(records: list[dict[str, Any]]) -> dict[str, int]:
     return totals
 
 
-def _validate_summary(summary_path: Path, totals: dict[str, int]) -> None:
+def _validate_summary(summary_path: Path, records: list[dict[str, Any]], totals: dict[str, int]) -> None:
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     if not isinstance(summary, dict):
         raise ValueError(f"{summary_path}: summary must be a JSON object")
@@ -93,6 +93,70 @@ def _validate_summary(summary_path: Path, totals: dict[str, int]) -> None:
         actual = summary_totals.get(field)
         if actual != expected:
             raise ValueError(f"{summary_path}: totals.{field} {actual} != JSONL sum {expected}")
+    _validate_conversation_summary(summary_path, records, summary)
+
+
+def _validate_conversation_summary(summary_path: Path, records: list[dict[str, Any]], summary: dict[str, Any]) -> None:
+    conversation = summary.get("conversation")
+    if not isinstance(conversation, dict):
+        return
+
+    model_messages = [
+        record for record in records
+        if record.get("event_type") == "model_message" and isinstance(record.get("payload"), dict)
+    ]
+    turns: dict[str, int] = {}
+    message_ids: set[str] = set()
+    previous_first_seen_turn_index = 0
+
+    for record in model_messages:
+        payload = record["payload"]
+        message_id = payload.get("message_id")
+        turn_id = payload.get("turn_id")
+        turn_index = payload.get("turn_index")
+        role = payload.get("role")
+        content = payload.get("content")
+
+        if not isinstance(message_id, str) or not message_id:
+            raise ValueError(f"record {record['sequence']}: model_message missing message_id")
+        if message_id in message_ids:
+            raise ValueError(f"record {record['sequence']}: duplicate message_id {message_id}")
+        message_ids.add(message_id)
+
+        if not isinstance(turn_id, str) or not turn_id:
+            raise ValueError(f"record {record['sequence']}: model_message missing turn_id")
+        if not isinstance(turn_index, int) or turn_index < 1:
+            raise ValueError(f"record {record['sequence']}: model_message turn_index must be a positive integer")
+        if turn_id not in turns:
+            if turn_index < previous_first_seen_turn_index:
+                raise ValueError(f"record {record['sequence']}: turn_index decreased on first turn observation")
+            previous_first_seen_turn_index = turn_index
+            turns[turn_id] = turn_index
+        elif turns[turn_id] != turn_index:
+            raise ValueError(f"record {record['sequence']}: inconsistent turn_index for {turn_id}")
+
+        if role not in {"system", "user", "assistant", "tool", "developer", "external"}:
+            raise ValueError(f"record {record['sequence']}: invalid model_message role {role!r}")
+        if not isinstance(content, dict) or not content.get("sha256"):
+            raise ValueError(f"record {record['sequence']}: model_message content summary missing sha256")
+
+    if conversation.get("total_messages") != len(model_messages):
+        raise ValueError(
+            f"{summary_path}: conversation.total_messages {conversation.get('total_messages')} != {len(model_messages)}"
+        )
+    if conversation.get("total_turns") != len(turns):
+        raise ValueError(
+            f"{summary_path}: conversation.total_turns {conversation.get('total_turns')} != {len(turns)}"
+        )
+
+    external_related_messages = [
+        record.get("payload", {}).get("related_message_id")
+        for record in records
+        if record.get("event_type") == "external_token_usage" and isinstance(record.get("payload"), dict)
+    ]
+    for related_message_id in external_related_messages:
+        if related_message_id and related_message_id not in message_ids:
+            raise ValueError(f"{summary_path}: external usage references unknown message_id {related_message_id}")
 
 
 def _self_test() -> None:
@@ -129,7 +193,7 @@ def main() -> None:
     totals = _usage_from_records(records)
     summary_path = Path(args.summary) if args.summary else log_path.with_name(log_path.name.replace(".jsonl", ".summary.json"))
     if summary_path.exists():
-        _validate_summary(summary_path, totals)
+        _validate_summary(summary_path, records, totals)
     print(json.dumps({"status": "ok", "records": len(records), "totals": totals}, indent=2, sort_keys=True))
 
 

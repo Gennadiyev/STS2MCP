@@ -195,6 +195,19 @@ def _handle_error(e: Exception) -> str:
     return f"Error: {e}"
 
 
+def _sanitize_tool_args(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+    sanitized = dict(args)
+    if tool_name == "log_model_message" and "content" in sanitized:
+        content = sanitized["content"]
+        summary = _run_logger.summarize_text(content)
+        if sanitized.get("content_preview") is False:
+            summary.pop("preview", None)
+            summary.pop("text", None)
+            summary["preview_redacted"] = True
+        sanitized["content"] = summary
+    return sanitized
+
+
 def logged_tool(*tool_args: Any, **tool_kwargs: Any) -> Callable[[Callable[..., Awaitable[str]]], Callable[..., Awaitable[str]]]:
     def decorator(func: Callable[..., Awaitable[str]]) -> Callable[..., Awaitable[str]]:
         @functools.wraps(func)
@@ -205,7 +218,7 @@ def logged_tool(*tool_args: Any, **tool_kwargs: Any) -> Callable[[Callable[..., 
             started = time.perf_counter()
             try:
                 bound = inspect.signature(func).bind_partial(*args, **kwargs)
-                tool_args_payload = dict(bound.arguments)
+                tool_args_payload = _sanitize_tool_args(func.__name__, dict(bound.arguments))
             except Exception:
                 tool_args_payload = {"args": list(args), "kwargs": kwargs}
 
@@ -488,6 +501,110 @@ async def log_external_token_usage(usage_json: str) -> str:
         tool_call_id=_tool_call_id.get(),
         tool_name=_tool_name.get(),
         token_usage=token_usage,
+    )
+    return json.dumps({"status": "ok", "logged": payload}, indent=2, sort_keys=True)
+
+
+@logged_tool()
+async def log_model_message(
+    role: str,
+    content: str,
+    source: str = "client",
+    turn_id: str | None = None,
+    turn_index: int | None = None,
+    message_id: str | None = None,
+    related_tool_call_id: str | None = None,
+    related_event_id: str | None = None,
+    state_sha256: str | None = None,
+    content_preview: bool = True,
+    exact_input_tokens: int | None = None,
+    exact_output_tokens: int | None = None,
+    exact_tool_response_tokens: int | None = None,
+    exact_total_tokens: int | None = None,
+    token_source: str | None = None,
+    model: str | None = None,
+) -> str:
+    """Attach a prompt/model/tool message to the current run log.
+
+    This records conversation structure that the MCP bridge cannot infer from
+    tool calls alone. Use it from an agent wrapper when prompts, completions, or
+    provider usage are available.
+
+    Args:
+        role: Message role: system, user, assistant, tool, developer, or external.
+        content: Message text. Stored as hash/metadata and preview unless disabled.
+        source: Client, provider, or wrapper name that supplied the message.
+        turn_id: Stable turn identifier. Generated if omitted.
+        turn_index: Stable 1-based turn index. Assigned if omitted.
+        message_id: Stable message identifier. Generated if omitted.
+        related_tool_call_id: Existing tool_call_id to reconcile against.
+        related_event_id: Existing event_id to reconcile against.
+        state_sha256: Optional state hash visible to the model for this turn.
+        content_preview: Store bounded preview text when true.
+        exact_*_tokens: Optional exact provider token counts.
+        token_source: Token source label such as estimated, exact, or external.
+        model: Provider/model label for exact usage records.
+    """
+    normalized_role = role.lower().strip()
+    allowed_roles = {"system", "user", "assistant", "tool", "developer", "external"}
+    if normalized_role not in allowed_roles:
+        return json.dumps(
+            {"status": "error", "error": f"role must be one of: {', '.join(sorted(allowed_roles))}"},
+            indent=2,
+        )
+
+    resolved_turn_id, resolved_turn_index = _run_logger.resolve_turn(turn_id, turn_index)
+    resolved_message_id = message_id or f"{resolved_turn_id}:message-{uuid.uuid4().hex[:8]}"
+    content_summary = _run_logger.summarize_text(content)
+    if not content_preview:
+        content_summary.pop("preview", None)
+        content_summary.pop("text", None)
+        content_summary["preview_redacted"] = True
+
+    exact_usage = None
+    if any(
+        value is not None
+        for value in (
+            exact_input_tokens,
+            exact_output_tokens,
+            exact_tool_response_tokens,
+            exact_total_tokens,
+        )
+    ):
+        exact_usage = {
+            "input_tokens": exact_input_tokens or 0,
+            "output_tokens": exact_output_tokens or 0,
+            "tool_response_tokens": exact_tool_response_tokens or 0,
+            "total_tokens": exact_total_tokens,
+            "token_source": token_source or "exact",
+            "model": model,
+        }
+
+    payload = {
+        "message_id": resolved_message_id,
+        "turn_id": resolved_turn_id,
+        "turn_index": resolved_turn_index,
+        "role": normalized_role,
+        "source": source,
+        "content": content_summary,
+        "related_tool_call_id": related_tool_call_id,
+        "related_event_id": related_event_id,
+        "state_sha256": state_sha256,
+        "privacy": {
+            "content_preview": content_preview,
+            "content_hash": content_summary.get("sha256"),
+            "content_truncated": content_summary.get("truncated", False),
+            "content_preview_redacted": not content_preview,
+        },
+    }
+    if exact_usage is not None:
+        payload["exact_token_usage"] = exact_usage
+
+    await _run_logger.log(
+        "model_message",
+        payload,
+        tool_call_id=_tool_call_id.get(),
+        tool_name=_tool_name.get(),
     )
     return json.dumps({"status": "ok", "logged": payload}, indent=2, sort_keys=True)
 
