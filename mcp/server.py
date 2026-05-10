@@ -161,6 +161,11 @@ async def menu_select(option: str, seed: str | None = None) -> str:
     multiplayer load lobby (resume saved co-op run), character select for SP
     and MP (with `unready` once readied in MP), profile switching, timeline
     controls, tutorial prompts, blocking popups, and game-over main-menu return.
+    Timeline entry from the main menu may still return `manual_action_required`
+    when obtained epochs are pending, but `advance` on an already-open Timeline
+    can reveal visible obtained epoch slots and may return `retry` while the
+    screen is animating. Pending epochs without visible slots still return
+    `manual_action_required`.
 
     Multiplayer flow tips:
       - On menu_screen "multiplayer_join", use refresh / back / join_<index> /

@@ -951,6 +951,11 @@ Select an option from the main menu, a menu submenu, profile select, character s
 
 `game_over` advertises only `main_menu`. `continue` is not actionable on that screen and returns an error.
 If `timeline` is blocked by pending obtained epochs, `menu_select` returns an error with `manual_action_required: true` and `pending_epoch_ids` instead of opening Timeline.
+When the game is already on `menu_screen: "timeline"`, `menu_select` with `option: "advance"` progresses safe Timeline UI steps:
+tutorial/confirm/proceed buttons, queued unlock screens, epoch inspect close buttons, and visible obtained epoch slots.
+If the Timeline is still animating, or the obtained epoch slot has not spawned yet, the response includes `retry: true` with `pending_epoch_ids`.
+Pending `ObtainedNoSlot` epochs still return `manual_action_required: true` and `done: true` if no queued Timeline expansion screen or visible slot is available.
+The main-menu `timeline` guard remains in place because entering Timeline from that state can still trigger invalid game unlock-state errors.
 
 ---
 
