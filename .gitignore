@@ -7,6 +7,8 @@ __pycache__/
 *.pyc
 *.pyo
 mcp/.venv/
+logs/
+mcp/logs/
 
 # Claude Code
 # .claude/
