@@ -1754,11 +1754,11 @@ public static partial class McpMod
     {
         foreach (var memberName in memberNames)
         {
-            var value = GetMemberValue(source, memberName);
+            var value = GetBossMemberValue(source, memberName);
             if (value == null)
                 continue;
 
-            var entry = GetMemberValue(value, "Entry")?.ToString();
+            var entry = GetBossMemberValue(value, "Entry")?.ToString();
             if (!string.IsNullOrWhiteSpace(entry))
                 return entry;
 
@@ -1770,7 +1770,7 @@ public static partial class McpMod
         return null;
     }
 
-    private static object? GetMemberValue(object? source, string memberName)
+    private static object? GetBossMemberValue(object? source, string memberName)
     {
         if (source == null)
             return null;
