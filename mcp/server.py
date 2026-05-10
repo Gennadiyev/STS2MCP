@@ -8,6 +8,7 @@ import argparse
 import asyncio
 import contextvars
 import functools
+import hashlib
 import inspect
 import json
 import os
@@ -20,6 +21,7 @@ from typing import Any, Awaitable, Callable
 import httpx
 from mcp.server.fastmcp import FastMCP
 from run_logger import RunLogger
+from token_usage import TokenEstimator, TokenProfile
 
 mcp = FastMCP("sts2")
 
@@ -310,19 +312,27 @@ async def _get_smart_state(
     attempt = 0
     last_json_text = ""
     last_reason = "not_polled"
+    previous_state_hash: str | None = None
 
     while True:
         attempt += 1
         last_json_text = await getter(detection_params)
+        state_hash = hashlib.sha256(last_json_text.encode("utf-8", errors="replace")).hexdigest()
+        state_repeated = previous_state_hash == state_hash
+        previous_state_hash = state_hash
         try:
             state = json.loads(last_json_text)
         except json.JSONDecodeError:
+            hidden_tokens = 0 if requested_format == "json" else _run_logger.token_estimator.estimate_text(last_json_text)
             await _run_logger.log(
                 "state_poll",
                 {
                     "attempt": attempt,
                     "actionable": True,
                     "reason": "state_json_parse_failed",
+                    "hidden_poll_tokens": hidden_tokens,
+                    "state_sha256": state_hash,
+                    "state_repeated": state_repeated,
                 },
                 tool_call_id=_tool_call_id.get(),
                 tool_name=_tool_name.get(),
@@ -331,19 +341,26 @@ async def _get_smart_state(
 
         actionable, reason = _state_actionability(state)
         last_reason = reason
+        timed_out = time.monotonic() >= deadline
+        returns_detection_payload = requested_format == "json" and (actionable or timed_out)
+        hidden_poll_tokens = 0 if returns_detection_payload else _run_logger.token_estimator.estimate_text(last_json_text)
         await _run_logger.log(
             "state_poll",
             {
                 "attempt": attempt,
                 "state_type": state.get("state_type"),
+                "game_mode": state.get("game_mode"),
                 "actionable": actionable,
                 "reason": reason,
                 "timeout_seconds": timeout,
+                "hidden_poll_tokens": hidden_poll_tokens,
+                "state_sha256": state_hash,
+                "state_repeated": state_repeated,
             },
             tool_call_id=_tool_call_id.get(),
             tool_name=_tool_name.get(),
         )
-        if actionable or time.monotonic() >= deadline:
+        if actionable or timed_out:
             break
         await asyncio.sleep(min(interval, max(0.0, deadline - time.monotonic())))
 
@@ -436,6 +453,43 @@ async def log_agent_decision(
         tool_name=_tool_name.get(),
     )
     return json.dumps({"status": "ok", "logged": event}, indent=2)
+
+
+@logged_tool()
+async def log_external_token_usage(usage_json: str) -> str:
+    """Record exact or externally supplied model token usage.
+
+    Use this when an agent/client has model API usage data that should be
+    reconciled with the local estimates in the run log. The JSON object should
+    include a stable reference such as `related_tool_call_id`, `related_event_id`,
+    or `stable_id`, plus token fields from the provider.
+
+    Example:
+      {"related_tool_call_id":"...", "model":"claude-sonnet-4.6",
+       "input_tokens":1200, "output_tokens":400, "token_source":"exact"}
+
+    Args:
+        usage_json: JSON object with externally supplied usage metadata.
+    """
+    try:
+        usage = json.loads(usage_json)
+    except json.JSONDecodeError as exc:
+        return json.dumps({"status": "error", "error": f"Invalid usage_json: {exc}"}, indent=2)
+
+    if not isinstance(usage, dict):
+        return json.dumps({"status": "error", "error": "usage_json must be a JSON object"}, indent=2)
+
+    token_usage = TokenEstimator.normalize_external_usage(usage, _run_logger.token_profile)
+    payload = dict(usage)
+    payload.update(token_usage)
+    await _run_logger.log(
+        "external_token_usage",
+        payload,
+        tool_call_id=_tool_call_id.get(),
+        tool_name=_tool_name.get(),
+        token_usage=token_usage,
+    )
+    return json.dumps({"status": "ok", "logged": payload}, indent=2, sort_keys=True)
 
 
 @logged_tool()
@@ -1392,16 +1446,32 @@ def main():
         action="store_true",
         help="Store complete tool and HTTP response text in logs instead of previews plus hashes only",
     )
+    parser.add_argument(
+        "--tokenizer-profile",
+        default="generic_regex_v1",
+        help="Token accounting profile: generic_regex_v1, openai_cl100k_proxy, anthropic_claude_proxy, or a custom name",
+    )
+    parser.add_argument("--token-model-family", default=None, help="Override token accounting model family")
+    parser.add_argument("--tokenizer-name", default=None, help="Override tokenizer name recorded in logs")
+    parser.add_argument("--tokenizer-version", default=None, help="Override tokenizer version recorded in logs")
+    parser.add_argument("--token-estimation-method", default=None, help="Override token estimation method recorded in logs")
     args = parser.parse_args()
 
     global _base_url, _trust_env, _run_logger
     _base_url = f"http://{args.host}:{args.port}"
     _trust_env = not args.no_trust_env
+    token_profile = TokenProfile.from_profile_name(args.tokenizer_profile).with_overrides(
+        model_family=args.token_model_family,
+        tokenizer_name=args.tokenizer_name,
+        tokenizer_version=args.tokenizer_version,
+        estimation_method=args.token_estimation_method,
+    )
     _run_logger = RunLogger(
         enabled=not args.disable_run_log,
         log_dir=args.log_dir,
         preview_chars=args.log_preview_chars,
         include_full_text=args.log_full_text,
+        token_profile=token_profile,
     )
     _run_logger.start(
         {
@@ -1414,6 +1484,7 @@ def main():
             "cwd": os.getcwd(),
             "log_full_text": args.log_full_text,
             "log_preview_chars": args.log_preview_chars,
+            "token_profile": token_profile.to_dict(),
         }
     )
 
