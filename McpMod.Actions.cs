@@ -1028,8 +1028,8 @@ public static partial class McpMod
         if (overlay is not NCrystalSphereScreen screen)
             return Error("Crystal Sphere screen is not open");
 
-        var proceedButton = screen.GetNodeOrNull<NProceedButton>("%ProceedButton");
-        if (proceedButton is not { IsEnabled: true })
+        var proceedButton = FindCrystalSphereProceedButton(screen);
+        if (proceedButton == null)
             return Error("Crystal Sphere proceed button is not enabled");
 
         proceedButton.ForceClick();
@@ -1038,6 +1038,16 @@ public static partial class McpMod
             ["status"] = "ok",
             ["message"] = "Proceeding from Crystal Sphere"
         };
+    }
+
+    private static NProceedButton? FindCrystalSphereProceedButton(NCrystalSphereScreen screen)
+    {
+        var namedButton = screen.GetNodeOrNull<NProceedButton>("%ProceedButton");
+        if (IsControlVisibleOrActionable(namedButton))
+            return namedButton;
+
+        return FindAll<NProceedButton>(screen)
+            .FirstOrDefault(IsControlVisibleOrActionable);
     }
 
     private static Creature? ResolveTarget(CombatState combatState, string entityId)

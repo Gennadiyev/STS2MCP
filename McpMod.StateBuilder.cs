@@ -2184,8 +2184,7 @@ public static partial class McpMod
                 state["divinations_left_text"] = StripRichTextTags(textVariant.AsString());
         }
 
-        var proceedButton = screen.GetNodeOrNull<NProceedButton>("%ProceedButton");
-        state["can_proceed"] = proceedButton?.IsEnabled == true;
+        state["can_proceed"] = FindCrystalSphereProceedButton(screen) != null;
 
         return state;
     }
