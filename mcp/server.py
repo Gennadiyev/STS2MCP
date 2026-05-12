@@ -7,6 +7,7 @@ as MCP tools for Claude Desktop / Claude Code.
 import argparse
 import asyncio
 import json
+import os
 import sys
 
 import httpx
@@ -17,10 +18,17 @@ mcp = FastMCP("sts2")
 _base_url: str = "http://localhost:15526"
 _trust_env: bool = True
 _http: httpx.AsyncClient | None = None
+DEFAULT_HOST = os.environ.get("STS2_HOST", "localhost")
+DEFAULT_PORT = int(os.environ.get("STS2_PORT", "15526"))
+_base_url = f"http://{DEFAULT_HOST}:{DEFAULT_PORT}"
 
 
 def _sp_url() -> str:
     return f"{_base_url}/api/v1/singleplayer"
+
+
+def _root_url() -> str:
+    return f"{_base_url}/"
 
 
 def _mp_url() -> str:
@@ -29,6 +37,22 @@ def _mp_url() -> str:
 
 def _profile_url() -> str:
     return f"{_base_url}/api/v1/profile"
+
+
+def _compendium_url() -> str:
+    return f"{_base_url}/api/v1/compendium"
+
+
+def _settings_url() -> str:
+    return f"{_base_url}/api/v1/settings"
+
+
+def _bestiary_url() -> str:
+    return f"{_base_url}/api/v1/bestiary"
+
+
+def _glossary_url(kind: str) -> str:
+    return f"{_base_url}/api/v1/glossary/{kind}"
 
 
 def _profiles_url() -> str:
@@ -44,6 +68,12 @@ def _get_client() -> httpx.AsyncClient:
 
 async def _get(params: dict | None = None) -> str:
     r = await _get_client().get(_sp_url(), params=params)
+    r.raise_for_status()
+    return r.text
+
+
+async def _root_get() -> str:
+    r = await _get_client().get(_root_url())
     r.raise_for_status()
     return r.text
 
@@ -68,6 +98,30 @@ async def _mp_post(body: dict) -> str:
 
 async def _profile_get() -> str:
     r = await _get_client().get(_profile_url())
+    r.raise_for_status()
+    return r.text
+
+
+async def _compendium_get() -> str:
+    r = await _get_client().get(_compendium_url())
+    r.raise_for_status()
+    return r.text
+
+
+async def _settings_get() -> str:
+    r = await _get_client().get(_settings_url())
+    r.raise_for_status()
+    return r.text
+
+
+async def _bestiary_get() -> str:
+    r = await _get_client().get(_bestiary_url())
+    r.raise_for_status()
+    return r.text
+
+
+async def _glossary_get(kind: str) -> str:
+    r = await _get_client().get(_glossary_url(kind))
     r.raise_for_status()
     return r.text
 
@@ -126,13 +180,64 @@ def _handle_error(e: Exception) -> str:
     if isinstance(e, httpx.ConnectError):
         return "Error: Cannot connect to STS2_MCP mod. Is the game running with the mod enabled?"
     if isinstance(e, httpx.HTTPStatusError):
+        structured = _format_structured_http_error(e.response)
+        if structured is not None:
+            return structured
         return f"Error: HTTP {e.response.status_code} — {e.response.text}"
     return f"Error: {e}"
+
+
+def _format_structured_http_error(response: httpx.Response) -> str | None:
+    try:
+        data = response.json()
+    except ValueError:
+        return None
+
+    if not isinstance(data, dict) or data.get("status") != "error":
+        return None
+
+    payload = dict(data)
+    payload.setdefault("http_status", response.status_code)
+    return json.dumps(payload, indent=2)
+
+
+def _response_error_code(response: httpx.Response) -> str | None:
+    try:
+        data = response.json()
+    except ValueError:
+        return None
+    return data.get("error_code") if isinstance(data, dict) else None
+
+
+async def _menu_select_post(body: dict) -> str:
+    try:
+        return await _post(body)
+    except httpx.HTTPStatusError as e:
+        if (
+            e.response.status_code == 409
+            and _response_error_code(e.response) == "multiplayer_run_active"
+        ):
+            return await _mp_post(body)
+        raise
 
 
 # ---------------------------------------------------------------------------
 # General
 # ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def get_api_index() -> str:
+    """Get the STS2_MCP HTTP server status and endpoint index.
+
+    Returns status/kind, version, the mod version greeting, bound listener
+    prefixes, endpoint_count, and the current list of HTTP API routes exposed by
+    the loaded mod.
+    """
+    try:
+        return await _root_get()
+    except Exception as e:
+        return _handle_error(e)
 
 
 @mcp.tool()
@@ -145,6 +250,7 @@ async def get_game_state(format: str = "markdown") -> str:
 
     Args:
         format: "markdown" for human-readable output, "json" for structured data.
+            Other values return the endpoint's invalid_format error.
     """
     try:
         return await _get({"format": format})
@@ -181,7 +287,7 @@ async def menu_select(option: str, seed: str | None = None) -> str:
     if seed is not None:
         body["seed"] = seed
     try:
-        return await _post(body)
+        return await _menu_select_post(body)
     except Exception as e:
         return _handle_error(e)
 
@@ -191,7 +297,9 @@ async def get_profile() -> str:
     """Get the current profile's persistent progress summary.
 
     Includes character stats, discovered content, achievements, epochs, and global
-    run totals for the active profile.
+    run totals for the active profile, plus status/kind, profile_id, progress_path,
+    resolved_progress_path, profile_root, save_scope, and current_run when a run
+    is active.
     """
     try:
         return await _profile_get()
@@ -200,10 +308,121 @@ async def get_profile() -> str:
 
 
 @mcp.tool()
+async def get_compendium() -> str:
+    """Get the active profile's Compendium-shaped progress summary.
+
+    Mirrors the visible Compendium cards: Card Library, Relic Collection,
+    Potion Lab, Bestiary, Character Stats, and Run History. Some sections point
+    to detail endpoints such as glossary or bestiary when model-level metadata is
+    separate from profile discovery/progress data. The top level includes the
+    same status/kind/profile_id/progress_path/resolved_progress_path/profile_root/
+    save_scope/current_run context as get_profile().
+    """
+    try:
+        return await _compendium_get()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def get_settings() -> str:
+    """Get current game settings and preferences.
+
+    Includes status/kind, display, audio, gameplay preferences, language, and
+    mod-loading status as exposed by the STS2_MCP HTTP settings endpoint.
+    """
+    try:
+        return await _settings_get()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def get_bestiary() -> str:
+    """Get reflected monster and encounter metadata.
+
+    This is model/reference metadata and is separate from Compendium profile
+    encounter stats. The response includes status/kind, monster and encounter
+    counts, and deterministic monster/encounter arrays. The in-game Bestiary
+    card is currently marked locked/future.
+    """
+    try:
+        return await _bestiary_get()
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def get_glossary_cards() -> str:
+    """Get active-run card pool metadata.
+
+    Requires a run in progress. This is scoped to the current run/character pool,
+    not profile-wide discovered cards; use get_compendium() for profile progress.
+    The response includes profile/save context, current_run save context,
+    count, and items. current_run.run_id and current_run.seed are included
+    when current_run.save exposes them.
+    """
+    try:
+        return await _glossary_get("cards")
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def get_glossary_relics() -> str:
+    """Get active-run relic pool metadata.
+
+    Requires a run in progress. This is scoped to the current run/character pool,
+    not profile-wide discovered relics; use get_compendium() for profile progress.
+    The response includes profile/save context, current_run save context,
+    count, and items. current_run.run_id and current_run.seed are included
+    when current_run.save exposes them.
+    """
+    try:
+        return await _glossary_get("relics")
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def get_glossary_potions() -> str:
+    """Get active-run potion pool metadata.
+
+    Requires a run in progress. This is scoped to the current run/character pool,
+    not profile-wide discovered potions; use get_compendium() for profile progress.
+    The response includes profile/save context, current_run save context,
+    count, and items. current_run.run_id and current_run.seed are included
+    when current_run.save exposes them.
+    """
+    try:
+        return await _glossary_get("potions")
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def get_glossary_keywords() -> str:
+    """Get active-run keyword metadata collected from active pools.
+
+    Requires a run in progress. Keywords come from cards, relics, and potions
+    reachable in the current run context. The response includes profile/save
+    context, current_run save context, count, and items. current_run.run_id
+    and current_run.seed are included when current_run.save exposes them.
+    """
+    try:
+        return await _glossary_get("keywords")
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
 async def list_profiles() -> str:
     """List the three profile slots and identify the active slot.
 
-    The has_data field indicates whether a slot currently has progress data.
+    The response includes status/kind/count plus per-slot profile_id,
+    progress_path, resolved_progress_path, profile_root, save_scope, and
+    has_data. The has_data field indicates whether a slot currently has
+    progress data.
     """
     try:
         return await _profiles_get()
@@ -216,7 +435,8 @@ async def switch_profile(profile_id: int) -> str:
     """Switch to a profile slot through the game's profile UI.
 
     Use an empty slot to create or enter a fresh profile for testing. This cannot
-    be used while a run is in progress.
+    be used while a run is in progress. HTTP validation errors include
+    structured error_code values from the profile endpoint.
 
     Args:
         profile_id: Profile slot to switch to. Must be 1, 2, or 3.
@@ -254,7 +474,8 @@ async def delete_profile(profile_id: int) -> str:
     """Delete an inactive profile slot.
 
     The active profile cannot be deleted through this tool. Switch away first if
-    you intend to remove a slot after backing up any data you need.
+    you intend to remove a slot after backing up any data you need. Attempting to
+    delete the active profile returns the endpoint's active_profile_delete error.
 
     Args:
         profile_id: Profile slot to delete. Must be 1, 2, or 3.
@@ -270,10 +491,12 @@ async def use_potion(slot: int, target: str | None = None) -> str:
     """Use a potion from the player's potion slots.
 
     Works both during and outside of combat. Combat-only potions require an active battle.
+    Enemy-targeted potions require combat and a target from state `valid_targets`.
 
     Args:
         slot: Potion slot index (as shown in game state).
-        target: Entity ID of the target enemy (e.g. "JAW_WORM_0"). Required for enemy-targeted potions.
+        target: Entity ID of the target enemy (e.g. "JAW_WORM_0"), or the target combat_id as a string.
+            Required for enemy-targeted potions.
     """
     body: dict = {"action": "use_potion", "slot": slot}
     if target is not None:
@@ -289,7 +512,7 @@ async def discard_potion(slot: int) -> str:
     """Discard a potion from the player's potion slots to free up space.
 
     Use this when all potion slots are full and you need room for incoming potions
-    (e.g. before collecting a potion reward).
+    (e.g. before collecting a potion reward). Queued potions cannot be discarded.
 
     Args:
         slot: Potion slot index to discard (as shown in game state).
@@ -304,7 +527,7 @@ async def discard_potion(slot: int) -> str:
 async def proceed_to_map() -> str:
     """Proceed from the current screen to the map.
 
-    Works from: rewards screen, rest site, shop, fake merchant.
+    Works from: rewards screen, rest site, shop, fake merchant, and treasure.
     Does NOT work for events — use event_choose_option() with the Proceed option's index.
     """
     try:
@@ -324,7 +547,8 @@ async def combat_play_card(card_index: int, target: str | None = None) -> str:
 
     Args:
         card_index: Index of the card in hand (0-based, as shown in game state).
-        target: Entity ID of the target enemy (e.g. "JAW_WORM_0"). Required for single-target cards.
+        target: Entity ID from the hand card's `valid_targets` list, or the target combat_id as a string.
+            Required when `requires_target` is true.
 
     Note that the index can change as cards are played - playing a card will shift the indices of remaining cards in hand.
     Refer to the latest game state for accurate indices. New cards are drawn to the right, so playing cards from right to left can help maintain more stable indices for remaining cards.
@@ -340,7 +564,7 @@ async def combat_play_card(card_index: int, target: str | None = None) -> str:
 
 @mcp.tool()
 async def combat_end_turn() -> str:
-    """[Combat] End the player's current turn."""
+    """[Combat] End the player's current turn when battle state says can_end_turn."""
     try:
         return await _post({"action": "end_turn"})
     except Exception as e:
@@ -392,6 +616,7 @@ async def rewards_claim(reward_index: int) -> str:
 
     Gold, potion, and relic rewards are claimed immediately.
     Card rewards open the card selection screen (state changes to card_reward).
+    Only visible enabled rewards are actionable.
 
     Args:
         reward_index: 0-based index of the reward on the rewards screen.
@@ -436,6 +661,8 @@ async def rewards_skip_card() -> str:
 async def map_choose_node(node_index: int) -> str:
     """[Map] Choose a map node to travel to.
 
+    Only visible travelable nodes from next_options are actionable.
+
     Args:
         node_index: 0-based index of the node from the next_options list.
     """
@@ -453,6 +680,8 @@ async def map_choose_node(node_index: int) -> str:
 @mcp.tool()
 async def rest_choose_option(option_index: int) -> str:
     """[Rest Site] Choose a rest site option (rest, smith, etc.).
+
+    Only visible enabled options are actionable.
 
     Args:
         option_index: 0-based index of the option from the rest site state.
@@ -495,6 +724,7 @@ async def event_choose_option(option_index: int) -> str:
 
     Works for both regular events and ancients (after dialogue ends).
     Also used to click the Proceed option after an event resolves.
+    Locked or disabled options are reported as errors.
 
     Args:
         option_index: 0-based index of the option from the event state.
@@ -529,7 +759,8 @@ async def deck_select_card(card_index: int) -> str:
     Used when the game asks you to choose cards from your deck (transform, upgrade,
     remove, discard) or pick a card from offered choices (potions, effects).
 
-    For deck selections: toggles card selection. For choose-a-card: picks immediately.
+    For deck selections: toggles card selection unless a preview is open. For
+    choose-a-card: picks immediately.
 
     Args:
         card_index: 0-based index of the card (as shown in game state).
@@ -577,6 +808,8 @@ async def deck_cancel_selection() -> str:
 async def bundle_select(bundle_index: int) -> str:
     """[Bundle Selection] Open a bundle preview.
 
+    Only visible enabled bundles are actionable.
+
     Args:
         bundle_index: 0-based index of the bundle.
     """
@@ -614,6 +847,7 @@ async def relic_select(relic_index: int) -> str:
     """[Relic Selection] Select a relic from the relic selection screen.
 
     Used when the game offers a choice of relics (e.g., boss relic rewards).
+    Only visible enabled relic choices are actionable.
 
     Args:
         relic_index: 0-based index of the relic (as shown in game state).
@@ -626,7 +860,7 @@ async def relic_select(relic_index: int) -> str:
 
 @mcp.tool()
 async def relic_skip() -> str:
-    """[Relic Selection] Skip the relic selection without choosing a relic."""
+    """[Relic Selection] Skip when the skip button is visible and enabled."""
     try:
         return await _post({"action": "skip_relic_selection"})
     except Exception as e:
@@ -644,6 +878,7 @@ async def treasure_claim_relic(relic_index: int) -> str:
 
     The chest is auto-opened when entering the treasure room.
     After claiming, use proceed_to_map() to continue.
+    Only visible enabled relics are actionable.
 
     Args:
         relic_index: 0-based index of the relic (as shown in game state).
@@ -711,6 +946,7 @@ async def mp_get_game_state(format: str = "markdown") -> str:
 
     Args:
         format: "markdown" for human-readable output, "json" for structured data.
+            Other values return the endpoint's invalid_format error.
     """
     try:
         return await _mp_get({"format": format})
@@ -727,7 +963,8 @@ async def mp_combat_play_card(card_index: int, target: str | None = None) -> str
 
     Args:
         card_index: Index of the card in hand (0-based).
-        target: Entity ID of the target enemy (e.g. "JAW_WORM_0"). Required for single-target cards.
+        target: Entity ID from the hand card's `valid_targets` list, or the target combat_id as a string.
+            Required when `requires_target` is true.
     """
     body: dict = {"action": "play_card", "card_index": card_index}
     if target is not None:
@@ -743,7 +980,8 @@ async def mp_combat_end_turn() -> str:
     """[Multiplayer Combat] Submit end-turn vote.
 
     In multiplayer, ending the turn is a VOTE — the turn only ends when ALL
-    players have submitted. Use mp_combat_undo_end_turn() to retract.
+    players have submitted. Use battle can_end_turn/end_turn_blocked_reason
+    to check local readiness. Use mp_combat_undo_end_turn() to retract.
     """
     try:
         return await _mp_post({"action": "end_turn"})
@@ -756,6 +994,7 @@ async def mp_combat_undo_end_turn() -> str:
     """[Multiplayer Combat] Retract end-turn vote.
 
     If you submitted end turn but want to play more cards, use this to undo.
+    Use battle can_undo_end_turn/undo_end_turn_blocked_reason to check readiness.
     Only works if other players haven't all committed yet.
     """
     try:
@@ -768,9 +1007,12 @@ async def mp_combat_undo_end_turn() -> str:
 async def mp_use_potion(slot: int, target: str | None = None) -> str:
     """[Multiplayer] Use a potion from the local player's potion slots.
 
+    Enemy-targeted potions require combat and a target from state `valid_targets`.
+
     Args:
         slot: Potion slot index (as shown in game state).
-        target: Entity ID of the target enemy. Required for enemy-targeted potions.
+        target: Entity ID of the target enemy, or the target combat_id as a string.
+            Required for enemy-targeted potions.
     """
     body: dict = {"action": "use_potion", "slot": slot}
     if target is not None:
@@ -784,6 +1026,8 @@ async def mp_use_potion(slot: int, target: str | None = None) -> str:
 @mcp.tool()
 async def mp_discard_potion(slot: int) -> str:
     """[Multiplayer] Discard a potion from the local player's potion slots to free up space.
+
+    Queued potions cannot be discarded.
 
     Args:
         slot: Potion slot index to discard (as shown in game state).
@@ -800,6 +1044,7 @@ async def mp_map_vote(node_index: int) -> str:
 
     In multiplayer, map selection is a vote — travel happens when all players
     agree. Re-voting for the same node sends a ping to other players.
+    Only visible travelable nodes from next_options are actionable.
 
     Args:
         node_index: 0-based index of the node from the next_options list.
@@ -816,6 +1061,7 @@ async def mp_event_choose_option(option_index: int) -> str:
 
     For shared events: this is a vote (resolves when all players vote).
     For individual events: immediate choice, same as singleplayer.
+    Locked or disabled options are reported as errors.
 
     Args:
         option_index: 0-based index of the option from the event state.
@@ -838,6 +1084,8 @@ async def mp_event_advance_dialogue() -> str:
 @mcp.tool()
 async def mp_rest_choose_option(option_index: int) -> str:
     """[Multiplayer Rest Site] Choose a rest site option (rest, smith, etc.).
+
+    Only visible enabled options are actionable.
 
     Per-player choice — no voting needed.
 
@@ -868,6 +1116,8 @@ async def mp_shop_purchase(item_index: int) -> str:
 @mcp.tool()
 async def mp_rewards_claim(reward_index: int) -> str:
     """[Multiplayer Rewards] Claim a reward from the post-combat rewards screen.
+
+    Only visible enabled rewards are actionable.
 
     Args:
         reward_index: 0-based index of the reward.
@@ -904,7 +1154,7 @@ async def mp_rewards_skip_card() -> str:
 async def mp_proceed_to_map() -> str:
     """[Multiplayer] Proceed from the current screen to the map.
 
-    Works from: rewards screen, rest site, shop.
+    Works from: rewards screen, rest site, shop, fake merchant, and treasure.
     """
     try:
         return await _mp_post({"action": "proceed"})
@@ -915,6 +1165,9 @@ async def mp_proceed_to_map() -> str:
 @mcp.tool()
 async def mp_deck_select_card(card_index: int) -> str:
     """[Multiplayer Card Selection] Select or deselect a card in the card selection screen.
+
+    For deck selections: toggles card selection unless a preview is open. For
+    choose-a-card: picks immediately.
 
     Args:
         card_index: 0-based index of the card.
@@ -946,6 +1199,8 @@ async def mp_deck_cancel_selection() -> str:
 @mcp.tool()
 async def mp_bundle_select(bundle_index: int) -> str:
     """[Multiplayer Bundle Selection] Open a bundle preview.
+
+    Only visible enabled bundles are actionable.
 
     Args:
         bundle_index: 0-based index of the bundle.
@@ -1000,6 +1255,8 @@ async def mp_combat_confirm_selection() -> str:
 async def mp_relic_select(relic_index: int) -> str:
     """[Multiplayer Relic Selection] Select a relic (boss relic rewards).
 
+    Only visible enabled relic choices are actionable.
+
     Args:
         relic_index: 0-based index of the relic.
     """
@@ -1011,7 +1268,7 @@ async def mp_relic_select(relic_index: int) -> str:
 
 @mcp.tool()
 async def mp_relic_skip() -> str:
-    """[Multiplayer Relic Selection] Skip the relic selection."""
+    """[Multiplayer Relic Selection] Skip when the skip button is visible and enabled."""
     try:
         return await _mp_post({"action": "skip_relic_selection"})
     except Exception as e:
@@ -1024,6 +1281,7 @@ async def mp_treasure_claim_relic(relic_index: int) -> str:
 
     In multiplayer, this is a bid — if multiple players pick the same relic,
     a "relic fight" determines the winner. Others get consolation prizes.
+    Only visible enabled relics are actionable.
 
     Args:
         relic_index: 0-based index of the relic.
@@ -1072,8 +1330,8 @@ async def mp_crystal_sphere_proceed() -> str:
 
 def main():
     parser = argparse.ArgumentParser(description="STS2 MCP Server")
-    parser.add_argument("--port", type=int, default=15526, help="Game HTTP server port")
-    parser.add_argument("--host", type=str, default="localhost", help="Game HTTP server host")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Game HTTP server port")
+    parser.add_argument("--host", type=str, default=DEFAULT_HOST, help="Game HTTP server host")
     parser.add_argument("--no-trust-env", action="store_true", help="Ignore HTTP_PROXY/HTTPS_PROXY environment variables")
     args = parser.parse_args()
 

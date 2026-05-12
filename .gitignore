@@ -8,6 +8,10 @@ __pycache__/
 *.pyo
 mcp/.venv/
 
+# Local environment overrides
+.env
+mcp/.env
+
 # Claude Code
 # .claude/
 .mcp.json
@@ -16,3 +20,6 @@ GUIDE.md
 
 # Qoder
 .qoder.json
+
+# Local planning
+todo.md
