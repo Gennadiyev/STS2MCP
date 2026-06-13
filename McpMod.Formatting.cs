@@ -849,9 +849,23 @@ public static partial class McpMod
         bool canCancel = cardSelect.TryGetValue("can_cancel", out var cn) && cn is true;
 
         if (preview)
+        {
             sb.AppendLine("**Preview is showing** - use `confirm_selection` to confirm or `cancel_selection` to go back.");
+            if (cardSelect.TryGetValue("preview_cards", out var previewCardsObj) && previewCardsObj is List<Dictionary<string, object?>> previewCards && previewCards.Count > 0)
+            {
+                sb.AppendLine("### Preview Cards");
+                foreach (var card in previewCards)
+                {
+                    string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
+                    sb.AppendLine($"- **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]} - {card["description"]}");
+                }
+                sb.AppendLine();
+            }
+        }
         else
+        {
             sb.AppendLine($"**Select cards** using `select_card(index)`. Can confirm: {(canConfirm ? "Yes" : "No")} | Can cancel: {(canCancel ? "Yes" : "No")}");
+        }
         sb.AppendLine();
     }
 

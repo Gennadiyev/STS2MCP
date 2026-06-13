@@ -1267,6 +1267,39 @@ public static partial class McpMod
         return state;
     }
 
+    private static void AddPreviewCardsFromContainer(
+        Godot.Control? container,
+        List<Dictionary<string, object?>> previewCards)
+    {
+        if (container?.Visible != true)
+            return;
+
+        var cardHolders = FindAllSortedByPosition<NCardHolder>(container);
+        if (cardHolders.Count > 0)
+        {
+            foreach (var holder in cardHolders)
+            {
+                var card = holder.CardModel;
+                if (card == null) continue;
+
+                var cardInfo = BuildCardInfo(card);
+                cardInfo["index"] = previewCards.Count;
+                previewCards.Add(cardInfo);
+            }
+            return;
+        }
+
+        foreach (var holder in FindAll<NPreviewCardHolder>(container))
+        {
+            var card = holder.CardModel;
+            if (card == null) continue;
+
+            var cardInfo = BuildCardInfo(card);
+            cardInfo["index"] = previewCards.Count;
+            previewCards.Add(cardInfo);
+        }
+    }
+
     private static List<Dictionary<string, object?>> BuildPileCardList(IEnumerable<CardModel> cards, PileType pile)
     {
         var list = new List<Dictionary<string, object?>>();
@@ -1901,6 +1934,14 @@ public static partial class McpMod
                             || (previewMulti?.Visible ?? false)
                             || (previewGeneric?.Visible ?? false);
         state["preview_showing"] = previewShowing;
+        if (previewShowing)
+        {
+            var previewCards = new List<Dictionary<string, object?>>();
+            AddPreviewCardsFromContainer(previewSingle, previewCards);
+            AddPreviewCardsFromContainer(previewMulti, previewCards);
+            AddPreviewCardsFromContainer(previewGeneric, previewCards);
+            state["preview_cards"] = previewCards;
+        }
 
         // Button states - when a preview is open, cancel goes through the
         // preview container's Cancel / PreviewCancel button (same path as
