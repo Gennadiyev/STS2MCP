@@ -73,7 +73,8 @@ public static partial class McpMod
     {
         if (!CombatManager.Instance.IsInProgress)
             return Error("Not in combat");
-        if (!CombatManager.Instance.IsPlayPhase)
+        var pcs = player.PlayerCombatState;
+        if (pcs == null || pcs.Phase != PlayerTurnPhase.Play)
             return Error("Not in play phase - cannot act during enemy turn");
         if (CombatManager.Instance.PlayerActionsDisabled)
             return Error("Player actions are currently disabled");
@@ -106,7 +107,8 @@ public static partial class McpMod
     {
         if (!CombatManager.Instance.IsInProgress)
             return Error("Not in combat");
-        if (!CombatManager.Instance.IsPlayPhase)
+        var pcs = player.PlayerCombatState;
+        if (pcs == null || pcs.Phase != PlayerTurnPhase.Play)
             return Error("Not in play phase - cannot act during enemy turn");
         if (CombatManager.Instance.PlayerActionsDisabled)
             return Error("Player actions are currently disabled");
