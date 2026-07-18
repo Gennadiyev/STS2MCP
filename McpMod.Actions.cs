@@ -87,6 +87,7 @@ public static partial class McpMod
             "crystal_sphere_set_tool" => ExecuteCrystalSphereSetTool(data),
             "crystal_sphere_click_cell" => ExecuteCrystalSphereClickCell(data),
             "crystal_sphere_proceed" => ExecuteCrystalSphereProceed(),
+            "console_command" => ExecuteConsoleCommand(data),
             _ => Error($"Unknown action: {action}")
         };
     }
@@ -143,6 +144,40 @@ public static partial class McpMod
         {
             ["status"] = "ok",
             ["message"] = $"Playing '{card.Title}'" + (target != null ? $" targeting {SafeGetText(() => target.Monster?.Title) ?? "target"}" : "")
+        };
+    }
+
+    // Runs a first-party dev-console command (see MegaCrit.Sts2.Core.DevConsole) directly
+    // against the live game state, bypassing the console's UI panel entirely. Useful for
+    // constructing precise scenarios (exact HP/block/energy/hand/statuses, or jumping
+    // straight into a named encounter with `fight <id>`) beyond what's reachable through
+    // legal play alone.
+    private static Dictionary<string, object?> ExecuteConsoleCommand(Dictionary<string, JsonElement> data)
+    {
+        if (!data.TryGetValue("command", out var cmdElem))
+            return Error("Missing 'command'");
+
+        string command = cmdElem.GetString() ?? "";
+        if (string.IsNullOrWhiteSpace(command))
+            return Error("'command' must not be empty");
+
+        var devConsole = new MegaCrit.Sts2.Core.DevConsole.DevConsole(shouldAllowDebugCommands: true);
+        var result = devConsole.ProcessCommand(command);
+
+        // Match the game's own console (DevConsole UI's ProcessCommand call site):
+        // fire-and-forget via TaskHelper.RunSafely, never block on the task. Some
+        // commands (e.g. 'fight') return a task that itself needs the main thread to
+        // keep pumping to complete - synchronously awaiting it here deadlocks the whole
+        // HTTP server, since this handler already runs on the main thread via
+        // RunOnMainThread. Confirmed live: calling `fight` while another combat was
+        // already active hung the entire mod (not just that request) until this fix.
+        if (result.task != null)
+            MegaCrit.Sts2.Core.Helpers.TaskHelper.RunSafely(result.task);
+
+        return new Dictionary<string, object?>
+        {
+            ["status"] = result.success ? "ok" : "error",
+            ["message"] = result.msg
         };
     }
 
