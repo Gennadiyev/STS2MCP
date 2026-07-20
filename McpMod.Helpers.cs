@@ -16,6 +16,33 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
+    // Compatibility shim for a removed game API.
+    //
+    // A Slay the Spire 2 update removed CombatManager.IsPlayPhase, which
+    // this mod referenced directly in several places. Because MonoMod
+    // JIT-compiles those methods, a direct reference to the missing
+    // property makes the whole method fail to compile
+    // (MissingMethodException in the state builder / action handlers) —
+    // combat state reads and card plays then throw.
+    //
+    // "IsPlayPhase" meant: it's the player's interactive turn right now.
+    // We reconstruct that from members that still exist. It leans
+    // permissive on purpose — every action guard also checks
+    // PlayerActionsDisabled, which covers transient action locks, so the
+    // worst case here is that a truly-illegal action is caught one step
+    // later by the game itself rather than pre-rejected. Verified against
+    // the current sts2.dll that all four members below still exist.
+    private static bool IsPlayPhaseCompat()
+    {
+        var cm = MegaCrit.Sts2.Core.Combat.CombatManager.Instance;
+        if (cm == null)
+            return false;
+        return cm.IsInProgress
+               && !cm.IsEnemyTurnStarted
+               && !cm.EndingPlayerTurnPhaseOne
+               && !cm.EndingPlayerTurnPhaseTwo;
+    }
+
     private static string? SafeGetCardDescription(CardModel card, PileType pile = PileType.Hand)
     {
         try { return StripRichTextTags(card.GetDescriptionForPile(pile)).Replace("\n", " "); }
