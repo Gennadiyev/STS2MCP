@@ -797,6 +797,11 @@ public static partial class McpMod
             {
                 string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
                 sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] - {card["description"]}");
+                if (card.TryGetValue("upgrade_preview", out var previewObj) && previewObj is Dictionary<string, object?> upgradePreview)
+                {
+                    string previewStarCost = upgradePreview.TryGetValue("star_cost", out var psc) && psc != null ? $" + {psc} star" : "";
+                    sb.AppendLine($"  → **Upgraded**: ({upgradePreview["cost"]} energy{previewStarCost}) - {upgradePreview["description"]}");
+                }
             }
             sb.AppendLine();
         }
@@ -840,6 +845,11 @@ public static partial class McpMod
             {
                 string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
                 sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]} - {card["description"]}");
+                if (card.TryGetValue("upgrade_preview", out var previewObj) && previewObj is Dictionary<string, object?> upgradePreview)
+                {
+                    string previewStarCost = upgradePreview.TryGetValue("star_cost", out var psc) && psc != null ? $" + {psc} star" : "";
+                    sb.AppendLine($"  → **Upgraded**: ({upgradePreview["cost"]} energy{previewStarCost}) - {upgradePreview["description"]}");
+                }
             }
             sb.AppendLine();
         }

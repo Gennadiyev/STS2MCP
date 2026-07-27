@@ -1250,7 +1250,24 @@ public static partial class McpMod
             ["description"] = SafeGetCardDescription(card, pile),
             ["rarity"] = card.Rarity.ToString(),
             ["is_upgraded"] = card.IsUpgraded,
+            ["is_upgradable"] = card.IsUpgradable,
+            ["upgrade_level"] = card.CurrentUpgradeLevel,
+            ["max_upgrade_level"] = card.MaxUpgradeLevel,
             ["keywords"] = BuildHoverTips(card.HoverTips)
+        };
+    }
+
+    private static Dictionary<string, object?>? BuildUpgradePreviewInfo(CardModel card)
+    {
+        var preview = SafeBuildUpgradedCardPreview(card);
+        if (preview == null) return null;
+        return new Dictionary<string, object?>
+        {
+            ["name"] = SafeGetText(() => preview.Title),
+            ["cost"] = GetCostDisplay(preview),
+            ["star_cost"] = GetStarCostDisplay(preview),
+            ["description"] = SafeGetCardDescription(preview),
+            ["keywords"] = BuildHoverTips(preview.HoverTips)
         };
     }
 
@@ -1920,6 +1937,12 @@ public static partial class McpMod
 
             var cardInfo = BuildCardInfo(card);
             cardInfo["index"] = index;
+
+            if (screen is NDeckUpgradeSelectScreen && card.IsUpgradable && !card.IsUpgraded)
+            {
+                cardInfo["upgrade_preview"] = BuildUpgradePreviewInfo(card);
+            }
+
             cards.Add(cardInfo);
             index++;
         }
@@ -2120,6 +2143,12 @@ public static partial class McpMod
             var cardInfo = BuildCardInfo(card);
             cardInfo["index"] = index;
             cardInfo["description"] = SafeGetCardDescription(card); // hand cards use default pile
+
+            if (hand.CurrentMode == NPlayerHand.Mode.UpgradeSelect && card.IsUpgradable && !card.IsUpgraded)
+            {
+                cardInfo["upgrade_preview"] = BuildUpgradePreviewInfo(card);
+            }
+
             selectableCards.Add(cardInfo);
             index++;
         }
