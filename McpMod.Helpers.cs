@@ -16,6 +16,35 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
+    // STS2 v0.107 removed CombatManager.IsPlayPhase. The turn phase now lives per-player on
+    // PlayerCombatState.Phase, so these helpers rebuild the old semantics: we're in the play
+    // phase when combat is running, it's the player side's turn, and the player is in Play.
+    internal static bool IsPlayPhase(MegaCrit.Sts2.Core.Entities.Players.Player? player)
+    {
+        if (!IsPlayerSideTurn()) return false;
+        return player?.PlayerCombatState?.Phase == MegaCrit.Sts2.Core.Combat.PlayerTurnPhase.Play;
+    }
+
+    // State-report variant: true when any player is still in the Play phase. In singleplayer
+    // this is the local player; in co-op it means at least one player can still act.
+    internal static bool IsPlayPhase(MegaCrit.Sts2.Core.Combat.ICombatState? combatState)
+    {
+        if (!IsPlayerSideTurn() || combatState == null) return false;
+        foreach (var player in combatState.Players)
+        {
+            if (player?.PlayerCombatState?.Phase == MegaCrit.Sts2.Core.Combat.PlayerTurnPhase.Play)
+                return true;
+        }
+        return false;
+    }
+
+    private static bool IsPlayerSideTurn()
+    {
+        var manager = MegaCrit.Sts2.Core.Combat.CombatManager.Instance;
+        if (manager is not { IsInProgress: true }) return false;
+        return manager.DebugOnlyGetState()?.CurrentSide == MegaCrit.Sts2.Core.Combat.CombatSide.Player;
+    }
+
     private static string? SafeGetCardDescription(CardModel card, PileType pile = PileType.Hand)
     {
         try { return StripRichTextTags(card.GetDescriptionForPile(pile)).Replace("\n", " "); }
