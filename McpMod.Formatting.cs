@@ -28,12 +28,14 @@ public static partial class McpMod
         if (stateType == "menu")
         {
             FormatMenuMarkdown(sb, state);
+            FormatRecommendedActionsMarkdown(sb, state, isMultiplayer);
             return sb.ToString();
         }
 
         if (stateType == "game_over")
         {
             FormatGameOverMarkdown(sb, state);
+            FormatRecommendedActionsMarkdown(sb, state, isMultiplayer);
             return sb.ToString();
         }
 
@@ -173,6 +175,8 @@ public static partial class McpMod
             sb.AppendLine();
         }
 
+        FormatRecommendedActionsMarkdown(sb, state, isMultiplayer);
+
         // Keyword glossary - collect all unique keyword definitions
         var glossary = new Dictionary<string, string>();
         CollectKeywordsFromState(state, glossary);
@@ -185,6 +189,152 @@ public static partial class McpMod
         }
 
         return sb.ToString();
+    }
+
+    private static void FormatRecommendedActionsMarkdown(StringBuilder sb, Dictionary<string, object?> state, bool isMultiplayer)
+    {
+        string stateType = state.TryGetValue("state_type", out var st) ? st?.ToString() ?? "unknown" : "unknown";
+        var recommendations = new List<string>();
+
+        switch (stateType)
+        {
+            case "menu":
+            case "game_over":
+                AddMenuRecommendations(recommendations, state);
+                break;
+            case "monster":
+            case "elite":
+            case "boss":
+            case "combat":
+                AddCombatRecommendations(recommendations, state, isMultiplayer);
+                break;
+            case "map":
+                recommendations.Add(isMultiplayer
+                    ? "Use `mp_map_vote(node_index)` to vote for a listed map node."
+                    : "Use `map_choose_node(node_index)` to travel to a listed map node.");
+                break;
+            case "event":
+                AddEventRecommendations(recommendations, state, isMultiplayer);
+                break;
+            case "rest_site":
+                recommendations.Add(isMultiplayer
+                    ? "Use `mp_rest_choose_option(option_index)` to choose a listed rest site option."
+                    : "Use `rest_choose_option(option_index)` to choose a listed rest site option.");
+                AddProceedRecommendation(recommendations, state, "rest_site", isMultiplayer);
+                break;
+            case "shop":
+            case "fake_merchant":
+                recommendations.Add(isMultiplayer
+                    ? "Use `mp_shop_purchase(item_index)` to buy a listed item."
+                    : "Use `shop_purchase(item_index)` to buy a listed item.");
+                AddProceedRecommendation(recommendations, state, stateType, isMultiplayer);
+                break;
+            case "rewards":
+                recommendations.Add(isMultiplayer
+                    ? "Use `mp_rewards_claim(reward_index)` to claim a listed reward."
+                    : "Use `rewards_claim(reward_index)` to claim a listed reward.");
+                AddProceedRecommendation(recommendations, state, "rewards", isMultiplayer);
+                break;
+            case "card_reward":
+                recommendations.Add(isMultiplayer
+                    ? "Use `mp_rewards_pick_card(card_index)` to take a listed card, or `mp_rewards_skip_card()` to skip."
+                    : "Use `rewards_pick_card(card_index)` to take a listed card, or `rewards_skip_card()` to skip.");
+                break;
+            case "hand_select":
+                recommendations.Add(isMultiplayer
+                    ? "Use `mp_combat_select_card(card_index)` to select from hand, then `mp_combat_confirm_selection()` when enabled."
+                    : "Use `combat_select_card(card_index)` to select from hand, then `combat_confirm_selection()` when enabled.");
+                break;
+            case "card_select":
+                recommendations.Add(isMultiplayer
+                    ? "Use `mp_deck_select_card(card_index)` to select a listed card, then `mp_deck_confirm_selection()` when enabled."
+                    : "Use `deck_select_card(card_index)` to select a listed card, then `deck_confirm_selection()` when enabled.");
+                break;
+            case "bundle_select":
+                recommendations.Add(isMultiplayer
+                    ? "Use `mp_bundle_select(bundle_index)` to preview a bundle, then `mp_bundle_confirm_selection()` when enabled."
+                    : "Use `bundle_select(bundle_index)` to preview a bundle, then `bundle_confirm_selection()` when enabled.");
+                break;
+            case "relic_select":
+                recommendations.Add(isMultiplayer
+                    ? "Use `mp_relic_select(relic_index)` to choose a listed relic, or `mp_relic_skip()` when skipping is allowed."
+                    : "Use `relic_select(relic_index)` to choose a listed relic, or `relic_skip()` when skipping is allowed.");
+                break;
+            case "crystal_sphere":
+                recommendations.Add(isMultiplayer
+                    ? "Use `mp_crystal_sphere_set_tool(tool)`, `mp_crystal_sphere_click_cell(x, y)`, or `mp_crystal_sphere_proceed()` when available."
+                    : "Use `crystal_sphere_set_tool(tool)`, `crystal_sphere_click_cell(x, y)`, or `crystal_sphere_proceed()` when available.");
+                break;
+            case "treasure":
+                recommendations.Add(isMultiplayer
+                    ? "Use `mp_treasure_claim_relic(relic_index)` to claim or bid on a listed relic."
+                    : "Use `treasure_claim_relic(relic_index)` to claim a listed relic.");
+                AddProceedRecommendation(recommendations, state, "treasure", isMultiplayer);
+                break;
+        }
+
+        if (recommendations.Count == 0)
+            return;
+
+        sb.AppendLine("## Recommended Actions");
+        foreach (var recommendation in recommendations.Distinct())
+            sb.AppendLine($"- {recommendation}");
+        sb.AppendLine();
+    }
+
+    private static void AddMenuRecommendations(List<string> recommendations, Dictionary<string, object?> state)
+    {
+        var screen = state.TryGetValue("menu_screen", out var ms) ? ms?.ToString() ?? "main" : "main";
+        recommendations.Add("Use `menu_select(option)` with one of the listed option IDs.");
+
+        if (screen == "multiplayer_join")
+            recommendations.Add("Use `menu_select(\"refresh\")` to update lobbies, or `menu_select(\"join_<index>\")` to join a listed lobby.");
+        else if (screen is "character_select" or "multiplayer_load_lobby")
+            recommendations.Add("Use `menu_select(\"confirm\")` or `menu_select(\"embark\")` to ready up or start when selection is complete.");
+    }
+
+    private static void AddCombatRecommendations(List<string> recommendations, Dictionary<string, object?> state, bool isMultiplayer)
+    {
+        string playCard = isMultiplayer ? "mp_combat_play_card(card_index, target)" : "combat_play_card(card_index, target)";
+        string endTurn = isMultiplayer ? "mp_combat_end_turn()" : "combat_end_turn()";
+
+        recommendations.Add($"Use `{playCard}` for playable hand cards. Re-read state after each card because hand indices change.");
+        recommendations.Add($"Use `{endTurn}` when done playing cards.");
+
+        if (isMultiplayer)
+            recommendations.Add("In multiplayer, ending turn submits a vote; use `mp_combat_undo_end_turn()` to retract before all players commit.");
+    }
+
+    private static void AddEventRecommendations(List<string> recommendations, Dictionary<string, object?> state, bool isMultiplayer)
+    {
+        if (!state.TryGetValue("event", out var eventObj) || eventObj is not Dictionary<string, object?> eventData)
+            return;
+
+        string choose = isMultiplayer ? "mp_event_choose_option(option_index)" : "event_choose_option(option_index)";
+        string advance = isMultiplayer ? "mp_event_advance_dialogue()" : "event_advance_dialogue()";
+        bool inDialogue = eventData.TryGetValue("in_dialogue", out var d) && d is true;
+        bool hasOptions = eventData.TryGetValue("options", out var optObj)
+            && optObj is List<Dictionary<string, object?>> options
+            && options.Count > 0;
+
+        if (hasOptions)
+            recommendations.Add($"Use `{choose}` to choose a listed event option, including Proceed options.");
+        else if (inDialogue)
+            recommendations.Add($"Use `{advance}` to advance dialogue until options appear.");
+        else
+            recommendations.Add($"Re-read state after a short wait; if dialogue is visible in-game, use `{advance}`.");
+    }
+
+    private static void AddProceedRecommendation(List<string> recommendations, Dictionary<string, object?> state, string key, bool isMultiplayer)
+    {
+        if (!state.TryGetValue(key, out var obj) || obj is not Dictionary<string, object?> data)
+            return;
+
+        bool canProceed = data.TryGetValue("can_proceed", out var cp) && cp is true;
+        if (canProceed)
+            recommendations.Add(isMultiplayer
+                ? "Use `mp_proceed_to_map()` to return to the map."
+                : "Use `proceed_to_map()` to return to the map.");
     }
 
     private static void FormatMenuMarkdown(StringBuilder sb, Dictionary<string, object?> state)
