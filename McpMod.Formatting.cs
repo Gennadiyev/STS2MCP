@@ -371,8 +371,8 @@ public static partial class McpMod
                 foreach (var card in hand)
                 {
                     string playable = card["can_play"] is true ? "✓" : "✗";
-                    string keywords = card.TryGetValue("keywords", out var kw) && kw is List<string> kwList && kwList.Count > 0
-                        ? $" [{string.Join(", ", kwList)}]" : "";
+                    string keywords = card.TryGetValue("keywords", out var kw) && kw is List<Dictionary<string, object?>> kwList && kwList.Count > 0
+                        ? $" [{string.Join(", ", kwList.Select(k => k["name"]?.ToString()))}]" : "";
                     string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
                     sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {playable}{keywords} - {card["description"]} (target: {card["target_type"]})");
                 }
@@ -746,8 +746,8 @@ public static partial class McpMod
             foreach (var card in cards)
             {
                 string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-                string keywords = card.TryGetValue("keywords", out var kw) && kw is List<string> kwList && kwList.Count > 0
-                    ? $" [{string.Join(", ", kwList)}]" : "";
+                string keywords = card.TryGetValue("keywords", out var kw) && kw is List<Dictionary<string, object?>> kwList && kwList.Count > 0
+                    ? $" [{string.Join(", ", kwList.Select(k => k["name"]?.ToString()))}]" : "";
                 sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]}{keywords} - {card["description"]}");
             }
             sb.AppendLine();
