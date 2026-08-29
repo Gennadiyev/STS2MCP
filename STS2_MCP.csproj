@@ -4,6 +4,12 @@
     <OutputType>Library</OutputType>
     <Nullable>enable</Nullable>
     <LangVersion>12.0</LangVersion>
+    <!-- Single source of truth for the mod version is mod_manifest.json.
+         Read it at build time and stamp it onto the assembly so the DLL, the
+         runtime `/` endpoint, and the manifest can never drift apart. -->
+    <ModVersion>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)mod_manifest.json')), '"version"\s*:\s*"([^"]+)"').Groups[1].Value)</ModVersion>
+    <Version>$(ModVersion)</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <!-- Set your STS2 install path here, or pass as: dotnet build -p:STS2GameDir="..." -->
     <STS2GameDir Condition="'$(STS2GameDir)' == ''">D:\SteamLibrary\steamapps\common\Slay the Spire 2</STS2GameDir>
     <STS2GameDataDir Condition="'$(STS2GameDataDir)' == '' and '$(OS)' == 'Windows_NT'">$(STS2GameDir)/data_sts2_windows_x86_64</STS2GameDataDir>

@@ -112,6 +112,7 @@ public static partial class McpMod
             // Ensure the original Fast Mode checkbox also shows ticked
             if (_originalFastModeTickbox != null && !_originalFastModeTickbox.IsTicked)
                 _originalFastModeTickbox.IsTicked = true;
+            SetInstantModeConfig(true);
             return false;
         }
     }
@@ -124,6 +125,7 @@ public static partial class McpMod
             if (!IsInInstantModeLine(__instance)) return true;
             // Instant Mode turned off - fall back to Fast
             SaveManager.Instance.PrefsSave.FastMode = FastModeType.Fast;
+            SetInstantModeConfig(false);
             return false;
         }
 
@@ -132,7 +134,11 @@ public static partial class McpMod
             // Only for the ORIGINAL Fast Mode tickbox being unticked (→ Normal)
             if (IsInInstantModeLine(__instance)) return;
             if (_instantModeTickbox != null && _instantModeTickbox.IsTicked)
+            {
                 _instantModeTickbox.IsTicked = false;
+                // Normal speed is not Instant — keep the conf in sync.
+                SetInstantModeConfig(false);
+            }
         }
     }
 

@@ -19,9 +19,25 @@ namespace STS2_MCP;
 [ModInitializer("Initialize")]
 public static partial class McpMod
 {
-    public const string Version = "0.4.0";
-    public const int DefaultPort = 15526;
-    private const string ConfigFileName = "STS2_MCP.conf";
+    // Sourced from the assembly version, which the build stamps from
+    // mod_manifest.json (see STS2_MCP.csproj). mod_manifest.json is the single
+    // place to bump the version.
+    public static readonly string Version = ResolveVersion();
+
+    private static string ResolveVersion()
+    {
+        var attr = (System.Reflection.AssemblyInformationalVersionAttribute?)
+            System.Attribute.GetCustomAttribute(
+                typeof(McpMod).Assembly,
+                typeof(System.Reflection.AssemblyInformationalVersionAttribute));
+        string? info = attr?.InformationalVersion;
+        if (!string.IsNullOrEmpty(info))
+        {
+            int plus = info.IndexOf('+');
+            return plus >= 0 ? info.Substring(0, plus) : info;
+        }
+        return typeof(McpMod).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+    }
 
     private static HttpListener? _listener;
     private static Thread? _serverThread;
@@ -34,50 +50,6 @@ public static partial class McpMod
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
-    private static int LoadPort()
-    {
-        try
-        {
-            string? modDir = Path.GetDirectoryName(
-                System.Reflection.Assembly.GetExecutingAssembly().Location);
-            if (modDir == null) return DefaultPort;
-
-            string configPath = Path.Combine(modDir, ConfigFileName);
-            if (!File.Exists(configPath))
-            {
-                try
-                {
-                    var defaultConfig = new Dictionary<string, object> { ["port"] = DefaultPort };
-                    string json = JsonSerializer.Serialize(defaultConfig, _jsonOptions);
-                    File.WriteAllText(configPath, json);
-                    GD.Print($"[STS2 MCP] Created default config at {configPath}");
-                }
-                catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
-                {
-                    GD.Print($"[STS2 MCP] No config found at {configPath}; using default port {DefaultPort}");
-                }
-                return DefaultPort;
-            }
-
-            string content = File.ReadAllText(configPath);
-            using var doc = JsonDocument.Parse(content);
-            if (doc.RootElement.TryGetProperty("port", out var portElem)
-                && portElem.TryGetInt32(out int port)
-                && port is > 0 and <= 65535)
-            {
-                return port;
-            }
-
-            GD.PrintErr($"[STS2 MCP] Invalid or missing 'port' in {configPath}, using default {DefaultPort}");
-            return DefaultPort;
-        }
-        catch (Exception ex)
-        {
-            GD.PrintErr($"[STS2 MCP] Failed to load config: {ex.Message}, using default port {DefaultPort}");
-            return DefaultPort;
-        }
-    }
-
     public static void Initialize()
     {
         try
@@ -89,7 +61,8 @@ public static partial class McpMod
             var tree = (SceneTree)Engine.GetMainLoop();
             tree.Connect(SceneTree.SignalName.ProcessFrame, Callable.From(ProcessMainThreadQueue));
 
-            int port = LoadPort();
+            _config = LoadConfig();
+            int port = _config.Port;
 
             _listener = new HttpListener();
             _listener.Prefixes.Add($"http://localhost:{port}/");
@@ -102,6 +75,8 @@ public static partial class McpMod
                 Name = "STS2_MCP_Server"
             };
             _serverThread.Start();
+
+            ApplyInstantModeFromConfig();
 
             GD.Print($"[STS2 MCP] v{Version} server started on http://localhost:{port}/");
         }
