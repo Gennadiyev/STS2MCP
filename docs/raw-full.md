@@ -201,7 +201,8 @@ Menu sub-screens expose their own options:
 - `multiplayer_join`: `refresh`, `back`, `join_<index>`, `join_<player_id>`
 - `multiplayer_load_lobby`: `confirm` / `embark`, `unready`, `back`
 - `profile_select`: `profile_1`, `profile_2`, `profile_3`, `back`
-- `character_select`: character IDs/names, `back`, `confirm` / `embark`, `unready` (MP, after readying)
+- `character_select`: character IDs/names, `ascension_up` / `ascension_down`, `back`, `confirm` / `embark`, `unready` (MP, after readying)
+- `custom_run`: character IDs/names, `modifier_<key>` (toggle a run modifier), `ascension_up` / `ascension_down`, `back`, `confirm` / `embark`, `unready` (MP, after readying)
 - `tutorial_prompt`: `no`, `yes`
 - `popup`: advertised popup button labels, normalized to lowercase words such as `ignore` or `back`
 - `timeline`: `advance`, `back`
@@ -307,10 +308,19 @@ The same screen drives SP, MP host, and MP client. In MP, an additional `lobby` 
       }
     ]
   },
+  "ascension": {                   // present whenever the ascension panel is on screen
+    "level": 0,
+    "max": 5
+  },
+  "selected": {                    // reflects the current on-screen selection
+    "character": "REGENT"          // selected character id, or null if none yet
+  },
   "options": [
     { "name": "REGENT",  "enabled": true },
     { "name": "IRONCLAD","enabled": true },
     /* ... other characters and lockable RANDOM ... */
+    { "name": "ascension_up",   "enabled": true },
+    { "name": "ascension_down", "enabled": true },
     { "name": "confirm", "enabled": true },
     { "name": "embark",  "enabled": true },
     { "name": "back",    "enabled": true },
@@ -320,6 +330,99 @@ The same screen drives SP, MP host, and MP client. In MP, an additional `lobby` 
 ```
 
 In SP the `lobby` field is omitted, and `unready` does not appear (the unready button is only enabled after MP ready).
+
+`ascension_up` / `ascension_down` move the level by one and are only advertised while that
+direction is actually available — the game hides the corresponding arrow at either end of
+the range and for MP clients (the host owns the lobby's ascension). Each call responds with
+the resulting `ascension` level.
+
+#### `custom_run` — Custom mode setup
+
+Reached via the `singleplayer` or `multiplayer_host` submenu's `custom` option. This is a
+character-select variant with two extras: a `seed` and a list of run `modifiers`. Everything
+else — `characters`, `ascension`, `lobby`, `confirm`/`embark`/`back`/`unready` — behaves
+exactly as on `character_select`.
+
+Each modifier carries the game's own `title` and `description`, so the agent can tell what
+it does before enabling it, plus two identifiers:
+
+- `id` — the raw modifier model id. **Not unique**: the per-character card modifiers are all
+  `CHARACTER_CARDS`, one tickbox per character.
+- `key` — unique on this screen and the thing you select. It equals `id` except for those
+  per-character modifiers, where it is `CHARACTER_CARDS_<character id>`. `selected.modifiers`
+  and the toggle response both report keys.
+
+```jsonc
+{
+  "state_type": "menu",
+  "menu_screen": "custom_run",
+  "message": "Custom run setup. Select a character, optionally toggle run modifiers (modifier_<key>) and adjust ascension, then confirm to embark.",
+  "characters": [ /* same shape as character_select */ ],
+  "seed": "ABC123",                // present only when a seed has been set
+  "modifiers": [
+    {
+      "id": "DRAFT",
+      "key": "DRAFT",              // what you select: option name is "modifier_DRAFT"
+      "option": "modifier_DRAFT",
+      "title": "Draft",
+      "description": "Choose 1 of 5 cards after each combat...",
+      "ticked": true
+    },
+    {
+      "id": "CHARACTER_CARDS",     // shared by one tickbox per character
+      "key": "CHARACTER_CARDS_IRONCLAD",
+      "option": "modifier_CHARACTER_CARDS_IRONCLAD",
+      "title": "Ironclad Cards",
+      "description": "Ironclad cards will now appear in rewards and shops.",
+      "character": "IRONCLAD",     // present only for per-character modifiers
+      "ticked": true
+    }
+  ],
+  "ascension": { "level": 0, "max": 5 },
+  "lobby": { /* present only in MP host/client, same shape as character_select */ },
+  "selected": {
+    "character": "REGENT",         // or null if none selected yet
+    "modifiers": ["DRAFT", "CHARACTER_CARDS_IRONCLAD"]   // keys of every ticked modifier
+  },
+  "options": [
+    { "name": "REGENT", "enabled": true },
+    /* ... other characters ... */
+    { "name": "modifier_DRAFT", "enabled": true },                    // toggle option
+    { "name": "modifier_CHARACTER_CARDS_IRONCLAD", "enabled": true },
+    { "name": "ascension_up",   "enabled": true },
+    { "name": "ascension_down", "enabled": false },
+    { "name": "confirm", "enabled": false },
+    { "name": "embark",  "enabled": false },
+    { "name": "back",    "enabled": true }
+  ]
+}
+```
+
+Toggle modifiers with `menu_select` using the advertised `modifier_<key>` option name, the
+bare `key`, or the raw `id` when that id is unambiguous. Selecting `CHARACTER_CARDS` — an id
+several tickboxes share — returns an error listing the keys to choose from instead of
+silently toggling the first one.
+
+**Modifiers can be mutually exclusive**: enabling one makes the game disable the others in
+its group, so the response always reports the resulting set —
+
+```json
+{
+  "status": "ok",
+  "message": "Modifier 'Sealed Deck' enabled. Mutually exclusive, so also disabled: DRAFT",
+  "modifiers": ["SEALED_DECK", "CHARACTER_CARDS_IRONCLAD"]
+}
+```
+
+Treat that `modifiers` array as authoritative rather than assuming only the requested
+modifier changed. A modifier whose tickbox is not interactive (an MP client, which may not
+change the host's modifiers) is advertised with `"enabled": false` and returns an error if
+selected.
+
+Unlike standard singleplayer character select, a `seed` **is** supported here in SP as well
+as MP-host: supply it with `confirm`/`embark` to start a seeded custom run. It is applied to
+the lobby immediately before the run starts, and a seed already set (by a previous call or
+typed by a human) is echoed back in the state's `seed` field.
 
 ### `unknown`
 
@@ -1065,7 +1168,11 @@ All POST requests use a JSON body with an `"action"` field and action-specific p
 
 ### `menu_select`
 
-Select an option from the main menu, a menu submenu, profile select, character select, tutorial prompt, blocking popup, timeline screen, or game-over screen.
+Select an option from the main menu, a menu submenu, profile select, character select, custom-run setup, tutorial prompt, blocking popup, timeline screen, or game-over screen.
+
+On `custom_run`, `option` may also be a run-modifier toggle — the advertised `modifier_<key>` name, the bare `key`, or the raw modifier `id` when unambiguous. Because modifiers can be mutually exclusive, the response reports the resulting set of ticked modifiers in `modifiers` (keys), not just the one that was addressed.
+
+On `character_select` and `custom_run`, `ascension_up` / `ascension_down` move the ascension level by one; the response returns the resulting `ascension` level. They are advertised only while that direction is available (not at the ends of the range, and not for MP clients).
 
 ```json
 { "action": "menu_select", "option": "singleplayer" }
@@ -1078,7 +1185,7 @@ Select an option from the main menu, a menu submenu, profile select, character s
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `option` | string | Yes | One of the current state's advertised menu options. Matching is case-insensitive. |
-| `seed` | string | No | Only supported in menu contexts that expose a real seeded flow. Standard singleplayer character select currently returns an error without starting a run when `seed` is supplied. |
+| `seed` | string | No | Only supported in menu contexts that expose a real seeded flow — `custom_run` (SP and MP host), MP lobbies, daily. Standard singleplayer character select returns an error without starting a run when `seed` is supplied. |
 
 `game_over` advertises only `main_menu`. `continue` is not actionable on that screen and returns an error.
 If `timeline` is blocked by pending obtained epochs, `menu_select` returns an error with `manual_action_required: true` and `pending_epoch_ids` instead of opening Timeline.

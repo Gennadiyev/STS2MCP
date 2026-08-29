@@ -182,8 +182,9 @@ async def menu_select(option: str, seed: str | None = None) -> str:
     Use with state_type "menu" or "game_over". Covers main-menu navigation,
     singleplayer / multiplayer submenus, multiplayer host & join lobbies,
     multiplayer load lobby (resume saved co-op run), character select for SP
-    and MP (with `unready` once readied in MP), profile switching, timeline
-    controls, tutorial prompts, blocking popups, and game-over main-menu return.
+    and MP (with `unready` once readied in MP), custom-run setup, profile
+    switching, timeline controls, tutorial prompts, blocking popups, and
+    game-over main-menu return.
 
     Multiplayer flow tips:
       - On menu_screen "multiplayer_join", use refresh / back / join_<index> /
@@ -194,11 +195,25 @@ async def menu_select(option: str, seed: str | None = None) -> str:
         `lobby` block with the roster, ready states, and ascension; "unready"
         becomes available after you confirm/embark.
 
+    Custom mode ("custom_run"): pick a character, then confirm/embark. Unlike
+    standard singleplayer, a seed IS supported here. Toggle run modifiers with
+    the "modifier_<key>" option names the state advertises (the bare key, or the
+    raw modifier id when unambiguous, also work — the per-character card
+    modifiers all share the id CHARACTER_CARDS and must be addressed by key).
+    Modifiers can be mutually exclusive, so the response returns the resulting
+    list of ticked modifier keys rather than only the one toggled.
+
+    Ascension ("character_select" and "custom_run"): "ascension_up" /
+    "ascension_down" move the level by one and are advertised only while that
+    direction is available; the state's `ascension` block carries level and max.
+    The `selected` block reflects the current character and enabled modifier ids.
+
     Args:
         option: Option ID from the current menu state's options list. If an
             option is listed under blocked_options, selecting it returns the
             API's manual-action response instead of forcing UI entry.
-        seed: Optional seed for supported embark flows. Standard mode rejects seeds.
+        seed: Optional seed for supported embark flows (custom run, multiplayer
+            lobbies, daily). Standard mode rejects seeds.
     """
     body: dict = {"action": "menu_select", "option": option}
     if seed is not None:

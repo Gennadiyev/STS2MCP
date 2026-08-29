@@ -19,7 +19,26 @@ namespace STS2_MCP;
 [ModInitializer("Initialize")]
 public static partial class McpMod
 {
-    public const string Version = "0.4.0";
+    // Sourced from the assembly version, which the build stamps from
+    // mod_manifest.json (see STS2_MCP.csproj). mod_manifest.json is the single
+    // place to bump the version.
+    public static readonly string Version = ResolveVersion();
+
+    private static string ResolveVersion()
+    {
+        var attr = (System.Reflection.AssemblyInformationalVersionAttribute?)
+            System.Attribute.GetCustomAttribute(
+                typeof(McpMod).Assembly,
+                typeof(System.Reflection.AssemblyInformationalVersionAttribute));
+        string? info = attr?.InformationalVersion;
+        if (!string.IsNullOrEmpty(info))
+        {
+            int plus = info.IndexOf('+');
+            return plus >= 0 ? info.Substring(0, plus) : info;
+        }
+        return typeof(McpMod).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+    }
+
     public const int DefaultPort = 15526;
     private const string ConfigFileName = "STS2_MCP.conf";
 

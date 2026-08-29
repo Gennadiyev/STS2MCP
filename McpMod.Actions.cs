@@ -34,10 +34,12 @@ using MegaCrit.Sts2.Core.Entities.Potions;
 using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
+using MegaCrit.Sts2.Core.Nodes.Screens.CustomRun;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen;
 using MegaCrit.Sts2.Core.Nodes.Screens.Timeline;
 using MegaCrit.Sts2.Core.Nodes.Screens.ProfileScreen;
+using MegaCrit.Sts2.Core.Multiplayer.Game.Lobby;
 using Godot;
 
 namespace STS2_MCP;
@@ -1284,6 +1286,14 @@ public static partial class McpMod
             return ExecuteLoadLobbyMenuOption(loadLobby, option);
         }
 
+        // Custom mode setup screen (replaces char select for custom runs). Handle
+        // it before the plain char select and before main-menu routing.
+        var customRun = FindFirst<NCustomRunScreen>(tree.Root);
+        if (customRun != null && IsNodeVisible(customRun))
+        {
+            return ExecuteCustomRunMenuOption(customRun, option, seed);
+        }
+
         // Character select can outlive or be mounted separately from NMainMenu,
         // so handle it before main-menu-specific routing.
         var charSelect = FindFirst<NCharacterSelectScreen>(tree.Root);
@@ -1577,10 +1587,54 @@ public static partial class McpMod
         return Error($"Unknown load lobby option: {option}. Use: confirm, embark, unready, back");
     }
 
+    // Option-name prefix for a custom-run run modifier toggle: "modifier_<id>".
+    // The state advertises modifiers under their bare id plus this option name.
+    internal const string ModifierOptionPrefix = "modifier_";
+
     private static Dictionary<string, object?> ExecuteCharacterSelectMenuOption(
         NCharacterSelectScreen charSelect,
         string option,
         string? seed)
+    {
+        return ExecuteStartRunScreenOption(
+            charSelect,
+            "_embarkButton",
+            option,
+            seed,
+            runNoun: "run",
+            noLobbySeedError: "Seeded embark is not supported for standard singleplayer from this API. "
+                              + "Seed was not applied and the run was not started.");
+    }
+
+    // Custom mode setup. Same screen shape as character select — the confirm control is
+    // _confirmButton instead of _embarkButton, and run-modifier tickboxes are present.
+    private static Dictionary<string, object?> ExecuteCustomRunMenuOption(
+        NCustomRunScreen customRun,
+        string option,
+        string? seed)
+    {
+        return ExecuteStartRunScreenOption(
+            customRun,
+            "_confirmButton",
+            option,
+            seed,
+            runNoun: "custom run",
+            noLobbySeedError: "Seed could not be applied (no lobby on this custom run screen); run was not started.");
+    }
+
+    // Shared dispatch for the two "start a run" screens (NCharacterSelectScreen and
+    // NCustomRunScreen). They are unrelated types but expose the same controls under the
+    // same field names, and everything here goes through GetInstanceFieldValue anyway, so
+    // only the confirm button's field name and the wording of a couple of messages differ.
+    // Options that belong to one screen only (modifier toggles) simply find nothing on
+    // the other and fall through to the character lookup.
+    private static Dictionary<string, object?> ExecuteStartRunScreenOption(
+        Node screen,
+        string confirmField,
+        string option,
+        string? seed,
+        string runNoun,
+        string noLobbySeedError)
     {
         if (string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
         {
@@ -1589,13 +1643,13 @@ public static partial class McpMod
             // confirm/embark in MP — it retracts the ready vote without leaving. Surface
             // them as distinct options so callers can pick deliberately. Fall back to
             // unready when only it is actionable so older callers don't get stuck.
-            var backBtn = GetInstanceFieldValue(charSelect, "_backButton") as NClickableControl;
+            var backBtn = GetInstanceFieldValue(screen, "_backButton") as NClickableControl;
             if (backBtn != null && backBtn.IsEnabled && IsControlVisibleOrActionable(backBtn))
             {
                 backBtn.ForceClick();
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Going back" };
             }
-            var unreadyFallback = GetInstanceFieldValue(charSelect, "_unreadyButton") as NClickableControl;
+            var unreadyFallback = GetInstanceFieldValue(screen, "_unreadyButton") as NClickableControl;
             if (unreadyFallback != null && unreadyFallback.IsEnabled && IsControlVisibleOrActionable(unreadyFallback))
             {
                 unreadyFallback.ForceClick();
@@ -1606,7 +1660,7 @@ public static partial class McpMod
 
         if (string.Equals(option, "unready", System.StringComparison.OrdinalIgnoreCase))
         {
-            var unreadyBtn = GetInstanceFieldValue(charSelect, "_unreadyButton") as NClickableControl;
+            var unreadyBtn = GetInstanceFieldValue(screen, "_unreadyButton") as NClickableControl;
             if (unreadyBtn != null && unreadyBtn.IsEnabled && IsControlVisibleOrActionable(unreadyBtn))
             {
                 unreadyBtn.ForceClick();
@@ -1621,14 +1675,13 @@ public static partial class McpMod
             if (!string.IsNullOrWhiteSpace(seed))
             {
                 seed = seed.Trim();
-                if (charSelect.Lobby == null)
-                {
-                    return Error("Seeded embark is not supported for standard singleplayer from this API. Seed was not applied and the run was not started.");
-                }
+                var lobby = GetInstanceFieldValue(screen, "_lobby") as StartRunLobby;
+                if (lobby == null)
+                    return Error(noLobbySeedError);
 
                 try
                 {
-                    charSelect.Lobby.SetSeed(seed);
+                    lobby.SetSeed(seed);
                 }
                 catch (System.Exception ex)
                 {
@@ -1636,17 +1689,30 @@ public static partial class McpMod
                 }
             }
 
-            var embarkBtn = GetInstanceFieldValue(charSelect, "_embarkButton");
-            if (embarkBtn is NClickableControl embarkClickable && embarkClickable.IsEnabled)
+            var confirmBtn = GetInstanceFieldValue(screen, confirmField);
+            if (confirmBtn is NClickableControl confirmClickable && confirmClickable.IsEnabled)
             {
-                var msg = string.IsNullOrEmpty(seed) ? "Embarking on run" : $"Embarking on run (seed: {seed})";
-                embarkClickable.ForceClick();
+                var msg = string.IsNullOrEmpty(seed)
+                    ? $"Embarking on {runNoun}"
+                    : $"Embarking on {runNoun} (seed: {seed})";
+                confirmClickable.ForceClick();
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = msg };
             }
-            return Error("Embark button not available — select a character first");
+            return Error("Confirm button not available — select a character first");
         }
 
-        var buttons = FindAll<NCharacterSelectButton>(charSelect);
+        if (string.Equals(option, "ascension_up", System.StringComparison.OrdinalIgnoreCase))
+            return ExecuteAscensionChange(screen, up: true);
+        if (string.Equals(option, "ascension_down", System.StringComparison.OrdinalIgnoreCase))
+            return ExecuteAscensionChange(screen, up: false);
+
+        // Run-modifier toggle. Accepts both the advertised "modifier_<id>" option name and
+        // the bare id the state reports under modifiers[].id.
+        var modifierResult = TryToggleRunModifier(screen, option);
+        if (modifierResult != null)
+            return modifierResult;
+
+        var buttons = FindAll<NCharacterSelectButton>(screen);
         foreach (var btn in buttons)
         {
             if (btn.Character != null && (
@@ -1660,6 +1726,97 @@ public static partial class McpMod
             }
         }
         return Error($"Character '{option}' not found. Available: {string.Join(", ", buttons.Where(b => !b.IsLocked).Select(b => b.Character?.Id.Entry))}");
+    }
+
+    // Clicks one of the ascension panel's arrows. The game hides an arrow when that
+    // direction is unavailable (either end of the range, or an MP client that may not
+    // change the level), so an invisible arrow is a hard "no", not a transient state.
+    private static Dictionary<string, object?> ExecuteAscensionChange(Node screen, bool up)
+    {
+        var panel = GetInstanceFieldValue(screen, "_ascensionPanel") as NAscensionPanel;
+        if (panel == null || !IsNodeVisible(panel))
+            return Error("Ascension is not adjustable on this screen");
+
+        var arrow = GetInstanceFieldValue(panel, up ? "_rightArrow" : "_leftArrow") as NClickableControl;
+        if (arrow == null || !IsControlVisibleOrActionable(arrow))
+        {
+            return Error(up
+                ? $"Cannot raise ascension past {panel.Ascension}"
+                : $"Cannot lower ascension below {panel.Ascension}");
+        }
+
+        arrow.ForceClick();
+        return new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["message"] = $"Ascension set to {panel.Ascension}",
+            ["ascension"] = panel.Ascension
+        };
+    }
+
+    // Returns null when `option` does not name a run modifier on this screen, so the
+    // caller can keep looking (character names, etc.).
+    //
+    // Selection accepts the advertised "modifier_<key>" option name, the bare key, or the
+    // raw modifier id when that id is unambiguous. It is ambiguous for the per-character
+    // "character cards" modifiers, which all share one id — those must be addressed by key.
+    //
+    // Modifiers can also be mutually exclusive: ticking one makes the game untick others in
+    // the same group (NCustomRunModifiersList.UntickMutuallyExclusiveModifiersForTickbox).
+    // That happens synchronously inside ForceClick, so the response reports the full set of
+    // modifiers ticked afterwards — the caller must not assume its own toggle was the only
+    // change.
+    private static Dictionary<string, object?>? TryToggleRunModifier(Node screen, string option)
+    {
+        var entries = GetRunModifierEntries(screen);
+        if (entries.Count == 0)
+            return null;
+
+        bool explicitlyAModifier = option.StartsWith(ModifierOptionPrefix, System.StringComparison.OrdinalIgnoreCase);
+        var token = explicitlyAModifier ? option.Substring(ModifierOptionPrefix.Length) : option;
+
+        var matches = entries.Where(e => string.Equals(e.Key, token, System.StringComparison.OrdinalIgnoreCase)).ToList();
+        if (matches.Count == 0)
+            matches = entries.Where(e => string.Equals(e.Id, token, System.StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (matches.Count == 0)
+        {
+            // Only claim the option when it was explicitly addressed as a modifier;
+            // otherwise let the character lookup have it.
+            return explicitlyAModifier
+                ? Error($"Modifier '{token}' not found. Available: {string.Join(", ", entries.Select(e => e.Key))}")
+                : null;
+        }
+
+        if (matches.Count > 1)
+        {
+            return Error($"Modifier '{token}' is ambiguous — {matches.Count} tickboxes share that id. "
+                         + $"Use one of: {string.Join(", ", matches.Select(m => m.Key))}");
+        }
+
+        var target = matches[0];
+        if (!target.Tickbox.IsEnabled)
+            return Error($"Modifier '{target.Key}' cannot be toggled right now");
+
+        var title = SafeGetText(() => target.Modifier.Title);
+        var before = TickedModifierKeys(entries);
+        bool wasTicked = target.Tickbox.IsTicked;
+        target.Tickbox.ForceClick();
+        var after = TickedModifierKeys(entries);
+
+        var message = $"Modifier '{title ?? target.Key}' {(wasTicked ? "disabled" : "enabled")}";
+        var alsoUnticked = before
+            .Where(key => !after.Contains(key) && !string.Equals(key, target.Key, System.StringComparison.Ordinal))
+            .ToList();
+        if (alsoUnticked.Count > 0)
+            message += $". Mutually exclusive, so also disabled: {string.Join(", ", alsoUnticked)}";
+
+        return new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["message"] = message,
+            ["modifiers"] = after
+        };
     }
 
     private static Dictionary<string, object?>? TryHandleQueuedTimelineUnlock(NTimelineScreen timelineScreen)

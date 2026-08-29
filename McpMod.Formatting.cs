@@ -234,6 +234,47 @@ public static partial class McpMod
             sb.AppendLine();
         }
 
+        // Ascension / seed / run modifiers — the start-a-run screens (character_select
+        // and custom_run). In MP the lobby block above already carries the synced
+        // ascension, but the panel is the local source of truth on both screens.
+        if (state.TryGetValue("ascension", out var ascObj) &&
+            ascObj is Dictionary<string, object?> ascension)
+        {
+            var level = ascension.GetValueOrDefault("level")?.ToString() ?? "0";
+            var max = ascension.GetValueOrDefault("max")?.ToString();
+            sb.AppendLine($"**Ascension:** {level}{(max != null ? $" / {max}" : "")}");
+            sb.AppendLine();
+        }
+
+        if (state.TryGetValue("seed", out var seedObj) && seedObj != null)
+        {
+            sb.AppendLine($"**Seed:** `{seedObj}`");
+            sb.AppendLine();
+        }
+
+        if (state.TryGetValue("modifiers", out var modifiersObj) &&
+            modifiersObj is List<Dictionary<string, object?>> modifiers &&
+            modifiers.Count > 0)
+        {
+            sb.AppendLine("### Run Modifiers");
+            foreach (var modifier in modifiers)
+            {
+                // `key` is the selectable name — it differs from `id` only where several
+                // tickboxes share one modifier id (the per-character card modifiers).
+                var id = modifier.GetValueOrDefault("id")?.ToString() ?? "?";
+                var key = modifier.GetValueOrDefault("key")?.ToString() ?? id;
+                var title = modifier.GetValueOrDefault("title")?.ToString() ?? key;
+                var description = modifier.GetValueOrDefault("description")?.ToString();
+                var ticked = modifier.TryGetValue("ticked", out var tickedObj) && tickedObj is true;
+                sb.AppendLine($"- [{(ticked ? "x" : " ")}] `{key}` **{title}**"
+                              + (string.IsNullOrWhiteSpace(description) ? "" : $" - {description}"));
+            }
+            sb.AppendLine();
+            sb.AppendLine("Toggle with `menu_select` using `modifier_<key>`. Some modifiers are mutually "
+                          + "exclusive, so enabling one may disable another.");
+            sb.AppendLine();
+        }
+
         if (state.TryGetValue("options", out var optionsObj) && optionsObj != null)
             FormatMenuOptionsMarkdown(sb, optionsObj);
 
@@ -254,6 +295,20 @@ public static partial class McpMod
             }
             sb.AppendLine();
             sb.AppendLine("Use `menu_select` with an unlocked character ID or name, then `confirm`/`embark`.");
+            sb.AppendLine();
+        }
+
+        // What the screen currently has chosen — character_select / custom_run.
+        if (state.TryGetValue("selected", out var selectedObj) &&
+            selectedObj is Dictionary<string, object?> selected)
+        {
+            var character = selected.GetValueOrDefault("character")?.ToString();
+            sb.AppendLine("**Selected character:** " + (string.IsNullOrEmpty(character) ? "_(none yet)_" : character));
+            if (selected.GetValueOrDefault("modifiers") is List<string> selectedModifiers)
+            {
+                sb.AppendLine("**Enabled modifiers:** "
+                              + (selectedModifiers.Count > 0 ? string.Join(", ", selectedModifiers) : "_(none)_"));
+            }
             sb.AppendLine();
         }
     }

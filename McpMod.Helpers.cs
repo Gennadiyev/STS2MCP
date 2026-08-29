@@ -10,6 +10,8 @@ using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
 using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
+using MegaCrit.Sts2.Core.Models.Modifiers;
+using MegaCrit.Sts2.Core.Nodes.Screens.CustomRun;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 
 namespace STS2_MCP;
@@ -818,5 +820,93 @@ public static partial class McpMod
         }
 
         return null;
+    }
+
+    // One run-modifier tickbox on the custom-run screen.
+    //
+    // Modifier ids are NOT unique on that screen: the "character cards" modifier is
+    // instantiated once per character and every instance reports Id.Entry ==
+    // "CHARACTER_CARDS". Each entry therefore also carries a Key that is unique on the
+    // screen — the id suffixed with the character it applies to, or with an index as a
+    // last resort. The Key is what callers select and what `selected.modifiers` reports;
+    // the raw Id is still surfaced for callers that reason about the underlying model.
+    private sealed class RunModifierEntry
+    {
+        internal RunModifierEntry(
+            NRunModifierTickbox tickbox,
+            ModifierModel modifier,
+            string id,
+            string key,
+            string? characterId)
+        {
+            Tickbox = tickbox;
+            Modifier = modifier;
+            Id = id;
+            Key = key;
+            CharacterId = characterId;
+        }
+
+        internal NRunModifierTickbox Tickbox { get; }
+        internal ModifierModel Modifier { get; }
+        internal string Id { get; }
+        internal string Key { get; }
+        internal string? CharacterId { get; }
+    }
+
+    // Run-modifier tickboxes under `screen`, in screen order. Empty for screens that have
+    // none (the plain character select), which is how callers tell the screens apart.
+    private static List<RunModifierEntry> GetRunModifierEntries(Node screen)
+    {
+        var entries = new List<RunModifierEntry>();
+        var usedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var tickbox in FindAll<NRunModifierTickbox>(screen))
+        {
+            try
+            {
+                var modifier = tickbox.Modifier;
+                if (modifier == null)
+                    continue;
+
+                var id = modifier.Id.Entry;
+
+                string? characterId = null;
+                if (modifier is CharacterCards characterCards)
+                {
+                    try { characterId = characterCards.CharacterModel.Entry; }
+                    catch { }
+                }
+
+                var key = string.IsNullOrEmpty(characterId) ? id : $"{id}_{characterId}";
+                if (!usedKeys.Add(key))
+                {
+                    var suffix = 2;
+                    while (!usedKeys.Add($"{key}_{suffix}"))
+                        suffix++;
+                    key = $"{key}_{suffix}";
+                }
+
+                entries.Add(new RunModifierEntry(tickbox, modifier, id, key, characterId));
+            }
+            catch { }
+        }
+
+        return entries;
+    }
+
+    // Keys of every currently ticked run modifier, in screen order.
+    private static List<string> TickedModifierKeys(IEnumerable<RunModifierEntry> entries)
+    {
+        var keys = new List<string>();
+        foreach (var entry in entries)
+        {
+            try
+            {
+                if (entry.Tickbox.IsTicked)
+                    keys.Add(entry.Key);
+            }
+            catch { }
+        }
+        return keys;
     }
 }
