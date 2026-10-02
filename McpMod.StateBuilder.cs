@@ -1930,9 +1930,14 @@ public static partial class McpMod
         var previewSingle = screen.GetNodeOrNull<Godot.Control>("%UpgradeSinglePreviewContainer");
         var previewMulti = screen.GetNodeOrNull<Godot.Control>("%UpgradeMultiPreviewContainer");
         var previewGeneric = screen.GetNodeOrNull<Godot.Control>("%PreviewContainer");
+        // Enchant screens use EnchantSinglePreviewContainer / EnchantMultiPreviewContainer
+        var enchantSingle = screen.GetNodeOrNull<Godot.Control>("%EnchantSinglePreviewContainer");
+        var enchantMulti = screen.GetNodeOrNull<Godot.Control>("%EnchantMultiPreviewContainer");
         bool previewShowing = (previewSingle?.Visible ?? false)
                             || (previewMulti?.Visible ?? false)
-                            || (previewGeneric?.Visible ?? false);
+                            || (previewGeneric?.Visible ?? false)
+                            || (enchantSingle?.Visible ?? false)
+                            || (enchantMulti?.Visible ?? false);
         state["preview_showing"] = previewShowing;
         if (previewShowing)
         {

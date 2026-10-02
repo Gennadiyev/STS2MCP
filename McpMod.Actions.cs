@@ -657,6 +657,31 @@ public static partial class McpMod
         return Error("No card selection screen is open");
     }
 
+    private static readonly string[] CardPreviewContainers =
+    {
+        "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer",
+        "%EnchantSinglePreviewContainer", "%EnchantMultiPreviewContainer",
+        "%PreviewContainer"
+    };
+
+    private static bool TryClickPreviewConfirm(NCardGridSelectionScreen screen)
+    {
+        foreach (var containerName in CardPreviewContainers)
+        {
+            var container = screen.GetNodeOrNull<Godot.Control>(containerName);
+            if (container?.Visible != true)
+                continue;
+            var confirm = container.GetNodeOrNull<NConfirmButton>("Confirm")
+                          ?? container.GetNodeOrNull<NConfirmButton>("%PreviewConfirm");
+            if (confirm is { IsEnabled: true })
+            {
+                confirm.ForceClick();
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static Dictionary<string, object?> ExecuteConfirmSelection()
     {
         var overlay = NOverlayStack.Instance?.Peek();
@@ -666,24 +691,15 @@ public static partial class McpMod
             return Error("No card selection screen is open");
 
         // Check all preview containers (upgrade uses UpgradeSinglePreviewContainer / UpgradeMultiPreviewContainer,
+        // enchant uses EnchantSinglePreviewContainer / EnchantMultiPreviewContainer,
         // NDeckCardSelectScreen uses PreviewContainer with %PreviewConfirm)
-        foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer" })
+        if (TryClickPreviewConfirm(screen))
         {
-            var container = screen.GetNodeOrNull<Godot.Control>(containerName);
-            if (container?.Visible == true)
+            return new Dictionary<string, object?>
             {
-                var confirm = container.GetNodeOrNull<NConfirmButton>("Confirm")
-                              ?? container.GetNodeOrNull<NConfirmButton>("%PreviewConfirm");
-                if (confirm is { IsEnabled: true })
-                {
-                    confirm.ForceClick();
-                    return new Dictionary<string, object?>
-                    {
-                        ["status"] = "ok",
-                        ["message"] = "Confirming selection from preview"
-                    };
-                }
-            }
+                ["status"] = "ok",
+                ["message"] = "Confirming selection from preview"
+            };
         }
 
         // Try main confirm button
@@ -692,6 +708,16 @@ public static partial class McpMod
         if (mainConfirm is { IsEnabled: true })
         {
             mainConfirm.ForceClick();
+            // The enchant screen's main Confirm only opens its preview (PreviewSelection);
+            // the selection completes on the preview's own Confirm, so press that too.
+            if (screen is NDeckEnchantSelectScreen && TryClickPreviewConfirm(screen))
+            {
+                return new Dictionary<string, object?>
+                {
+                    ["status"] = "ok",
+                    ["message"] = "Confirming enchant selection"
+                };
+            }
             return new Dictionary<string, object?>
             {
                 ["status"] = "ok",
@@ -743,7 +769,7 @@ public static partial class McpMod
             return Error("No card selection screen is open");
 
         // If preview is showing, cancel back to selection
-        foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer" })
+        foreach (var containerName in CardPreviewContainers)
         {
             var container = screen.GetNodeOrNull<Godot.Control>(containerName);
             if (container?.Visible == true)
