@@ -810,7 +810,10 @@ public static partial class McpMod
         }
 
         bool canConfirm = handSelect.TryGetValue("can_confirm", out var cc) && cc is true;
-        sb.AppendLine($"Use `combat_select_card(card_index)` to select. Can confirm: {(canConfirm ? "Yes - use `combat_confirm_selection`" : "No - select more cards")}");
+        if (mode == "upgrade_select" && canConfirm)
+            sb.AppendLine("**A card is already selected. The next action should be `combat_confirm_selection()`; do not select another card.**");
+        else
+            sb.AppendLine($"Use `combat_select_card(card_index)` to select. Can confirm: {(canConfirm ? "Yes - use `combat_confirm_selection`" : "No - select more cards")}");
         sb.AppendLine();
     }
 
@@ -850,7 +853,7 @@ public static partial class McpMod
 
         if (preview)
         {
-            sb.AppendLine("**Preview is showing** - use `confirm_selection` to confirm or `cancel_selection` to go back.");
+            sb.AppendLine("**Preview is showing** - the next action should be `confirm_selection` to finish, or `cancel_selection` to go back. Do not select the same card again unless you intend to deselect it.");
             if (cardSelect.TryGetValue("preview_cards", out var previewCardsObj) && previewCardsObj is List<Dictionary<string, object?>> previewCards && previewCards.Count > 0)
             {
                 sb.AppendLine("### Preview Cards");

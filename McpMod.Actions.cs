@@ -563,9 +563,14 @@ public static partial class McpMod
         {
             if (merchRoom.Inventory?.IsOpen == true)
             {
-                var backBtn = FindFirst<NBackButton>(merchRoom);
-                if (backBtn is { IsEnabled: true })
-                    backBtn.ForceClick();
+                var shopCloseError = TryCloseMerchantInventory(merchRoom.Inventory);
+                if (shopCloseError != null)
+                    return Error($"Shop inventory is open but could not be closed ({shopCloseError})");
+                return new Dictionary<string, object?>
+                {
+                    ["status"] = "ok",
+                    ["message"] = "Closing shop inventory; call proceed again to leave the shop room"
+                };
             }
             if (merchRoom.ProceedButton.IsEnabled)
             {
@@ -583,9 +588,14 @@ public static partial class McpMod
                 var fmInventory = FindFirst<NMerchantInventory>(fmNode);
                 if (fmInventory is { IsOpen: true })
                 {
-                    var backBtn = FindFirst<NBackButton>(fmNode);
-                    if (backBtn is { IsEnabled: true })
-                        backBtn.ForceClick();
+                    var fmCloseError = TryCloseMerchantInventory(fmInventory);
+                    if (fmCloseError != null)
+                        return Error($"Fake merchant inventory is open but could not be closed ({fmCloseError})");
+                    return new Dictionary<string, object?>
+                    {
+                        ["status"] = "ok",
+                        ["message"] = "Closing fake merchant inventory; call proceed again to leave the event"
+                    };
                 }
                 var proceedBtn = FindFirst<NProceedButton>(fmNode);
                 if (proceedBtn is { IsEnabled: true })
@@ -608,6 +618,62 @@ public static partial class McpMod
         return Error("No proceed button available or enabled");
     }
 
+    /// <summary>
+    /// Close a merchant inventory the same way a player does. Returns null on
+    /// success, or a human-readable failure reason.
+    /// </summary>
+    /// <remarks>
+    /// Reflection must target the DECLARING type (typeof(NMerchantInventory)),
+    /// not inventory.GetType(): the fake merchant scene instantiates
+    /// NFakeMerchantInventory, a scene-script subclass, and Type.GetMethod/
+    /// GetField on a derived class does not return private members declared on
+    /// the base — which is why "Close() not found via reflection" happened
+    /// there while the regular shop worked.
+    /// The game closes the inventory through the back button's Released signal,
+    /// which is wired to Close() in NMerchantInventory._Ready(); clicking that
+    /// button is the most faithful path, with the direct Close() call as a
+    /// fallback. Failures surface the real reason instead of a bare false.
+    /// </remarks>
+    private static string? TryCloseMerchantInventory(NMerchantInventory inventory)
+    {
+        var declaringType = typeof(NMerchantInventory);
+        var backButton = declaringType.GetField(
+            "_backButton",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic)?.GetValue(inventory);
+        if (backButton is NClickableControl clickable && clickable.IsEnabled && IsNodeVisible(clickable))
+        {
+            try
+            {
+                clickable.ForceClick();
+                return null;
+            }
+            catch (System.Exception ex)
+            {
+                GD.PrintErr($"[STS2 MCP] Merchant back-button close failed, falling back to Close(): {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        try
+        {
+            var closeMethod = declaringType.GetMethod(
+                "Close",
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.Public |
+                System.Reflection.BindingFlags.NonPublic);
+            if (closeMethod == null)
+                return "NMerchantInventory.Close() not found via reflection";
+
+            closeMethod.Invoke(inventory, null);
+            return null;
+        }
+        catch (System.Exception ex)
+        {
+            var root = ex.InnerException ?? ex;
+            return $"{root.GetType().Name}: {root.Message}";
+        }
+    }
+
     private static Dictionary<string, object?> ExecuteSelectCard(Dictionary<string, JsonElement> data)
     {
         var overlay = NOverlayStack.Instance?.Peek();
@@ -619,6 +685,24 @@ public static partial class McpMod
 
         if (overlay is NCardGridSelectionScreen gridScreen)
         {
+            // Once a card has opened the preview, the grid is no longer the active
+            // interaction surface. Some clients repeat select_card(index) because
+            // older state responses only exposed card indices. Treat that repeated
+            // selection as confirmation instead of emitting a no-op grid signal.
+            foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer" })
+            {
+                if (gridScreen.GetNodeOrNull<Godot.Control>(containerName)?.Visible == true)
+                {
+                    var confirmResult = ExecuteConfirmSelection();
+                    if (confirmResult.TryGetValue("status", out var status) && status?.ToString() == "ok")
+                    {
+                        confirmResult["message"] =
+                            "Card selection preview was already open; confirming the selected card instead of selecting it again";
+                    }
+                    return confirmResult;
+                }
+            }
+
             var grid = FindFirst<NCardGrid>(gridScreen);
             if (grid == null)
                 return Error("Card grid not found in selection screen");
@@ -666,8 +750,9 @@ public static partial class McpMod
             return Error("No card selection screen is open");
 
         // Check all preview containers (upgrade uses UpgradeSinglePreviewContainer / UpgradeMultiPreviewContainer,
-        // NDeckCardSelectScreen uses PreviewContainer with %PreviewConfirm)
-        foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer" })
+        // NDeckCardSelectScreen uses PreviewContainer with %PreviewConfirm,
+        // NDeckEnchantSelectScreen uses EnchantSingle/EnchantMultiPreviewContainer)
+        foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer", "%EnchantSinglePreviewContainer", "%EnchantMultiPreviewContainer" })
         {
             var container = screen.GetNodeOrNull<Godot.Control>(containerName);
             if (container?.Visible == true)
@@ -743,7 +828,7 @@ public static partial class McpMod
             return Error("No card selection screen is open");
 
         // If preview is showing, cancel back to selection
-        foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer" })
+        foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer", "%EnchantSinglePreviewContainer", "%EnchantMultiPreviewContainer" })
         {
             var container = screen.GetNodeOrNull<Godot.Control>(containerName);
             if (container?.Visible == true)
@@ -789,7 +874,13 @@ public static partial class McpMod
         int index = indexElem.GetInt32();
         var previewContainer = screen.GetNodeOrNull<Godot.Control>("%BundlePreviewContainer");
         if (previewContainer?.Visible == true)
-            return Error("A bundle preview is already open - confirm or cancel it first");
+        {
+            // Compatibility fallback for agents that repeat select_bundle after the
+            // first call opens the preview. At this point the bundle has already
+            // been chosen, so complete the pending preview instead of failing and
+            // leaving the agent in a retry loop.
+            return ExecuteConfirmBundleSelection();
+        }
 
         var bundles = FindAll<NCardBundle>(screen);
         if (index < 0 || index >= bundles.Count)
@@ -844,6 +935,19 @@ public static partial class McpMod
         var hand = NPlayerHand.Instance;
         if (hand == null || !hand.IsInCardSelection)
             return Error("No in-combat card selection is active");
+
+        // Upgrade selection is a single-card, two-step flow: select a card, then
+        // press confirm. If an agent repeats combat_select_card after the first
+        // selection, finish the pending upgrade instead of changing cards forever.
+        if (hand.CurrentMode == NPlayerHand.Mode.UpgradeSelect)
+        {
+            var selectedContainer = hand.GetNodeOrNull<Godot.Control>("%SelectedHandCardContainer");
+            var confirmBtn = hand.GetNodeOrNull<NConfirmButton>("%SelectModeConfirmButton");
+            bool hasSelectedCard = selectedContainer != null
+                && FindAll<NSelectedHandCardHolder>(selectedContainer).Any(h => h.CardModel != null);
+            if (hasSelectedCard && confirmBtn?.IsEnabled == true)
+                return ExecuteCombatConfirmSelection();
+        }
 
         if (!data.TryGetValue("card_index", out var indexElem))
             return Error("Missing 'card_index' (index of the card in hand)");

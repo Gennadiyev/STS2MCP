@@ -721,6 +721,10 @@ Covers deck transforms, upgrades, removals, and choose-a-card effects. Appears o
         "keywords": [ /* Keyword Objects */ ]
       }
     ],
+    "selected_cards": [
+      { "index": 0, "name": "Strike" }
+    ],                         // currently selected grid cards
+    "selected_count": 1,      // changes after each successful multi-card selection
     "preview_showing": false,    // true when selection is complete and preview is displayed
     "can_confirm": false,        // true when confirm button is available
     "can_cancel": true           // true when close/cancel button is available
@@ -1153,6 +1157,8 @@ Select a card during in-combat hand selection (exhaust, discard, upgrade prompts
 |---|---|---|---|
 | `card_index` | int | Yes | Index in the selectable hand cards |
 
+During a single-card combat upgrade selection, repeating `combat_select_card` after a card is selected confirms the pending upgrade as a compatibility fallback. Multi-card selection modes continue to select or deselect cards normally.
+
 ### `combat_confirm_selection`
 
 Confirm the in-combat hand card selection.
@@ -1313,6 +1319,7 @@ Cancel or close the card selection overlay.
 ### `select_bundle`
 
 Open a bundle preview in the bundle selection screen.
+If a bundle preview is already open, repeating `select_bundle` confirms the preview as a compatibility fallback for clients that retry the same selection action.
 
 ```json
 { "action": "select_bundle", "index": 0 }
