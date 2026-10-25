@@ -1966,13 +1966,18 @@ public static partial class McpMod
         state["selected_count"] = selectedCards.Count;
 
         // Preview container showing? (selection complete, awaiting confirm)
-        // Upgrade screens use UpgradeSinglePreviewContainer / UpgradeMultiPreviewContainer
+        // Upgrade screens use UpgradeSinglePreviewContainer / UpgradeMultiPreviewContainer;
+        // NDeckEnchantSelectScreen auto-opens EnchantSingle/EnchantMulti containers.
         var previewSingle = screen.GetNodeOrNull<Godot.Control>("%UpgradeSinglePreviewContainer");
         var previewMulti = screen.GetNodeOrNull<Godot.Control>("%UpgradeMultiPreviewContainer");
         var previewGeneric = screen.GetNodeOrNull<Godot.Control>("%PreviewContainer");
+        var previewEnchantSingle = screen.GetNodeOrNull<Godot.Control>("%EnchantSinglePreviewContainer");
+        var previewEnchantMulti = screen.GetNodeOrNull<Godot.Control>("%EnchantMultiPreviewContainer");
         bool previewShowing = (previewSingle?.Visible ?? false)
                             || (previewMulti?.Visible ?? false)
-                            || (previewGeneric?.Visible ?? false);
+                            || (previewGeneric?.Visible ?? false)
+                            || (previewEnchantSingle?.Visible ?? false)
+                            || (previewEnchantMulti?.Visible ?? false);
         state["preview_showing"] = previewShowing;
         if (previewShowing)
         {
@@ -1980,6 +1985,8 @@ public static partial class McpMod
             AddPreviewCardsFromContainer(previewSingle, previewCards);
             AddPreviewCardsFromContainer(previewMulti, previewCards);
             AddPreviewCardsFromContainer(previewGeneric, previewCards);
+            AddPreviewCardsFromContainer(previewEnchantSingle, previewCards);
+            AddPreviewCardsFromContainer(previewEnchantMulti, previewCards);
             state["preview_cards"] = previewCards;
         }
 

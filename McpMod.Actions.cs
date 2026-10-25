@@ -563,8 +563,9 @@ public static partial class McpMod
         {
             if (merchRoom.Inventory?.IsOpen == true)
             {
-                if (!TryCloseMerchantInventory(merchRoom.Inventory))
-                    return Error("Shop inventory is open but could not be closed");
+                var shopCloseError = TryCloseMerchantInventory(merchRoom.Inventory);
+                if (shopCloseError != null)
+                    return Error($"Shop inventory is open but could not be closed ({shopCloseError})");
                 return new Dictionary<string, object?>
                 {
                     ["status"] = "ok",
@@ -587,8 +588,9 @@ public static partial class McpMod
                 var fmInventory = FindFirst<NMerchantInventory>(fmNode);
                 if (fmInventory is { IsOpen: true })
                 {
-                    if (!TryCloseMerchantInventory(fmInventory))
-                        return Error("Fake merchant inventory is open but could not be closed");
+                    var fmCloseError = TryCloseMerchantInventory(fmInventory);
+                    if (fmCloseError != null)
+                        return Error($"Fake merchant inventory is open but could not be closed ({fmCloseError})");
                     return new Dictionary<string, object?>
                     {
                         ["status"] = "ok",
@@ -616,24 +618,59 @@ public static partial class McpMod
         return Error("No proceed button available or enabled");
     }
 
-    private static bool TryCloseMerchantInventory(NMerchantInventory inventory)
+    /// <summary>
+    /// Close a merchant inventory the same way a player does. Returns null on
+    /// success, or a human-readable failure reason.
+    /// </summary>
+    /// <remarks>
+    /// Reflection must target the DECLARING type (typeof(NMerchantInventory)),
+    /// not inventory.GetType(): the fake merchant scene instantiates
+    /// NFakeMerchantInventory, a scene-script subclass, and Type.GetMethod/
+    /// GetField on a derived class does not return private members declared on
+    /// the base — which is why "Close() not found via reflection" happened
+    /// there while the regular shop worked.
+    /// The game closes the inventory through the back button's Released signal,
+    /// which is wired to Close() in NMerchantInventory._Ready(); clicking that
+    /// button is the most faithful path, with the direct Close() call as a
+    /// fallback. Failures surface the real reason instead of a bare false.
+    /// </remarks>
+    private static string? TryCloseMerchantInventory(NMerchantInventory inventory)
     {
+        var declaringType = typeof(NMerchantInventory);
+        var backButton = declaringType.GetField(
+            "_backButton",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic)?.GetValue(inventory);
+        if (backButton is NClickableControl clickable && clickable.IsEnabled && IsNodeVisible(clickable))
+        {
+            try
+            {
+                clickable.ForceClick();
+                return null;
+            }
+            catch (System.Exception ex)
+            {
+                GD.PrintErr($"[STS2 MCP] Merchant back-button close failed, falling back to Close(): {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
         try
         {
-            var closeMethod = inventory.GetType().GetMethod(
+            var closeMethod = declaringType.GetMethod(
                 "Close",
                 System.Reflection.BindingFlags.Instance |
                 System.Reflection.BindingFlags.Public |
                 System.Reflection.BindingFlags.NonPublic);
             if (closeMethod == null)
-                return false;
+                return "NMerchantInventory.Close() not found via reflection";
 
             closeMethod.Invoke(inventory, null);
-            return true;
+            return null;
         }
-        catch
+        catch (System.Exception ex)
         {
-            return false;
+            var root = ex.InnerException ?? ex;
+            return $"{root.GetType().Name}: {root.Message}";
         }
     }
 
@@ -713,8 +750,9 @@ public static partial class McpMod
             return Error("No card selection screen is open");
 
         // Check all preview containers (upgrade uses UpgradeSinglePreviewContainer / UpgradeMultiPreviewContainer,
-        // NDeckCardSelectScreen uses PreviewContainer with %PreviewConfirm)
-        foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer" })
+        // NDeckCardSelectScreen uses PreviewContainer with %PreviewConfirm,
+        // NDeckEnchantSelectScreen uses EnchantSingle/EnchantMultiPreviewContainer)
+        foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer", "%EnchantSinglePreviewContainer", "%EnchantMultiPreviewContainer" })
         {
             var container = screen.GetNodeOrNull<Godot.Control>(containerName);
             if (container?.Visible == true)
@@ -790,7 +828,7 @@ public static partial class McpMod
             return Error("No card selection screen is open");
 
         // If preview is showing, cancel back to selection
-        foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer" })
+        foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer", "%EnchantSinglePreviewContainer", "%EnchantMultiPreviewContainer" })
         {
             var container = screen.GetNodeOrNull<Godot.Control>(containerName);
             if (container?.Visible == true)
