@@ -780,7 +780,7 @@ public static partial class McpMod
                 _ => lobby.NetService.Type.ToString().ToLowerInvariant()
             },
             ["game_mode"] = lobby.GameMode.ToString().ToLowerInvariant(),
-            ["max_players"] = lobby.MaxPlayers,
+            ["max_players"] = LobbyProp(lobby, "MaxPlayers"),
             ["ascension"] = lobby.Ascension,
             ["max_ascension"] = lobby.MaxAscension,
             ["all_ready"] = lobby.Players.Count > 0 && lobby.Players.All(p => p.isReady),
@@ -970,7 +970,7 @@ public static partial class McpMod
             catch { }
 
             info["expected_player_count"] = lobby.Run?.Players?.Count ?? 0;
-            info["connected_player_count"] = lobby.ConnectedPlayerIds?.Count ?? 0;
+            info["connected_player_count"] = LobbyPlayerIds(lobby)?.Count ?? 0;
 
             // LoadRunLobby no longer exposes IsAboutToBeginGame in the public game API,
             // so derive the same readiness summary from connected players and ready flags.
@@ -979,7 +979,7 @@ public static partial class McpMod
             try
             {
                 var runPlayers = lobby.Run?.Players;
-                var connectedPlayerIds = lobby.ConnectedPlayerIds;
+                var connectedPlayerIds = LobbyPlayerIds(lobby);
                 aboutToBegin = runPlayers != null
                     && connectedPlayerIds != null
                     && runPlayers.Count > 0
@@ -997,7 +997,7 @@ public static partial class McpMod
                 {
                     foreach (var sp in lobby.Run.Players)
                     {
-                        bool isConnected = lobby.ConnectedPlayerIds?.Contains(sp.NetId) ?? false;
+                        bool isConnected = LobbyPlayerIds(lobby)?.Contains(sp.NetId) ?? false;
                         bool isReady = false;
                         try { isReady = lobby.IsPlayerReady(sp.NetId); } catch { }
                         players.Add(new Dictionary<string, object?>
@@ -2421,4 +2421,13 @@ public static partial class McpMod
 
         return pets;
     }
+
+    // Lobby members renamed across game versions (v0.111: LoadRunLobby.ConnectedPlayerIds -> PlayerIds,
+    // StartRunLobby.MaxPlayers removed); read them by name so one build works on both.
+    private static object? LobbyProp(object lobby, string name) =>
+        lobby.GetType().GetProperty(name)?.GetValue(lobby);
+
+    private static List<ulong>? LobbyPlayerIds(object lobby) =>
+        (LobbyProp(lobby, "ConnectedPlayerIds") ?? LobbyProp(lobby, "PlayerIds")) is System.Collections.IEnumerable ids
+            ? ids.Cast<object>().Select(Convert.ToUInt64).ToList() : null;
 }
