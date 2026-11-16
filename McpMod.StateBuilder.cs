@@ -536,7 +536,7 @@ public static partial class McpMod
             result["state_type"] = "map";
             result["map"] = BuildMapState(runState);
         }
-        else if (currentRoom is MerchantRoom merchantRoom)
+        else if (currentRoom is MerchantRoom)
         {
             if (IsMapScreenOpenOrVisible())
             {
@@ -554,7 +554,7 @@ public static partial class McpMod
                     merchUI.OpenInventory();
                 }
                 result["state_type"] = "shop";
-                result["shop"] = BuildShopState(merchantRoom, runState);
+                result["shop"] = BuildShopState(runState);
             }
         }
         else if (currentRoom is RestSiteRoom restSiteRoom)
@@ -1560,11 +1560,11 @@ public static partial class McpMod
         return state;
     }
 
-    private static Dictionary<string, object?> BuildShopState(MerchantRoom merchantRoom, RunState runState)
+    private static Dictionary<string, object?> BuildShopState(RunState runState)
     {
         var state = new Dictionary<string, object?>();
 
-        var inventory = merchantRoom.GetLocalInventory();
+        var inventory = RunManager.Instance.MerchantSynchronizer.GetLocalInventory();
         if (inventory == null)
         {
             state["items"] = new List<Dictionary<string, object?>>();
