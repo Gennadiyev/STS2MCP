@@ -1564,7 +1564,7 @@ public static partial class McpMod
     {
         var state = new Dictionary<string, object?>();
 
-        var inventory = merchantRoom.GetLocalInventory();
+        var inventory = GetLocalMerchantInventory(merchantRoom);
         if (inventory == null)
         {
             state["items"] = new List<Dictionary<string, object?>>();
