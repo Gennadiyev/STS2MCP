@@ -184,7 +184,7 @@ public static partial class McpMod
             result["state_type"] = "map";
             result["map"] = BuildMultiplayerMapState(runState);
         }
-        else if (currentRoom is MerchantRoom)
+        else if (currentRoom is MerchantRoom merchantRoom)
         {
             if (IsMapScreenOpenOrVisible())
             {
@@ -200,7 +200,7 @@ public static partial class McpMod
                 }
 
                 result["state_type"] = "shop";
-                result["shop"] = BuildShopState(runState);
+                result["shop"] = BuildShopState(merchantRoom, runState);
             }
         }
         else if (currentRoom is RestSiteRoom restSiteRoom)

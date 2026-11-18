@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Helpers;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
@@ -353,6 +354,37 @@ public static partial class McpMod
         };
     }
 
+    private static object? GetMerchantSynchronizer()
+    {
+        var property = typeof(RunManager).GetProperty("MerchantSynchronizer");
+        return property == null ? null : property.GetValue(RunManager.Instance)
+            ?? throw new System.InvalidOperationException("Merchant synchronizer is not ready.");
+    }
+
+    private static MerchantInventory? GetLocalMerchantInventory(MerchantRoom merchantRoom)
+    {
+        object source = GetMerchantSynchronizer() ?? merchantRoom;
+        var method = source.GetType().GetMethod("GetLocalInventory", System.Type.EmptyTypes)
+            ?? throw new System.MissingMethodException(source.GetType().FullName, "GetLocalInventory");
+        return method.CreateDelegate<System.Func<MerchantInventory?>>(source)();
+    }
+
+    private static Task<bool> PurchaseMerchantEntry(MerchantEntry entry, MerchantInventory inventory)
+    {
+        var synchronizer = GetMerchantSynchronizer();
+        if (synchronizer != null)
+        {
+            var method = synchronizer.GetType().GetMethod("PurchaseLocalEntry", new[] { typeof(MerchantEntry) })
+                ?? throw new System.MissingMethodException(synchronizer.GetType().FullName, "PurchaseLocalEntry");
+            return method.CreateDelegate<System.Func<MerchantEntry, Task<bool>>>(synchronizer)(entry);
+        }
+
+        var legacyMethod = typeof(MerchantEntry).GetMethod(
+            "OnTryPurchaseWrapper", new[] { typeof(MerchantInventory), typeof(bool) })
+            ?? throw new System.MissingMethodException(typeof(MerchantEntry).FullName, "OnTryPurchaseWrapper");
+        return legacyMethod.CreateDelegate<System.Func<MerchantInventory, bool, Task<bool>>>(entry)(inventory, false);
+    }
+
     private static Dictionary<string, object?> ExecuteShopPurchase(Player player, Dictionary<string, JsonElement> data)
     {
         MerchantInventory? inventory = null;
@@ -363,7 +395,7 @@ public static partial class McpMod
             var merchUI = NMerchantRoom.Instance;
             if (merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
                 merchUI.OpenInventory();
-            inventory = RunManager.Instance.MerchantSynchronizer.GetLocalInventory();
+            inventory = GetLocalMerchantInventory(merchantRoom);
         }
         else if (player.RunState.CurrentRoom is EventRoom eventRoom
                  && eventRoom.CanonicalEvent is FakeMerchant
@@ -403,7 +435,11 @@ public static partial class McpMod
 
         int index = indexElem.GetInt32();
 
-        var allEntries = inventory.AllEntries.ToList();
+        var entriesProperty = typeof(MerchantInventory).GetProperty("AllEntries")
+            ?? throw new System.MissingMemberException(typeof(MerchantInventory).FullName, "AllEntries");
+        var entries = entriesProperty.GetValue(inventory) as IEnumerable<MerchantEntry>
+            ?? throw new System.InvalidOperationException("Merchant inventory AllEntries is not an entry collection.");
+        var allEntries = entries.ToList();
         if (index < 0 || index >= allEntries.Count)
             return Error($"Shop item index {index} out of range ({allEntries.Count} items)");
 
@@ -413,7 +449,7 @@ public static partial class McpMod
         if (!entry.EnoughGold)
             return Error($"Not enough gold (need {entry.Cost}, have {player.Gold})");
 
-        TaskHelper.RunSafely(RunManager.Instance.MerchantSynchronizer.PurchaseLocalEntry(entry));
+        TaskHelper.RunSafely(PurchaseMerchantEntry(entry, inventory));
 
         return new Dictionary<string, object?>
         {
