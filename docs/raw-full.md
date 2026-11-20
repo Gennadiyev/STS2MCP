@@ -1,6 +1,6 @@
 # Full API Reference
 
-HTTP API served by the STS2_MCP mod on `localhost:15526`. No authentication. Local use only.
+The API listens on loopback at port `15526`. Game requests require an `Authorization: Bearer <token>` header with the contents of the mod's `STS2_MCP.token` file. The game log prints the file path. `GET /` is an unauthenticated health check. A request that expires before the game starts processing it returns HTTP 503 and is canceled.
 
 **Endpoints:**
 - `GET  /api/v1/singleplayer` — read current game state
@@ -1030,7 +1030,7 @@ Switch to a profile slot through the game's profile UI:
 { "action": "switch", "profile_id": 2 }
 ```
 
-Delete an inactive profile slot:
+Delete an inactive profile slot after opting in with `"allow_profile_delete": true` in `STS2_MCP.conf` and restarting the game:
 
 ```json
 { "action": "delete", "profile_id": 2 }
@@ -1041,7 +1041,7 @@ Delete an inactive profile slot:
 | `action` | string | Yes | `switch` or `delete` |
 | `profile_id` | int | Yes | Profile slot, from 1 to 3 |
 
-Switching is rejected during a run. Deleting the active profile is rejected; switch away first if you need to remove a slot.
+Switching is rejected during a run. Deletion is disabled by default and returns HTTP 403. Only inactive profiles can be deleted.
 
 ---
 

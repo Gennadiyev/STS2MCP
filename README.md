@@ -100,9 +100,9 @@ Add the server to your AI client's MCP config:
 
 Restart your Claude session after adding the config. To verify the MCP server is working, ask Claude to call `get_game_state` — with the game running, it should return the current game state.
 
-The MCP server accepts `--host` and `--port` options if you need non-default settings.
+The mod creates `STS2_MCP.token` in the game's per-user data directory on its first launch and logs the file path. On Windows the default is `%APPDATA%\SlayTheSpire2\STS2_MCP.token`. The MCP server reads the file on its first tool call. If the game uses a different data directory, add `--token-file` and the logged path to the MCP server's arguments.
 
-Flag `--no-trust-env` can be used to disable `requests` from picking up proxy settings from the environment, which can cause connection issues if you are running the server in a container.
+The MCP client connects directly to loopback. Use `--host` to select `localhost` or `127.0.0.1`, and `--port` if the mod uses a custom port. Raw HTTP clients need an `Authorization: Bearer <token>` header with the token file's contents for every game API call. The `GET /` health check is available without the token. Keep the token file private.
 
 ### Profile and Compendium Data
 
@@ -112,7 +112,7 @@ The HTTP API exposes profile-level progress separately from live run state:
 - `GET /api/v1/compendium` groups that progress into the same high-level sections as the in-game Compendium: Card Library, Relic Collection, Potion Lab, Bestiary, Character Stats, and Run History.
 - `GET /api/v1/wiki?query=...` searches discovered card and relic wiki entries for the active profile with fuzzy matching. Results are limited to 10 by default and can be overridden with `limit`; card results include base and upgraded variants when available.
 - `GET /api/v1/profiles` lists the three profile slots and the active profile.
-- `POST /api/v1/profiles` switches or deletes profile slots through the game UI.
+- `POST /api/v1/profiles` switches profile slots. Deleting an inactive slot requires setting `"allow_profile_delete": true` in `STS2_MCP.conf` beside the mod DLL and restarting the game.
 
 The MCP server exposes the same profile data through `get_profile()`, `get_compendium()`, `search_wiki(query, item_type, limit)`, `list_profiles()`, `switch_profile(profile_id)`, and `delete_profile(profile_id)`.
 

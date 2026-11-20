@@ -24,6 +24,8 @@ public static partial class McpMod
 
     private static HttpListener? _listener;
     private static Thread? _serverThread;
+    private static LocalApiAccess? _apiAccess;
+    private static bool _allowProfileDelete;
     private static readonly MainThreadWorkQueue _mainThreadQueue = new(TimeSpan.FromSeconds(5), TimeProvider.System);
     internal static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -33,20 +35,24 @@ public static partial class McpMod
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
-    private static int LoadPort()
+    private static (int Port, bool AllowProfileDelete) LoadConfig()
     {
         try
         {
             string? modDir = Path.GetDirectoryName(
                 System.Reflection.Assembly.GetExecutingAssembly().Location);
-            if (modDir == null) return DefaultPort;
+            if (modDir == null) return (DefaultPort, false);
 
             string configPath = Path.Combine(modDir, ConfigFileName);
             if (!File.Exists(configPath))
             {
                 try
                 {
-                    var defaultConfig = new Dictionary<string, object> { ["port"] = DefaultPort };
+                    var defaultConfig = new Dictionary<string, object>
+                    {
+                        ["port"] = DefaultPort,
+                        ["allow_profile_delete"] = false
+                    };
                     string json = JsonSerializer.Serialize(defaultConfig, _jsonOptions);
                     File.WriteAllText(configPath, json);
                     GD.Print($"[STS2 MCP] Created default config at {configPath}");
@@ -55,25 +61,27 @@ public static partial class McpMod
                 {
                     GD.Print($"[STS2 MCP] No config found at {configPath}; using default port {DefaultPort}");
                 }
-                return DefaultPort;
+                return (DefaultPort, false);
             }
 
             string content = File.ReadAllText(configPath);
             using var doc = JsonDocument.Parse(content);
+            bool allowProfileDelete = doc.RootElement.TryGetProperty("allow_profile_delete", out var deleteElem)
+                && deleteElem.ValueKind == JsonValueKind.True;
             if (doc.RootElement.TryGetProperty("port", out var portElem)
                 && portElem.TryGetInt32(out int port)
                 && port is > 0 and <= 65535)
             {
-                return port;
+                return (port, allowProfileDelete);
             }
 
             GD.PrintErr($"[STS2 MCP] Invalid or missing 'port' in {configPath}, using default {DefaultPort}");
-            return DefaultPort;
+            return (DefaultPort, allowProfileDelete);
         }
         catch (Exception ex)
         {
             GD.PrintErr($"[STS2 MCP] Failed to load config: {ex.Message}, using default port {DefaultPort}");
-            return DefaultPort;
+            return (DefaultPort, false);
         }
     }
 
@@ -88,7 +96,10 @@ public static partial class McpMod
             var tree = (SceneTree)Engine.GetMainLoop();
             tree.Connect(SceneTree.SignalName.ProcessFrame, Callable.From(ProcessMainThreadQueue));
 
-            int port = LoadPort();
+            var (port, allowProfileDelete) = LoadConfig();
+            _allowProfileDelete = allowProfileDelete;
+            string userDataDirectory = Godot.OS.GetUserDataDir();
+            _apiAccess = LocalApiAccess.LoadOrCreate(userDataDirectory);
 
             _listener = new HttpListener();
             _listener.Prefixes.Add($"http://localhost:{port}/");
@@ -103,6 +114,7 @@ public static partial class McpMod
             _serverThread.Start();
 
             GD.Print($"[STS2 MCP] v{Version} server started on http://localhost:{port}/");
+            GD.Print($"[STS2 MCP] API token file: {Path.Combine(userDataDirectory, LocalApiAccess.TokenFileName)}");
         }
         catch (Exception ex)
         {
@@ -148,22 +160,32 @@ public static partial class McpMod
         {
             var request = context.Request;
             var response = context.Response;
-            response.Headers.Add("Access-Control-Allow-Origin", "*");
-            response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-            response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
+            string path = request.Url?.AbsolutePath ?? "/";
+            bool isBrowserRequest = request.Headers["Origin"] != null || request.Headers["Sec-Fetch-Site"] != null;
+            int? rejection = (_apiAccess ?? throw new InvalidOperationException("Local API access is unavailable."))
+                .GetRejectionStatus(
+                    request.RemoteEndPoint?.Address, isBrowserRequest, request.HttpMethod, path,
+                    request.Headers["Authorization"]);
 
-            if (request.HttpMethod == "OPTIONS")
+            if (rejection == 403)
             {
-                response.StatusCode = 204;
-                response.Close();
+                SendError(response, 403, "Only native clients on the local machine can use this API.");
                 return;
             }
 
-            string path = request.Url?.AbsolutePath ?? "/";
+            if (rejection == 401)
+            {
+                response.Headers["WWW-Authenticate"] = "Bearer";
+                SendError(response, 401, "A valid bearer token is required.");
+                return;
+            }
 
             if (path == "/")
             {
-                SendJson(response, new { message = $"Hello from STS2 MCP v{Version}", status = "ok" });
+                if (request.HttpMethod == "GET")
+                    SendJson(response, new { message = $"Hello from STS2 MCP v{Version}", status = "ok" });
+                else
+                    SendError(response, 405, "Method not allowed");
             }
             else if (path == "/api/v1/singleplayer")
             {

@@ -7,7 +7,10 @@ as MCP tools for Claude Desktop / Claude Code.
 import argparse
 import asyncio
 import json
+import os
+import re
 import sys
+from pathlib import Path
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -15,7 +18,7 @@ from mcp.server.fastmcp import FastMCP
 mcp = FastMCP("sts2")
 
 _base_url: str = "http://localhost:15526"
-_trust_env: bool = True
+_token_file: Path | None = None
 _http: httpx.AsyncClient | None = None
 
 
@@ -43,10 +46,34 @@ def _profiles_url() -> str:
     return f"{_base_url}/api/v1/profiles"
 
 
+def _default_token_file() -> Path:
+    if sys.platform == "win32":
+        data_dir = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
+    elif sys.platform == "darwin":
+        data_dir = Path.home() / "Library" / "Application Support"
+    else:
+        data_dir = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+    return data_dir / "SlayTheSpire2" / "STS2_MCP.token"
+
+
 def _get_client() -> httpx.AsyncClient:
     global _http
     if _http is None:
-        _http = httpx.AsyncClient(timeout=httpx.Timeout(10), trust_env=_trust_env)
+        token_file = _token_file or _default_token_file()
+        try:
+            token = token_file.read_text(encoding="ascii").strip()
+        except (OSError, UnicodeError) as error:
+            raise RuntimeError(
+                f"Cannot read the bridge token at {token_file}. Start the game with the mod enabled "
+                "or pass --token-file using the path printed in the game log."
+            ) from error
+        if re.fullmatch(r"[0-9A-Fa-f]{64}", token) is None:
+            raise RuntimeError(f"Invalid bridge token file at {token_file}.")
+        _http = httpx.AsyncClient(
+            timeout=httpx.Timeout(10),
+            trust_env=False,
+            headers={"Authorization": f"Bearer {token}"},
+        )
     return _http
 
 
@@ -311,9 +338,9 @@ async def switch_profile(profile_id: int) -> str:
 
 @mcp.tool()
 async def delete_profile(profile_id: int) -> str:
-    """Delete an inactive profile slot.
+    """Delete an inactive profile slot if enabled in STS2_MCP.conf.
 
-    The active profile cannot be deleted through this tool. Switch away first if
+    Profile deletion is disabled by default. The active profile cannot be deleted through this tool. Switch away first if
     you intend to remove a slot after backing up any data you need.
 
     Args:
@@ -1133,16 +1160,15 @@ async def mp_crystal_sphere_proceed() -> str:
 def main():
     parser = argparse.ArgumentParser(description="STS2 MCP Server")
     parser.add_argument("--port", type=int, default=15526, help="Game HTTP server port")
-    parser.add_argument("--host", type=str, default="localhost", help="Game HTTP server host")
-    parser.add_argument("--no-trust-env", action="store_true", help="Ignore HTTP_PROXY/HTTPS_PROXY environment variables")
+    parser.add_argument("--host", choices=("localhost", "127.0.0.1"), default="localhost",
+                        help="Loopback address of the game HTTP server")
+    parser.add_argument("--token-file", type=Path, help="Path to the token file printed in the game log")
+    parser.add_argument("--no-trust-env", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
 
-    global _base_url, _trust_env
+    global _base_url, _token_file
     _base_url = f"http://{args.host}:{args.port}"
-    _trust_env = not args.no_trust_env
-
-    # Eagerly initialize the shared httpx client so the first request is fast
-    _get_client()
+    _token_file = args.token_file.expanduser() if args.token_file else None
 
     mcp.run(transport="stdio")
 

@@ -65,6 +65,12 @@ public static partial class McpMod
         }
 
         string action = actionElem.GetString() ?? "";
+        if (!_allowProfileDelete && action.Trim().Equals("delete", StringComparison.OrdinalIgnoreCase))
+        {
+            SendError(response, 403, "Profile deletion is disabled. Enable allow_profile_delete in STS2_MCP.conf to opt in.");
+            return;
+        }
+
         int profileId = parsed.TryGetValue("profile_id", out var idElem) && idElem.ValueKind == JsonValueKind.Number
             ? idElem.GetInt32()
             : 0;

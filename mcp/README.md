@@ -11,7 +11,7 @@
 | `search_wiki(query, item_type?, limit?)` | Profiles | Fuzzy-search discovered card and relic wiki entries |
 | `list_profiles()` | Profiles | List profile slots and active slot |
 | `switch_profile(profile_id)` | Profiles | Switch to a profile slot through the game UI |
-| `delete_profile(profile_id)` | Profiles | Delete an inactive profile slot |
+| `delete_profile(profile_id)` | Profiles | Delete an inactive profile slot when `allow_profile_delete` is enabled in the mod config |
 | `use_potion(slot, target?)` | General | Use a potion (works in and out of combat) |
 | `discard_potion(slot)` | General | Discard a potion to free up the slot |
 | `proceed_to_map()` | General | Proceed from rewards/rest site/shop/treasure to the map |

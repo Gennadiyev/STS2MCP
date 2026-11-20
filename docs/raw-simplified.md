@@ -1,6 +1,6 @@
 # API Quick Reference
 
-HTTP API on `localhost:15526`. No authentication.
+The API listens on loopback at port `15526`. Game requests require an `Authorization: Bearer <token>` header with the contents of the mod's `STS2_MCP.token` file. The game log prints the file path. `GET /` is an unauthenticated health check. A request that expires before the game starts processing it returns HTTP 503 and is canceled.
 
 - `GET /api/v1/singleplayer` — read game state
 - `POST /api/v1/singleplayer` — perform action
@@ -104,7 +104,7 @@ Example searches:
 | Action | Parameters | When to Use |
 |---|---|---|
 | `switch` | `profile_id`: 1-3 | Switch through the game profile UI. Empty slots can be used for fresh-profile testing. Cannot be used during a run. |
-| `delete` | `profile_id`: 1-3 | Delete an inactive profile slot. The active profile is rejected. |
+| `delete` | `profile_id`: 1-3 | Delete an inactive profile slot when `allow_profile_delete` is enabled in `STS2_MCP.conf`. Disabled by default (HTTP 403). |
 
 ### Combat
 
