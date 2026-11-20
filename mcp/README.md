@@ -55,13 +55,15 @@ Use `return_state=true` on `combat_play_card` and `combat_end_turn` to get a com
 
 `combat_play_sequence` accepts plays in order, each with a `card_index` and `card_id` from the **starting hand**, and an enemy `target` when required. It tracks those cards as indices shift. A stop returns `stop_reason`, the `submitted` prefix of accepted card IDs, and the current state. A submitted card may still be resolving or waiting for your input. Set `end_turn=true` only when you intend to end the original turn after the complete sequence. Check `end_turn_submitted` and the resulting state before acting again.
 
-`battle.warnings` flags each source and effect the first time its warning condition is met in an encounter. This includes delayed damage after a kill, card and gold theft, limits on card plays, damage caps, and potentially lethal damage outside the normal attack intents. Read the live statuses for current amounts on subsequent turns. An interrupting hazard that appears after a sequence starts stops further plays and appears in the stop message, even if another state read has shown the warning already.
+`battle.warnings` shows the current hazards by source and effect on every state read. This includes delayed damage after a kill, card and gold theft, limits on card plays, damage caps, and potentially lethal damage outside normal attack intents. Review active warnings before starting a sequence. An interrupting hazard that appears after the sequence starts stops further plays and appears in the stop message.
 
 In combat, check `battle.can_act` before playing a card, using a potion, or ending the turn. When it is false, `battle.action_blocked_reason` explains what is pending. Use the selection tools during a card-selection prompt. After a retryable error, refresh state and use the latest card index.
 
 In treasure rooms, wait for `treasure.can_claim`, `treasure.can_skip`, or `treasure.can_proceed` to match the intended action. With a shop inventory open, the default Proceed closes it. Set `leave_shop=true` to close it and leave in one call.
 
 ### Profile Tools
+
+`list_profiles()` reports `has_data: null` when the active save directory or a slot's progress file cannot be checked. Use `has_data: false` to identify an empty slot.
 
 `get_profile()` returns the raw active-profile progress summary: character totals, global totals, discoveries, achievements, epochs, and aggregate stats.
 

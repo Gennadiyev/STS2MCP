@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Models;
@@ -19,8 +18,6 @@ public static partial class McpMod
     {
         internal CombatWarningKey Key => new(Side, EntityId, EffectId);
     }
-
-    private static readonly ConditionalWeakTable<ICombatState, HashSet<CombatWarningKey>> ReportedWarningsByEncounter = new();
 
     private static HashSet<CombatWarningKey> CaptureInterruptingCombatWarnings(ICombatState combat, Creature player) =>
         GetActiveCombatWarnings(combat, player).Where(warning => warning.InterruptSequence)
@@ -43,12 +40,10 @@ public static partial class McpMod
         if (active.Count == 0)
             return;
 
-        var reported = ReportedWarningsByEncounter.GetOrCreateValue(combatState);
         var warnings = new List<Dictionary<string, object?>>();
-        foreach (var warning in active.OrderByDescending(candidate => candidate.InterruptSequence))
+        foreach (var warning in active.OrderByDescending(candidate => candidate.InterruptSequence)
+                     .DistinctBy(candidate => candidate.Key))
         {
-            if (!reported.Add(warning.Key))
-                continue;
             var item = new Dictionary<string, object?>
             {
                 ["effect_id"] = warning.EffectId,
@@ -63,8 +58,7 @@ public static partial class McpMod
                 item["entity_id"] = entityId;
             warnings.Add(item);
         }
-        if (warnings.Count > 0)
-            battle["warnings"] = warnings;
+        battle["warnings"] = warnings;
     }
 
     private static List<CombatWarning> GetActiveCombatWarnings(ICombatState combatState, Creature player)

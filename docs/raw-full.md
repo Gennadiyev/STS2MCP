@@ -1038,7 +1038,7 @@ Relic results include `id`, `name`, `rarity`, `description`, and `keywords`.
 
 ### `GET /api/v1/profiles`
 
-Lists the three profile slots and identifies the active slot.
+Lists the three profile slots and identifies the active slot. When availability cannot be checked, `has_data` is `null`.
 
 ```json
 {
@@ -1294,7 +1294,7 @@ Choose a rest site option (rest, smith, etc.).
 
 Purchase a shop item.
 
-The response is `ok` when the game confirms the purchase, `error` when it rejects or fails, and `pending` while it is still underway. Resolve any open card or potion selection, then read `last_purchase` in shop state for the outcome. A second purchase request during that time returns the original pending receipt.
+The response is `ok` when the game confirms the purchase, `error` when it rejects or fails, and `pending` while it is still underway. Resolve any open card or potion selection, then read `last_purchase` in shop state for the outcome. A request for the same pending item returns its receipt. A request for a different item returns `purchase_in_progress` with `requested_item_index` and `pending_item_index`.
 
 ```json
 { "action": "shop_purchase", "index": 0 }

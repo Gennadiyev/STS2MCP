@@ -27,6 +27,9 @@ public static partial class McpMod
 {
     private static Dictionary<string, object?> BuildMultiplayerGameState()
     {
+        if (!HasActiveMultiplayerRun())
+            return BlockedAction(RunModeConflict(isMultiplayer: false));
+
         var result = new Dictionary<string, object?>();
         var tree = Engine.GetMainLoop() as SceneTree;
 
@@ -41,24 +44,10 @@ public static partial class McpMod
                 return ftueState;
         }
 
-        if (!RunManager.Instance.IsInProgress)
-        {
-            result["state_type"] = "menu";
-            result["message"] = "No run in progress. Player is in the main menu.";
-            return result;
-        }
-
         var runState = RunManager.Instance.DebugOnlyGetState();
         if (runState == null)
         {
             result["state_type"] = "unknown";
-            return result;
-        }
-
-        if (!RunManager.Instance.NetService.Type.IsMultiplayer())
-        {
-            result["state_type"] = "error";
-            result["message"] = "Not in a multiplayer run. Use /api/v1/singleplayer instead.";
             return result;
         }
 

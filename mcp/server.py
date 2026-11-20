@@ -344,7 +344,8 @@ async def get_simplified_chinese_names(
 async def list_profiles() -> str:
     """List the three profile slots and identify the active slot.
 
-    The has_data field indicates whether a slot currently has progress data.
+    A has_data value of null means slot availability could not be determined.
+    Choose a slot as empty only if has_data is false.
     """
     try:
         return await _profiles_get()
@@ -689,7 +690,8 @@ async def shop_purchase(item_index: int) -> str:
     Works for both regular shops (state_type: shop) and the fake merchant
     event (state_type: fake_merchant). The fake merchant only sells relics.
     If the result is pending, resolve any open selection and then check
-    last_purchase in the shop state before placing another order.
+    last_purchase in the shop state before placing another order. Retrying the
+    same pending item returns its receipt. Other items return purchase_in_progress.
 
     Args:
         item_index: 0-based index of the item from the shop state.
@@ -1259,7 +1261,8 @@ async def mp_shop_purchase(item_index: int) -> str:
 
     Per-player inventory — no voting needed.
     If the result is pending, resolve any open selection and then check
-    last_purchase in the shop state before placing another order.
+    last_purchase in the shop state before placing another order. Retrying the
+    same pending item returns its receipt. Other items return purchase_in_progress.
 
     Args:
         item_index: 0-based index of the item.

@@ -521,7 +521,16 @@ public static partial class McpMod
 
         if (GetLastMerchantPurchase(inventory) is { } previous &&
             BuildMerchantPurchaseResult(previous) is { } receipt && receipt["status"] is "pending")
-            return receipt;
+        {
+            if (previous.Index == index)
+                return receipt;
+
+            var blocked = BlockedAction(new("purchase_in_progress",
+                "Finish the pending order before requesting a different item.", false));
+            blocked["requested_item_index"] = index;
+            blocked["pending_item_index"] = previous.Index;
+            return blocked;
+        }
         if (!CanUseShopControls())
             return Error("Shop controls are blocked. Check the current state.");
 

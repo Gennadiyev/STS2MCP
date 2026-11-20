@@ -54,7 +54,7 @@ public static partial class McpMod
     private static bool IsWaitingForPlayableState(CombatStateWait? action)
     {
         var run = RunManager.Instance;
-        if (!run.IsInProgress || IsMultiplayerRun())
+        if (!run.IsInProgress || HasActiveMultiplayerRun())
             return false;
 
         var state = run.DebugOnlyGetState();

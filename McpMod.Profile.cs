@@ -93,7 +93,9 @@ public static partial class McpMod
             return Error("Save manager is not available");
 
         var activeSaveDirectory = GetActiveProfileSaveDirectory(sm);
-        var profileContainer = Path.GetDirectoryName(Path.GetDirectoryName(activeSaveDirectory));
+        var profileContainer = Directory.Exists(activeSaveDirectory)
+            ? Path.GetDirectoryName(Path.GetDirectoryName(activeSaveDirectory))
+            : null;
         var profiles = new List<Dictionary<string, object?>>();
         for (int i = 1; i <= 3; i++)
         {
@@ -101,6 +103,7 @@ public static partial class McpMod
             {
                 ["id"] = i,
                 ["is_current"] = i == sm.CurrentProfileId,
+                ["has_data"] = null
             };
 
             try
@@ -109,13 +112,19 @@ public static partial class McpMod
                 var resolvedPath = profileContainer == null ? null : Path.Combine(
                     profileContainer, Path.GetFileName(UserDataPathProvider.GetProfileDir(i)),
                     UserDataPathProvider.SavesDir, Path.GetFileName(path));
-                profileData["has_data"] = resolvedPath != null && File.Exists(resolvedPath);
                 profileData["path"] = path;
                 profileData["resolved_path"] = resolvedPath;
+                if (resolvedPath != null)
+                    profileData["has_data"] = (File.GetAttributes(resolvedPath) & FileAttributes.Directory) == 0;
+            }
+            catch (IOException ex) when ((ex is FileNotFoundException or DirectoryNotFoundException)
+                && Directory.Exists(activeSaveDirectory))
+            {
+                profileData["has_data"] = false;
             }
             catch
             {
-                profileData["has_data"] = false;
+                // An unresolved or inaccessible save must not be treated as an empty slot.
             }
 
             profiles.Add(profileData);

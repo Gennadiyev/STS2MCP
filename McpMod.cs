@@ -194,7 +194,7 @@ public static partial class McpMod
                 // to prevent calling the non-sync-safe end_turn path
                 if (IsMultiplayerRun())
                 {
-                    SendActionResult(response, BlockedAction(RunModeConflict(isMultiplayer: true)));
+                    SendGameResult(response, BlockedAction(RunModeConflict(isMultiplayer: true)));
                     return;
                 }
 
@@ -210,7 +210,7 @@ public static partial class McpMod
                 // Guard: reject multiplayer endpoint during singleplayer runs
                 if (!IsMultiplayerRun())
                 {
-                    SendActionResult(response, BlockedAction(RunModeConflict(isMultiplayer: false)));
+                    SendGameResult(response, BlockedAction(RunModeConflict(isMultiplayer: false)));
                     return;
                 }
 
@@ -281,19 +281,21 @@ public static partial class McpMod
     // Authoritative checks happen inside RunOnMainThread lambdas.
     internal static bool IsMultiplayerRun()
     {
-        try
-        {
-            return MegaCrit.Sts2.Core.Runs.RunManager.Instance.IsInProgress
-                && MegaCrit.Sts2.Core.Runs.RunManager.Instance.NetService.Type.IsMultiplayer();
-        }
+        try { return HasActiveMultiplayerRun(); }
         catch { return false; }
+    }
+
+    private static bool HasActiveMultiplayerRun()
+    {
+        var run = MegaCrit.Sts2.Core.Runs.RunManager.Instance;
+        return run.IsInProgress && run.NetService.Type.IsMultiplayer();
     }
 
     private static ActionBlock RunModeConflict(bool isMultiplayer) => new("run_mode_conflict",
         isMultiplayer ? "Multiplayer run is active. Use /api/v1/multiplayer instead." :
             "Not in a multiplayer run. Use /api/v1/singleplayer instead.", false);
 
-    private static void SendActionResult(HttpListenerResponse response, Dictionary<string, object?> result, bool compact = false)
+    private static void SendGameResult(HttpListenerResponse response, Dictionary<string, object?> result, bool compact = false)
     {
         if (result.GetValueOrDefault("reason") is "run_mode_conflict" ||
             (result.GetValueOrDefault("stop_reason") is "run_mode_conflict" &&
@@ -311,14 +313,14 @@ public static partial class McpMod
             var stateTask = RunOnMainThread(() => BuildMultiplayerGameState());
             var state = stateTask.GetAwaiter().GetResult();
 
-            if (format == "markdown")
+            if (format == "markdown" && state.GetValueOrDefault("reason") is not "run_mode_conflict")
             {
                 string md = FormatAsMarkdown(state);
                 SendText(response, md, "text/markdown");
             }
             else
             {
-                SendJson(response, state);
+                SendGameResult(response, state);
             }
         }
         catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
@@ -389,7 +391,7 @@ public static partial class McpMod
             try
             {
                 var result = await completion.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
-                SendActionResult(response, result);
+                SendGameResult(response, result);
             }
             catch (TimeoutException) when (!completion.IsCompleted)
             {
@@ -415,7 +417,7 @@ public static partial class McpMod
                 ? (await ReadReadyState(compact).ConfigureAwait(false)).State
                 : await RunOnMainThread(() => BuildGameState(compact)).ConfigureAwait(false);
 
-            if (format == "markdown")
+            if (format == "markdown" && state.GetValueOrDefault("reason") is not "run_mode_conflict")
             {
                 try
                 {
@@ -429,7 +431,7 @@ public static partial class McpMod
             }
             else
             {
-                SendJson(response, state, compact);
+                SendGameResult(response, state, compact);
             }
         }
         catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
@@ -495,7 +497,7 @@ public static partial class McpMod
         {
             if (action == "play_card_sequence")
             {
-                SendActionResult(response, await ExecuteCardSequence(parsed).ConfigureAwait(false), compact: true);
+                SendGameResult(response, await ExecuteCardSequence(parsed).ConfigureAwait(false), compact: true);
                 return;
             }
 
@@ -518,7 +520,7 @@ public static partial class McpMod
                     result["state_error"] = "The action was accepted. Refresh game state to check the result.";
                 }
             }
-            SendActionResult(response, result, compact: wait != null);
+            SendGameResult(response, result, compact: wait != null);
         }
         catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
         {

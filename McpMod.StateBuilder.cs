@@ -64,6 +64,9 @@ public static partial class McpMod
 {
     private static Dictionary<string, object?> BuildGameState(bool compact = false)
     {
+        if (HasActiveMultiplayerRun())
+            return BlockedAction(RunModeConflict(isMultiplayer: true));
+
         var result = new Dictionary<string, object?>();
         var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
 
