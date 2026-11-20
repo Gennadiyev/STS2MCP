@@ -371,8 +371,7 @@ public static partial class McpMod
                 foreach (var card in hand)
                 {
                     string playable = card["can_play"] is true ? "✓" : "✗";
-                    string keywords = card.TryGetValue("keywords", out var kw) && kw is List<string> kwList && kwList.Count > 0
-                        ? $" [{string.Join(", ", kwList)}]" : "";
+                    string keywords = FormatInlineKeywords(card);
                     string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
                     sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {playable}{keywords} - {card["description"]} (target: {card["target_type"]})");
                 }
@@ -746,8 +745,7 @@ public static partial class McpMod
             foreach (var card in cards)
             {
                 string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-                string keywords = card.TryGetValue("keywords", out var kw) && kw is List<string> kwList && kwList.Count > 0
-                    ? $" [{string.Join(", ", kwList)}]" : "";
+                string keywords = FormatInlineKeywords(card);
                 sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {card["rarity"]}{keywords} - {card["description"]}");
             }
             sb.AppendLine();
@@ -1085,6 +1083,17 @@ public static partial class McpMod
         if (allBid)
             sb.AppendLine("**All players have bid!**");
         sb.AppendLine();
+    }
+
+    private static string FormatInlineKeywords(Dictionary<string, object?> card)
+    {
+        if (card.GetValueOrDefault("keywords") is not List<Dictionary<string, object?>> keywords)
+            return "";
+
+        var names = keywords.Select(keyword => keyword.GetValueOrDefault("name") as string)
+            .Where(name => !string.IsNullOrWhiteSpace(name));
+        string text = string.Join(", ", names);
+        return text.Length > 0 ? $" [{text}]" : "";
     }
 
     private static void CollectKeywordsFromState(object? obj, Dictionary<string, string> glossary)
