@@ -566,7 +566,9 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
 
 ### `shop` — Shop
 
-Shop inventory is auto-opened when state is queried.
+State reads list the shop inventory without opening it. A valid `shop_purchase` can be made while the inventory is closed.
+`is_open` reports whether the inventory is open. `can_proceed` reports whether the room can be left directly.
+If the inventory is open, use the `proceed` action when it is listed in `available_actions` to close the inventory. Read the state again before leaving.
 
 ```jsonc
 {
@@ -623,7 +625,12 @@ Shop inventory is auto-opened when state is queried.
         "can_afford": true
       }
     ],
+    "is_open": false,
     "can_proceed": true,
+    "available_actions": [
+      { "action": "shop_purchase", "parameter": "index", "description": "Buy a stocked, affordable item." },
+      { "action": "proceed", "description": "Leave the shop and open the map." }
+    ],
     "error": "..."             // Only present if inventory isn't ready; retry in a moment
   },
   "run": { ... },
@@ -633,7 +640,7 @@ Shop inventory is auto-opened when state is queried.
 
 ### `fake_merchant` — Fake Merchant Event
 
-A relic-only shop disguised as an event. Uses `shop_purchase` and `proceed` actions (same as regular shop). If the player triggers a fight, the merchant disappears.
+A relic-only shop disguised as an event. The nested `shop` uses the same `is_open`, `can_proceed`, and `available_actions` fields as a regular shop. If the player triggers a fight, the merchant disappears.
 
 ```jsonc
 {
@@ -647,7 +654,7 @@ A relic-only shop disguised as an event. Uses `shop_purchase` and `proceed` acti
         {
           "index": 0,
           "category": "relic",
-          "cost": 150,
+          "price": 150,
           "is_stocked": true,
           "can_afford": true,
           "relic_id": "VAJRA",
@@ -656,12 +663,17 @@ A relic-only shop disguised as an event. Uses `shop_purchase` and `proceed` acti
           "keywords": [ /* Keyword Objects */ ]
         }
       ],
-      "can_proceed": true
+      "is_open": false,
+      "can_proceed": true,
+      "available_actions": [
+        { "action": "shop_purchase", "parameter": "index", "description": "Buy a stocked, affordable item." },
+        { "action": "proceed", "description": "Leave the shop and open the map." }
+      ]
     },
     // After fight:
     // "started_fight": true,
-    // "shop": { "items": [], "can_proceed": true },
-    // "message": "The fake merchant has been defeated. Proceed to map."
+    // "shop": { "items": [], "is_open": false, "can_proceed": true, "available_actions": [ ... ] },
+    // "message": "The fake merchant has been defeated."
   },
   "run": { ... },
   "player": { ... }
@@ -1201,13 +1213,14 @@ Skip the card reward (if a skip/bowl option is available).
 
 ### `proceed`
 
-Leave the current screen and open the map. Works from: rewards, rest site, shop, treasure room.
+Leave the current screen and open the map from rewards, a rest site, a shop, the Fake Merchant, or a treasure room.
+If a shop inventory is open, the first call closes it. Read the new state and call again when the room is ready to leave.
 
 ```json
 { "action": "proceed" }
 ```
 
-**Note:** Does NOT work for events — use `choose_event_option` with the Proceed option's index instead.
+For other events, use `choose_event_option` with the Proceed option's index.
 
 ### `choose_event_option`
 

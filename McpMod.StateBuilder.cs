@@ -545,14 +545,6 @@ public static partial class McpMod
             }
             else
             {
-                // Auto-open the shopkeeper's inventory if not already open.
-                // NMerchantRoom.Inventory (UI node) can be null before the scene is fully ready;
-                // OpenInventory() itself accesses Inventory.IsOpen, so guard against null.
-                var merchUI = NMerchantRoom.Instance;
-                if (merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
-                {
-                    merchUI.OpenInventory();
-                }
                 result["state_type"] = "shop";
                 result["shop"] = BuildShopState(merchantRoom, runState);
             }
@@ -1451,52 +1443,25 @@ public static partial class McpMod
         state["event_name"] = SafeGetText(() => fakeMerchant.Title);
         state["started_fight"] = fakeMerchant.StartedFight;
 
-        // Find the NFakeMerchant UI node
-        var uiRoom = NEventRoom.Instance;
-        NFakeMerchant? fakeMerchantNode = null;
-        if (uiRoom != null)
-            fakeMerchantNode = FindFirst<NFakeMerchant>(uiRoom);
+        var fakeMerchantNode = NEventRoom.Instance is { } uiRoom ? FindFirst<NFakeMerchant>(uiRoom) : null;
+        var proceedButton = fakeMerchantNode == null ? null : FindFirst<NProceedButton>(fakeMerchantNode);
 
         if (fakeMerchant.StartedFight)
         {
             // After the foul potion fight, merchant is gone - just show proceed
-            state["shop"] = new Dictionary<string, object?>
+            var defeatedShop = new Dictionary<string, object?>
             {
-                ["items"] = new List<Dictionary<string, object?>>(),
-                ["can_proceed"] = true
+                ["items"] = new List<Dictionary<string, object?>>()
             };
-            state["message"] = "The fake merchant has been defeated. Proceed to map.";
+            AddShopActions(defeatedShop, null, proceedButton, null);
+            state["shop"] = defeatedShop;
+            state["message"] = "The fake merchant has been defeated.";
             return state;
         }
 
-        // Auto-open the inventory if the merchant button is still available
-        if (fakeMerchantNode != null)
-        {
-            var inventoryUI = FindFirst<NMerchantInventory>(fakeMerchantNode);
-            if (inventoryUI != null && !inventoryUI.IsOpen)
-            {
-                // ForceClick the merchant button to go through the proper signal chain
-                // (disables proceed button, wires InventoryClosed callback, etc.)
-                var merchantButton = fakeMerchantNode.MerchantButton;
-                if (merchantButton != null && merchantButton.Visible && merchantButton.IsEnabled)
-                    merchantButton.ForceClick();
-            }
-        }
-
-        // Build shop inventory from the FakeMerchant model
-        var shopState = BuildFakeMerchantShopItems(fakeMerchant.Inventory);
-
-        // Proceed button
-        if (fakeMerchantNode != null)
-        {
-            var proceedButton = FindFirst<NProceedButton>(fakeMerchantNode);
-            shopState["can_proceed"] = proceedButton?.IsEnabled ?? false;
-        }
-        else
-        {
-            shopState["can_proceed"] = false;
-        }
-
+        var inventory = fakeMerchant.Inventory;
+        var shopState = BuildFakeMerchantShopItems(inventory);
+        AddShopActions(shopState, fakeMerchantNode?.Inventory, proceedButton, inventory);
         state["shop"] = shopState;
         return state;
     }
@@ -1570,12 +1535,12 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildShopState(MerchantRoom merchantRoom, RunState runState)
     {
         var state = new Dictionary<string, object?>();
-
         var inventory = merchantRoom.GetLocalInventory();
+        var room = NMerchantRoom.Instance;
+        AddShopActions(state, room?.Inventory, room?.ProceedButton, inventory);
         if (inventory == null)
         {
             state["items"] = new List<Dictionary<string, object?>>();
-            state["can_proceed"] = NMerchantRoom.Instance?.ProceedButton?.IsEnabled ?? false;
             state["error"] =
                 "Shop inventory is not ready yet (null). Often happens right after entering the merchant from the map; retry in a moment.";
             return state;
@@ -1670,11 +1635,42 @@ public static partial class McpMod
         }
 
         state["items"] = items;
-
-        var proceedButton = NMerchantRoom.Instance?.ProceedButton;
-        state["can_proceed"] = proceedButton?.IsEnabled ?? false;
-
         return state;
+    }
+
+    private static void AddShopActions(
+        Dictionary<string, object?> shop,
+        NMerchantInventory? inventoryUi,
+        NProceedButton? proceedButton,
+        MerchantInventory? inventory)
+    {
+        bool isOpen = inventoryUi?.IsOpen == true;
+        bool canClose = inventoryUi is { IsOpen: true } && GetAvailableShopBackButton(inventoryUi) != null;
+        bool canLeave = !isOpen && proceedButton is { IsEnabled: true } && IsNodeVisible(proceedButton);
+        shop["is_open"] = isOpen;
+        shop["can_proceed"] = canLeave;
+
+        var actions = new List<Dictionary<string, object?>>();
+        if (inventory?.AllEntries.Any(entry => entry.IsStocked && entry.EnoughGold) == true)
+        {
+            actions.Add(new Dictionary<string, object?>
+            {
+                ["action"] = "shop_purchase",
+                ["parameter"] = "index",
+                ["description"] = "Buy a stocked, affordable item."
+            });
+        }
+        if (canClose || canLeave)
+        {
+            actions.Add(new Dictionary<string, object?>
+            {
+                ["action"] = "proceed",
+                ["description"] = canClose
+                    ? "Close the inventory, then check the shop state before leaving."
+                    : "Leave the shop and open the map."
+            });
+        }
+        shop["available_actions"] = actions;
     }
 
     private static Dictionary<string, object?> BuildMapState(RunState runState)

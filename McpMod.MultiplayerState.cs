@@ -193,12 +193,6 @@ public static partial class McpMod
             }
             else
             {
-                var merchUI = NMerchantRoom.Instance;
-                if (merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
-                {
-                    merchUI.OpenInventory();
-                }
-
                 result["state_type"] = "shop";
                 result["shop"] = BuildShopState(merchantRoom, runState);
             }

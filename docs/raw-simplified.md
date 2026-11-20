@@ -38,7 +38,7 @@ Every JSON response includes:
 | `map` | Map navigation | `choose_map_node` |
 | `event` | Event or Ancient encounter | `choose_event_option`, `advance_dialogue` |
 | `rest_site` | Rest site | `choose_rest_option`, `proceed` |
-| `shop` | Shop (auto-opens inventory) | `shop_purchase`, `proceed` |
+| `shop` | Shop with inventory and exit controls | `shop_purchase`, `proceed` |
 | `fake_merchant` | Fake Merchant event (relic-only shop) | `shop_purchase`, `proceed` |
 | `treasure` | Treasure room (auto-opens chest) | `claim_treasure_relic`, `proceed` |
 | `card_select` | Deck card selection overlay (transform, upgrade, remove, choose-a-card) | `select_card`, `confirm_selection`, `cancel_selection` |
@@ -163,7 +163,7 @@ Example searches:
 | Action | Parameters | When to Use |
 |---|---|---|
 | `shop_purchase` | `index`: int | Buy an item by its index. Must be stocked and affordable. |
-| `proceed` | _(none)_ | Leave the shop. |
+| `proceed` | _(none)_ | Close an open inventory. Check state before calling again to leave the shop. |
 
 ### Treasure (`treasure`)
 

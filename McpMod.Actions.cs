@@ -378,8 +378,7 @@ public static partial class McpMod
                     var fmNode = FindFirst<NFakeMerchant>(uiRoom);
                     if (fmNode != null)
                     {
-                        var inventoryUI = FindFirst<NMerchantInventory>(fmNode);
-                        if (inventoryUI != null && !inventoryUI.IsOpen)
+                        if (fmNode.Inventory is { IsOpen: false })
                         {
                             var btn = fmNode.MerchantButton;
                             if (btn != null && btn.Visible && btn.IsEnabled)
@@ -561,15 +560,13 @@ public static partial class McpMod
         // Try merchant - close inventory first if open, then proceed
         if (NMerchantRoom.Instance is { } merchRoom)
         {
-            if (merchRoom.Inventory?.IsOpen == true)
+            if (merchRoom.Inventory is { IsOpen: true } inventory)
             {
-                var backBtn = FindFirst<NBackButton>(merchRoom);
-                if (backBtn is { IsEnabled: true })
-                    backBtn.ForceClick();
+                return ExecuteCloseShopInventory(inventory);
             }
-            if (merchRoom.ProceedButton.IsEnabled)
+            if (merchRoom.ProceedButton is { IsEnabled: true } proceedButton && IsNodeVisible(proceedButton))
             {
-                merchRoom.ProceedButton.ForceClick();
+                proceedButton.ForceClick();
                 return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from shop" };
             }
         }
@@ -580,15 +577,12 @@ public static partial class McpMod
             var fmNode = FindFirst<NFakeMerchant>(evtRoom);
             if (fmNode != null)
             {
-                var fmInventory = FindFirst<NMerchantInventory>(fmNode);
-                if (fmInventory is { IsOpen: true })
+                if (fmNode.Inventory is { IsOpen: true } inventory)
                 {
-                    var backBtn = FindFirst<NBackButton>(fmNode);
-                    if (backBtn is { IsEnabled: true })
-                        backBtn.ForceClick();
+                    return ExecuteCloseShopInventory(inventory);
                 }
                 var proceedBtn = FindFirst<NProceedButton>(fmNode);
-                if (proceedBtn is { IsEnabled: true })
+                if (proceedBtn is { IsEnabled: true } && IsNodeVisible(proceedBtn))
                 {
                     proceedBtn.ForceClick();
                     return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from fake merchant" };
@@ -606,6 +600,27 @@ public static partial class McpMod
         }
 
         return Error("No proceed button available or enabled");
+    }
+
+    private static NBackButton? GetAvailableShopBackButton(NMerchantInventory inventory)
+    {
+        // The fake merchant uses a subclass with the same inherited private Back button.
+        return GetInstanceFieldValue(inventory, "_backButton") is NBackButton { IsEnabled: true } button
+            && IsNodeVisible(button) ? button : null;
+    }
+
+    private static Dictionary<string, object?> ExecuteCloseShopInventory(NMerchantInventory inventory)
+    {
+        var backButton = GetAvailableShopBackButton(inventory);
+        if (backButton == null)
+            return Error("Shop inventory cannot close yet. Check the shop state before retrying.");
+
+        backButton.ForceClick();
+        return new Dictionary<string, object?>
+        {
+            ["status"] = "ok",
+            ["message"] = "Closing shop inventory. Check the shop state before calling proceed again to leave."
+        };
     }
 
     private static Dictionary<string, object?> ExecuteSelectCard(Dictionary<string, JsonElement> data)

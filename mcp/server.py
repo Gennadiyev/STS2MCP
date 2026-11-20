@@ -392,6 +392,8 @@ async def proceed_to_map() -> str:
     """Proceed from the current screen to the map.
 
     Works from: rewards screen, rest site, shop, fake merchant.
+    If a shop inventory is open, the first call closes it. Check the shop
+    state, then call again when the room is ready to leave.
     Does NOT work for events — use event_choose_option() with the Proceed option's index.
     """
     try:
@@ -991,7 +993,9 @@ async def mp_rewards_skip_card() -> str:
 async def mp_proceed_to_map() -> str:
     """[Multiplayer] Proceed from the current screen to the map.
 
-    Works from: rewards screen, rest site, shop.
+    Works from: rewards screen, rest site, shop, fake merchant.
+    If a shop inventory is open, the first call closes it. Check the shop
+    state, then call again when the room is ready to leave.
     """
     try:
         return await _mp_post({"action": "proceed"})

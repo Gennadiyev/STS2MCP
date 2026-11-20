@@ -578,8 +578,19 @@ public static partial class McpMod
             sb.AppendLine();
         }
 
-        bool canProceed = shop.TryGetValue("can_proceed", out var cp) && cp is true;
-        sb.AppendLine($"**Can proceed:** {(canProceed ? "Yes" : "No")}");
+        FormatShopNavigationMarkdown(sb, shop);
+    }
+
+    private static void FormatShopNavigationMarkdown(StringBuilder sb, Dictionary<string, object?> shop)
+    {
+        var actions = shop.GetValueOrDefault("available_actions") as List<Dictionary<string, object?>>;
+        var proceed = actions?.FirstOrDefault(action => action.GetValueOrDefault("action") as string == "proceed");
+        if (proceed != null)
+            sb.AppendLine($"**`proceed`** — {proceed["description"]}");
+        else if (shop.GetValueOrDefault("is_open") is true)
+            sb.AppendLine("The inventory is open. Wait for the Back button to become available.");
+        else
+            sb.AppendLine("Wait for the Proceed button to become available.");
         sb.AppendLine();
     }
 
@@ -593,8 +604,10 @@ public static partial class McpMod
 
         if (startedFight)
         {
-            sb.AppendLine("*The fake merchant has been defeated. Use `proceed` to open the map.*");
+            sb.AppendLine("*The fake merchant has been defeated.*");
             sb.AppendLine();
+            if (fm.GetValueOrDefault("shop") is Dictionary<string, object?> defeatedShop)
+                FormatShopNavigationMarkdown(sb, defeatedShop);
             return;
         }
 
