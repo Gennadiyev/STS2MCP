@@ -9,6 +9,7 @@
 | `get_profile()` | Profiles | Get active profile progress |
 | `get_compendium()` | Profiles | Get active profile progress grouped like the in-game Compendium |
 | `search_wiki(query, item_type?, limit?)` | Profiles | Look up discovered cards and relics, or unlocked characters |
+| `get_simplified_chinese_names(entries)` | Localization | Look up official Simplified Chinese names for game IDs and live enemy IDs |
 | `list_profiles()` | Profiles | List profile slots and active slot |
 | `switch_profile(profile_id)` | Profiles | Switch to a profile slot through the game UI |
 | `delete_profile(profile_id)` | Profiles | Delete an inactive profile slot when `allow_profile_delete` is enabled in the mod config |
@@ -22,6 +23,7 @@
 | `combat_confirm_selection(return_state?)` | Combat Selection | Confirm the in-combat card selection and optionally wait for a prompt or ready state |
 | `rewards_claim(reward_index)` | Rewards | Claim a reward from the post-combat screen |
 | `rewards_pick_card(card_index)` | Rewards | Select a card from the card reward screen |
+| `rewards_choose_alternative(alternative_id)` | Rewards | Choose an enabled native alternative by the exact ID in state, such as `REROLL` or `SACRIFICE` |
 | `rewards_skip_card()` | Rewards | Skip the card reward |
 | `map_choose_node(node_index, return_state?)` | Map | Choose a map node and optionally wait for the destination |
 | `rest_choose_option(option_index)` | Rest Site | Choose a rest site option (rest, smith, etc.) |
@@ -76,19 +78,20 @@ All multiplayer tools are prefixed with `mp_`. They route through `/api/v1/multi
 | Tool | Scope | Description |
 |---|---|---|
 | `mp_get_game_state(format?)` | General | Get multiplayer game state (all players, votes, bids) |
-| `mp_combat_play_card(card_index, target?)` | Combat | Play a card from the local player's hand |
-| `mp_combat_end_turn()` | Combat | Submit end-turn vote (turn ends when all players submit) |
-| `mp_combat_undo_end_turn()` | Combat | Retract end-turn vote |
-| `mp_use_potion(slot, target?)` | General | Use a potion from the local player's slots |
+| `mp_combat_play_card(card_index, target?, coordination_prompt_id?, target_player_slot?)` | Combat | Play a card. Use a party `player_slot` for player-targeted cards. |
+| `mp_combat_end_turn(allow_playable_cards?, coordination_prompt_id?)` | Combat | Submit an end-turn vote. Set `allow_playable_cards=true` only to deliberately leave playable cards in hand. |
+| `mp_combat_undo_end_turn()` | Combat | Retract an end-turn vote while `battle.can_undo_end_turn` is true |
+| `mp_use_potion(slot, target?, coordination_prompt_id?, target_player_slot?)` | General | Use a potion. Potions with player targeting accept a party `player_slot`. |
 | `mp_discard_potion(slot)` | General | Discard a potion from the local player's slots |
 | `mp_proceed_to_map(leave_shop?)` | General | Proceed to the map, or leave an open shop in one call with `leave_shop=true` |
-| `mp_map_vote(node_index)` | Map | Vote for a map node (travel when all agree) |
+| `mp_map_vote(node_index)` | Map | Submit a vote, or ping by re-selecting your choice. Check `run.map_coord` and `run.is_traveling` for the resolved destination. |
 | `mp_event_choose_option(option_index)` | Event | Vote for / choose an event option |
 | `mp_event_advance_dialogue()` | Event | Advance ancient event dialogue |
-| `mp_rest_choose_option(option_index)` | Rest Site | Choose a rest site option (per-player, no vote) |
+| `mp_rest_choose_option(option_index, target_player_slot?)` | Rest Site | Choose a rest site option. For Mend, choose a teammate from `target_player_slots`. |
 | `mp_shop_purchase(item_index)` | Shop | Purchase an item (per-player inventory) |
 | `mp_rewards_claim(reward_index)` | Rewards | Claim a post-combat reward |
 | `mp_rewards_pick_card(card_index)` | Rewards | Select a card from the card reward screen |
+| `mp_rewards_choose_alternative(alternative_id)` | Rewards | Choose an enabled native alternative by the exact ID in state |
 | `mp_rewards_skip_card()` | Rewards | Skip the card reward |
 | `mp_deck_select_card(card_index)` | Card Select | Pick/toggle a card in the selection screen |
 | `mp_deck_confirm_selection()` | Card Select | Confirm the current card selection |
@@ -104,3 +107,31 @@ All multiplayer tools are prefixed with `mp_`. They route through `/api/v1/multi
 | `mp_crystal_sphere_set_tool(tool)` | Crystal Sphere | Switch the active divination tool |
 | `mp_crystal_sphere_click_cell(x, y)` | Crystal Sphere | Click a hidden cell in the grid |
 | `mp_crystal_sphere_proceed()` | Crystal Sphere | Continue after the minigame finishes |
+
+### Combat Coordination
+
+Install the same version of the in-game coordination companion on every co-op client. Human seats use the companion alone. AI seats also use the STS2MCP bridge and its MCP server. The companion adds quick replies and plain text.
+
+From the repository root, build the companion against your game installation:
+
+```powershell
+dotnet build coordination/STS2_Coordination.csproj -c Release -o out/STS2_Coordination '-p:STS2GameDir=C:/path/to/Slay the Spire 2'
+```
+
+Copy `STS2_Coordination.dll` and `STS2_Coordination.json` to `<game>/mods/STS2_Coordination/` and enable the companion in the game. Build and install the updated STS2MCP bridge on AI seats as usual.
+
+During a co-op run, click **Chat** (**聊天** in Simplified Chinese) in the upper right to start a conversation. Choose a teammate if more than one is connected, then type a message and press **Send** or **Enter**. The panel follows each player's in-game language setting.
+
+| Tool | Description |
+|---|---|
+| `mp_coordination_prompt(recipient_slot, options, question?, allow_text?, lifetime_seconds?)` | Ask one teammate a combat question. Use their zero-based slot in the multiplayer state's `players` array. |
+| `mp_coordination_state(after_id?)` | Read prompts, recent events, and teammate languages by player slot. Use the returned `latest_id` as the next `after_id` within this run. |
+| `mp_coordination_reply(prompt_id, choice_index?, text?, go_ahead?)` | Submit one reply using a zero-based choice index, plain text, or `go_ahead=true`. |
+| `mp_coordination_message(recipient_slot, text)` | Send a direct text message without creating a prompt. |
+| `mp_coordination_cancel(prompt_id)` | Withdraw your outgoing prompt. |
+
+Each seat can have one active outgoing prompt. Give it two to four options such as `{"kind":"agent_first"}`, `{"kind":"focus_enemy","target":"NIBBIT_0"}`, or `{"kind":"no_preference"}`. The `teammate_first` choice waits for the teammate to finish a card play or choose **Go ahead**. A custom `choice` needs a label. Open prompts expire after 25 seconds by default. The allowed lifetime is 5–60 seconds. An accepted answer stays valid until its combat context changes. Text replies and direct messages can contain up to 200 characters.
+
+Omit the question and built-in labels to generate them in English or Simplified Chinese using the recipient's locale. For a teammate whose `language` is `zhs`, write custom text in Simplified Chinese and look up game terms in batches with `get_simplified_chinese_names`. Pass entries such as `{"kind":"card","id":"BASH"}` and `{"kind":"enemy","id":"NIBBIT_0"}`. Names come from the installed game's language files. Keep the original IDs for tool actions. The tool works on a client set to English.
+
+Hold the affected combat action while the prompt is `pending` or `waiting_for_teammate`. Poll the coordination state with a brief delay between calls. An `answered` prompt gives you the reply. Refresh the game state, then pass its `prompt_id` as `coordination_prompt_id` when submitting the agreed card, potion, or end-turn action. On `expired` or `cancelled`, reconsider the move from fresh game state. Replies themselves perform no game actions.

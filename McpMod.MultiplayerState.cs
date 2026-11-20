@@ -104,10 +104,10 @@ public static partial class McpMod
             result["state_type"] = "relic_select";
             result["relic_select"] = BuildRelicSelectState(relicSelectScreen, runState);
         }
-        else if (topOverlay is NCrystalSphereScreen crystalSphereScreen)
+        else if (!mapIsOpen && topOverlay is NCrystalSphereScreen crystalSphereScreen)
         {
             result["state_type"] = "crystal_sphere";
-            result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen, runState);
+            result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen);
         }
         else if (!mapIsOpen && topOverlay is NCardRewardSelectionScreen cardRewardScreen)
         {
@@ -125,7 +125,8 @@ public static partial class McpMod
         }
         else if (topOverlay is IOverlayScreen
                  && topOverlay is not NRewardsScreen
-                 && topOverlay is not NCardRewardSelectionScreen)
+                 && topOverlay is not NCardRewardSelectionScreen
+                 && topOverlay is not NCrystalSphereScreen)
         {
             result["state_type"] = "overlay";
             result["overlay"] = new Dictionary<string, object?>
@@ -239,7 +240,10 @@ public static partial class McpMod
         {
             ["act"] = runState.CurrentActIndex + 1,
             ["floor"] = runState.TotalFloor,
-            ["ascension"] = runState.AscensionLevel
+            ["ascension"] = runState.AscensionLevel,
+            ["freed_repy"] = runState.ExtraFields.FreedRepy,
+            ["map_coord"] = runState.CurrentMapCoord is { } coord ? new { coord.col, coord.row } : null,
+            ["is_traveling"] = IsMultiplayerMapTraveling()
         };
 
         // All players summary (always included for multiplayer)
@@ -270,7 +274,9 @@ public static partial class McpMod
         battle["round"] = combatState.RoundNumber;
         battle["turn"] = combatState.CurrentSide.ToString().ToLower();
         battle["is_play_phase"] = IsPlayPhase(combatState);
-        AddCombatReadiness(battle, LocalContext.GetMe(runState));
+        var localPlayer = LocalContext.GetMe(runState);
+        AddCombatReadiness(battle, localPlayer);
+        battle["can_undo_end_turn"] = GetUndoEndTurnBlock(localPlayer) == null;
         battle["all_players_ready"] = CombatManager.Instance.AllPlayersReadyToEndTurn();
 
         battle["enemies"] = BuildEnemiesState(combatState);
@@ -303,7 +309,12 @@ public static partial class McpMod
             }
 
             state["votes"] = votes;
-            state["all_voted"] = votes.All(v => v["voted"] is true);
+            bool allVoted = votes.All(v => v["voted"] is true);
+            state["all_voted"] = allVoted;
+            state["vote_phase"] = IsMultiplayerMapTraveling() ? "traveling"
+                : allVoted ? "resolving_votes"
+                : votes.Any(v => v["is_local"] is true && v["voted"] is true) ? "waiting_for_teammates"
+                : "awaiting_local_vote";
         }
         catch
         {
@@ -315,6 +326,9 @@ public static partial class McpMod
 
         return state;
     }
+
+    private static bool IsMultiplayerMapTraveling() =>
+        RunManager.Instance.IsChangingRooms || NMapScreen.Instance?.IsTraveling == true;
 
     private static Dictionary<string, object?> BuildMultiplayerEventState(EventRoom eventRoom, RunState runState)
     {
@@ -384,8 +398,8 @@ public static partial class McpMod
                     {
                         ["player"] = SafeGetText(() => player.Character.Title),
                         ["is_local"] = LocalContext.IsMe(player),
-                        ["voted"] = vote != null,
-                        ["vote_relic_index"] = vote
+                        ["voted"] = vote.voteReceived,
+                        ["vote_relic_index"] = vote.voteReceived ? vote.index : null
                     });
                 }
                 state["bids"] = bids;
@@ -407,10 +421,12 @@ public static partial class McpMod
     {
         bool inCombat = CombatManager.Instance.IsInProgress;
         var players = new List<Dictionary<string, object?>>();
-        foreach (var player in runState.Players)
+        for (int slot = 0; slot < runState.Players.Count; slot++)
         {
+            var player = runState.Players[slot];
             var entry = new Dictionary<string, object?>
             {
+                ["player_slot"] = slot,
                 ["character"] = SafeGetText(() => player.Character.Title),
                 ["is_local"] = LocalContext.IsMe(player),
                 ["hp"] = player.Creature.CurrentHp,

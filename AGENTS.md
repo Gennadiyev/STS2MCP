@@ -22,6 +22,12 @@
 - `discard_potion(slot=N)` — discard a potion to free up the slot when full.
 - Potions don't cost energy or count as card plays. Use buff potions BEFORE playing cards.
 
+### Co-op Language
+
+- Read `mp_coordination_state().teammates` for each recipient's `player_slot` and `language`.
+- For `zhs`, write custom questions, choice labels, and chat in Simplified Chinese. Use `get_simplified_chinese_names` with game IDs for official names. Pass the original IDs to gameplay tools.
+- Omit the question and labels on built-in coordination choices to let the mod render standard wording and enemy names in the recipient's language.
+
 ---
 
 ## General Strategy

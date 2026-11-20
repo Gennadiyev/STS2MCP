@@ -10,10 +10,11 @@ The API listens on loopback at port `15526`. Game requests require an `Authoriza
 - `GET  /api/v1/profile` — read current profile progress
 - `GET  /api/v1/compendium` — read Compendium-shaped profile progress
 - `GET  /api/v1/wiki` — look up discovered cards and relics, or unlocked characters
+- `GET  /api/v1/chinese-names` — look up names from the installed Simplified Chinese localization
 - `GET  /api/v1/profiles` — list profile slots
 - `POST /api/v1/profiles` — switch or delete profile slots
 
-The endpoints are mutually exclusive: calling singleplayer during a multiplayer run (or vice versa) returns HTTP 409.
+The singleplayer and multiplayer endpoints return HTTP 409 when the run mode does not match.
 
 ---
 
@@ -518,16 +519,25 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
 {
   "state_type": "event",
   "event": {
-    "event_id": "NEOW",
-    "event_name": "Neow",
-    "is_ancient": true,
-    "in_dialogue": false,        // true = click to advance dialogue first
-    "body": "Event description text...",
+    "event_id": "POTION_COURIER",
+    "event_name": "Potion Courier",
+    "is_ancient": false,
+    "is_finished": false,
+    "in_dialogue": false,
+    "can_advance_dialogue": false,
+    "body": "Current event page text.",
+    "body_key": "POTION_COURIER.pages.INITIAL.description",
+    "page_key": "POTION_COURIER.pages.INITIAL",
     "options": [
       {
         "index": 0,
-        "title": "Draft",
-        "description": "Choose 10 card rewards to replace your starting deck.",
+        "option_key": "POTION_COURIER.pages.INITIAL.options.GRAB_POTIONS",
+        "title": "Grab Potions",
+        "description": "Procure 3 Foul Potions.",
+        "is_enabled": true,
+        "can_choose": true,
+        "blocked_reason": null,
+        "will_kill_player": false,
         "is_locked": false,
         "is_proceed": false,
         "was_chosen": false,
@@ -541,6 +551,8 @@ Pick one card to add to your deck. Appears after claiming a card reward, or dire
   "player": { ... }
 }
 ```
+
+When visible, Ancient dialogue and the Architect's speech bubble add `dialogue_text` and `dialogue_line_index`.
 
 ### `rest_site` — Rest Site
 
@@ -1038,6 +1050,16 @@ Lists the three profile slots and identifies the active slot.
 }
 ```
 
+### `GET /api/v1/chinese-names`
+
+Pass 1–24 repeated `entry` parameters in `kind:id` format. The response preserves the input order and returns `language: "zhs"` plus an `entries` array of `kind`, `id`, and `name` values. Missing names return `null`. The endpoint works in both run modes and on clients set to English.
+
+```http
+GET /api/v1/chinese-names?entry=card:BASH&entry=enemy:NIBBIT_0
+```
+
+Supported kinds are `act`, `affliction`, `card`, `character`, `enchantment`, `encounter`, `enemy`, `event`, `orb`, `potion`, `power`, and `relic`.
+
 ### `POST /api/v1/profiles`
 
 Switch to a profile slot through the game's profile UI:
@@ -1238,9 +1260,11 @@ Choose an event option.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `index` | int | Yes | 0-based index matching the option's `index` from state (locked options return an error) |
+| `index` | int | Yes | Native option index with `can_choose: true` in the current event state |
 
-Works for both regular events and Ancients (after dialogue ends).
+The response reports `choice_status: submitted` for local choices and `choice_status: vote_submitted` for shared multiplayer votes. Check the next state for the outcome. A lethal multiplayer choice returns `reason: event_option_lethal_multiplayer`.
+
+Use this action for regular event options, Proceed, and the Architect's Continue or Respond options.
 
 ### `advance_dialogue`
 
@@ -1250,7 +1274,7 @@ Click through Ancient dialogue.
 { "action": "advance_dialogue" }
 ```
 
-Call repeatedly until `in_dialogue` becomes `false` and event options appear.
+Use while `can_advance_dialogue` is true. Check the current state after advancing.
 
 ### `choose_rest_option`
 
@@ -1263,6 +1287,7 @@ Choose a rest site option (rest, smith, etc.).
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `index` | int | Yes | 0-based index matching the option's `index` from state (disabled options return an error) |
+| `target_player_slot` | int | Mend only | A teammate slot listed in the Mend option's `target_player_slots` during multiplayer. |
 
 ### `shop_purchase`
 
@@ -1436,6 +1461,11 @@ Finish the Crystal Sphere minigame.
   "net_type": "SteamMultiplayer",
   "player_count": 2,
   "local_player_slot": 0,      // Index of local player in players array
+  "run": {
+    "act": 1, "floor": 3, "ascension": 0,
+    "map_coord": { "col": 2, "row": 2 },  // Current location, null before the first move
+    "is_traveling": false
+  },
   "players": [                  // Summary of all players
     {
       "character": "The Ironclad",
@@ -1453,7 +1483,8 @@ Finish the Crystal Sphere minigame.
 ```jsonc
 {
   "battle": {
-    "all_players_ready": false
+    "all_players_ready": false,
+    "can_undo_end_turn": true
     // Same shape as singleplayer (round, turn, is_play_phase, enemies).
     // Player state lives in top-level "player" (local) and "players" (all).
   },
@@ -1490,6 +1521,8 @@ Finish the Crystal Sphere minigame.
 
 ### Map State Additions
 
+Fur Coat nodes have `enemy_starting_hp: 1` in the full graph, current position, visited path, and available routes.
+
 ```jsonc
 {
   "map": {
@@ -1501,7 +1534,8 @@ Finish the Crystal Sphere minigame.
         "vote_col": 2, "vote_row": 3
       }
     ],
-    "all_voted": false
+    "all_voted": false,
+    "vote_phase": "waiting_for_teammates" // awaiting_local_vote, resolving_votes, or traveling
   }
 }
 ```
@@ -1527,6 +1561,8 @@ Finish the Crystal Sphere minigame.
 
 ### Treasure State Additions
 
+`voted` reports whether a choice arrived. A submitted skip has a null `vote_relic_index`.
+
 ```jsonc
 {
   "treasure": {
@@ -1546,16 +1582,24 @@ Finish the Crystal Sphere minigame.
 
 ### Multiplayer-Only Actions
 
+The party state exposes a zero-based `player_slot` for each player. For player-targeted cards and potions, send it as `target_player_slot`. Continue to use `target` for enemy entity IDs. `AnyAlly` excludes the user. An `AnyPlayer` potion defaults to the user when the slot is omitted.
+
+In combat, the local player state includes `arrow_count` and `arrow_slots` when they have Arrow slots.
+
 **End turn (vote):**
 ```json
 { "action": "end_turn" }
 ```
-In multiplayer, this is a vote. The turn ends only when all players submit.
+The tool returns `playable_card_indices` if there are still playable cards in hand. Pass `"allow_playable_cards": true` to end deliberately with playable cards remaining. A successful response acknowledges submission. Check multiplayer state to see whether the vote took effect.
 
 **Undo end turn:**
 ```json
 { "action": "undo_end_turn" }
 ```
-Retract the end-turn vote before all players have committed.
+Retract a submitted vote while `battle.can_undo_end_turn` is true. Check `battle.can_act` before resuming play.
 
-All other actions work identically to singleplayer.
+**Map vote:**
+```json
+{ "action": "choose_map_node", "index": 0 }
+```
+The response reports `vote_status` as `submitted` or `pinged`. Use `run.map_coord` and `run.is_traveling` to check the actual destination. The local vote shown on the map can appear before the host confirms it.

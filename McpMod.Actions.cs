@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Nodes.Cards;
 using MegaCrit.Sts2.Core.Nodes.Cards.Holders;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
@@ -12,6 +13,7 @@ using MegaCrit.Sts2.Core.Nodes.Relics;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
 using MegaCrit.Sts2.Core.Entities.Merchant;
+using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Models.Events;
 using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom;
@@ -28,10 +30,12 @@ using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
 using MegaCrit.Sts2.Core.Entities.CardRewardAlternatives;
+using MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
 using MegaCrit.Sts2.Core.Entities.Potions;
+using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.GameActions;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
@@ -73,6 +77,7 @@ public static partial class McpMod
             "shop_purchase" => ExecuteShopPurchase(player, data),
             "claim_reward" => ExecuteClaimReward(data),
             "select_card_reward" => ExecuteSelectCardReward(data),
+            "select_card_reward_alternative" => ExecuteSelectCardRewardAlternative(data),
             "skip_card_reward" => ExecuteSkipCardReward(),
             "proceed" => ExecuteProceed(player, data),
             "select_card" => ExecuteSelectCard(data),
@@ -101,14 +106,16 @@ public static partial class McpMod
 
         if (!data.TryGetValue("card_index", out var indexElem))
             return Error("Missing 'card_index'");
+        if (ReadTargetPlayerSlot(data, out var targetPlayerSlot) is { } targetError)
+            return Error(targetError);
 
         string? target = data.TryGetValue("target", out var targetElem) && targetElem.ValueKind == JsonValueKind.String
             ? targetElem.GetString() : null;
-        return ExecutePlayableCard(player, indexElem.GetInt32(), target, wait);
+        return ExecutePlayableCard(player, indexElem.GetInt32(), target, wait, targetPlayerSlot);
     }
 
     private static Dictionary<string, object?> ExecutePlayableCard(Player player, int cardIndex,
-        string? targetId, CombatStateWait? wait)
+        string? targetId, CombatStateWait? wait, int? targetPlayerSlot = null)
     {
         var combatState = player.Creature.CombatState;
         if (combatState == null)
@@ -125,8 +132,10 @@ public static partial class McpMod
 
         if (!card.CanPlay(out var reason, out _))
             return Error($"Card '{card.Title}' cannot be played: {reason}");
+        bool targetsPlayer = card.TargetType is TargetType.AnyAlly or TargetType.AnyPlayer;
+        if (targetPlayerSlot.HasValue && !targetsPlayer)
+            return Error("This card does not take a player target.");
 
-        // Resolve target
         Creature? target = null;
         if (card.TargetType == TargetType.AnyEnemy)
         {
@@ -136,6 +145,14 @@ public static partial class McpMod
             target = ResolveTarget(combatState, targetId);
             if (target == null)
                 return Error($"Target '{targetId}' not found among alive enemies");
+        }
+        else if (targetsPlayer && IsMultiplayerRun())
+        {
+            if (targetPlayerSlot is not int slot)
+                return Error("This card requires 'target_player_slot' from the current players list.");
+            target = ResolvePlayerTarget(player, card.TargetType, slot);
+            if (target == null || !card.IsValidTarget(target))
+                return Error("Choose a living player eligible for this card from the current players list.");
         }
 
         // Play the card via the action queue (same path as the game UI)
@@ -147,7 +164,7 @@ public static partial class McpMod
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",
-            ["message"] = $"Playing '{card.Title}'" + (target != null ? $" targeting {SafeGetText(() => target.Monster?.Title) ?? "target"}" : "")
+            ["message"] = $"Playing '{card.Title}'" + (target != null ? $" targeting {GetTargetName(target)}" : "")
         };
     }
 
@@ -169,8 +186,12 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteUsePotion(Player player, Dictionary<string, JsonElement> data)
     {
+        if (!player.CanUseOrRemovePotions)
+            return BlockedAction(new("potion_inventory_locked", "The game has locked potion use and removal during the current choice.", false));
         if (!data.TryGetValue("slot", out var slotElem))
             return Error("Missing 'slot' (potion slot index)");
+        if (ReadTargetPlayerSlot(data, out var targetPlayerSlot) is { } targetError)
+            return Error(targetError);
 
         int slot = slotElem.GetInt32();
         if (slot < 0 || slot >= player.PotionSlots.Count)
@@ -192,6 +213,10 @@ public static partial class McpMod
             return BlockedAction(block);
         if (!potion.PassesCustomUsabilityCheck)
             return Error($"Potion '{SafeGetText(() => potion.Title)}' cannot be used right now");
+        if (targetPlayerSlot.HasValue && potion.TargetType is not (TargetType.AnyPlayer or TargetType.AnyAlly))
+            return Error("This potion does not take a player target.");
+        if (IsMultiplayerRun() && data.ContainsKey("target") && potion.TargetType is (TargetType.AnyPlayer or TargetType.AnyAlly))
+            return Error("Use 'target_player_slot' to target a player with this potion.");
 
         // Resolve target
         Creature? target = null;
@@ -210,9 +235,20 @@ public static partial class McpMod
                     return Error($"Target '{targetId}' not found among alive enemies");
                 break;
             case TargetType.Self:
+                target = player.Creature;
+                break;
             case TargetType.AnyAlly:
             case TargetType.AnyPlayer:
-                target = player.Creature;
+                if (targetPlayerSlot is int playerSlot)
+                {
+                    target = ResolvePlayerTarget(player, potion.TargetType, playerSlot);
+                    if (target == null)
+                        return Error("Choose a living player eligible for this potion from the current players list.");
+                }
+                else if (potion.TargetType == TargetType.AnyAlly && IsMultiplayerRun())
+                    return Error("This potion requires 'target_player_slot' from the current players list.");
+                else
+                    target = player.Creature;
                 break;
             default:
                 target = null;
@@ -221,12 +257,7 @@ public static partial class McpMod
 
         potion.EnqueueManualUse(target);
 
-        string targetMsg = potion.TargetType switch
-        {
-            TargetType.AnyEnemy => $" targeting {SafeGetText(() => target?.Monster?.Title) ?? "enemy"}",
-            TargetType.Self or TargetType.AnyPlayer or TargetType.AnyAlly => " on self",
-            _ => ""
-        };
+        string targetMsg = target == player.Creature ? " on self" : target != null ? $" targeting {GetTargetName(target)}" : "";
 
         return new Dictionary<string, object?>
         {
@@ -235,8 +266,38 @@ public static partial class McpMod
         };
     }
 
+    private static string? ReadTargetPlayerSlot(Dictionary<string, JsonElement> data, out int? slot)
+    {
+        slot = null;
+        if (!data.TryGetValue("target_player_slot", out var value))
+            return null;
+        if (!IsMultiplayerRun())
+            return "'target_player_slot' is available in multiplayer.";
+        if (data.ContainsKey("target"))
+            return "Provide either 'target' or 'target_player_slot'.";
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out int index) || index < 0)
+            return "'target_player_slot' must be a non-negative integer.";
+        slot = index;
+        return null;
+    }
+
+    private static Creature? ResolvePlayerTarget(Player actor, TargetType targetType, int slot)
+    {
+        var players = actor.RunState.Players;
+        if (slot >= players.Count)
+            return null;
+        var player = players[slot];
+        return player.Creature.IsAlive && (targetType != TargetType.AnyAlly || player != actor)
+            ? player.Creature : null;
+    }
+
+    private static string GetTargetName(Creature target) =>
+        SafeGetText(() => target.Monster?.Title ?? target.Player?.Character.Title) ?? "target";
+
     private static Dictionary<string, object?> ExecuteDiscardPotion(Player player, Dictionary<string, JsonElement> data)
     {
+        if (!player.CanUseOrRemovePotions)
+            return BlockedAction(new("potion_inventory_locked", "The game has locked potion use and removal during the current choice.", false));
         if (!data.TryGetValue("slot", out var slotElem))
             return Error("Missing 'slot' (potion slot index)");
 
@@ -247,10 +308,26 @@ public static partial class McpMod
         var potion = player.GetPotionAtSlotIndex(slot);
         if (potion == null)
             return Error($"No potion in slot {slot}");
+        if (potion.IsQueued)
+            return Error($"Potion '{SafeGetText(() => potion.Title)}' is already queued for use");
 
         string potionName = SafeGetText(() => potion.Title) ?? "unknown";
-        _ = PotionCmd.Discard(potion);
+        if (IsMultiplayerRun())
+        {
+            bool inCombat = CombatManager.Instance.IsInProgress;
+            if (inCombat && GetCombatActionBlock(player) is { } block)
+                return BlockedAction(block);
+            // Use the same synchronized action as the native potion menu.
+            RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(
+                new DiscardPotionGameAction(player, (uint)slot, inCombat));
+            return new Dictionary<string, object?>
+            {
+                ["status"] = "ok",
+                ["message"] = $"Submitted discard for potion '{potionName}' from slot {slot}"
+            };
+        }
 
+        _ = PotionCmd.Discard(potion);
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",
@@ -260,48 +337,49 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteChooseEventOption(Dictionary<string, JsonElement> data)
     {
-        var uiRoom = NEventRoom.Instance;
-        if (uiRoom == null)
+        if (RunManager.Instance.DebugOnlyGetState()?.CurrentRoom is not EventRoom eventRoom)
             return Error("Event room is not open");
 
-        if (!data.TryGetValue("index", out var indexElem))
-            return Error("Missing 'index' (event option index)");
+        if (!data.TryGetValue("index", out var indexElem) ||
+            indexElem.ValueKind != JsonValueKind.Number || !indexElem.TryGetInt32(out int index) || index < 0)
+            return Error("Provide a nonnegative integer 'index' from the current event state.");
 
-        int index = indexElem.GetInt32();
+        var layout = NEventRoom.Instance?.Layout;
+        var button = GetActiveEventOptionButtons(GetReadyLocalEvent(eventRoom), layout)
+            .FirstOrDefault(candidate => candidate.GetIndex() == index);
+        if (button == null)
+            return BlockedAction(new("event_option_unavailable",
+                $"Event option {index} is unavailable. Check the current event state.", true));
 
-        var buttons = FindAll<NEventOptionButton>(uiRoom);
+        bool eventInputReady = CanUseEventControls(layout) &&
+            !IsControlVisibleInTree(GetEventDialogueHitbox(layout));
+        if (GetEventOptionBlock(button, eventInputReady, IsEventOptionButtonEnabled(button),
+                EventOptionWillKillPlayer(button)) is { } block)
+            return BlockedAction(block);
 
-        if (buttons.Count == 0)
-            return Error("No event options available");
-        if (index < 0 || index >= buttons.Count)
-            return Error($"Event option index {index} out of range ({buttons.Count} options)");
-
-        var button = buttons[index];
-        if (button.Option.IsLocked)
-            return Error($"Event option {index} is locked");
+        bool isVote = button.Event.IsShared && !button.Option.IsProceed &&
+            button.Event.Owner is { RunState.Players.Count: > 1 };
         string title = SafeGetText(() => button.Option.Title) ?? "option";
         button.ForceClick();
 
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",
-            ["message"] = $"Choosing event option: {title}"
+            ["choice_status"] = isVote ? "vote_submitted" : "submitted",
+            ["message"] = isVote ? $"Submitted vote for {title}." : $"Submitted event choice {title}."
         };
     }
 
     private static Dictionary<string, object?> ExecuteAdvanceDialogue()
     {
-        var uiRoom = NEventRoom.Instance;
-        if (uiRoom == null)
+        if (RunManager.Instance.DebugOnlyGetState()?.CurrentRoom is not EventRoom)
             return Error("Event room is not open");
 
-        var ancientLayout = FindFirst<NAncientEventLayout>(uiRoom);
-        if (ancientLayout == null)
-            return Error("No ancient dialogue active");
-
-        var hitbox = ancientLayout.GetNodeOrNull<NClickableControl>("%DialogueHitbox");
-        if (hitbox == null || !hitbox.Visible || !hitbox.IsEnabled)
-            return Error("Dialogue hitbox not available - dialogue may have ended");
+        var layout = NEventRoom.Instance?.Layout;
+        var hitbox = GetEventDialogueHitbox(layout);
+        if (!CanUseEventControls(layout) || hitbox == null || !IsControlVisibleOrActionable(hitbox))
+            return BlockedAction(new("event_dialogue_unavailable",
+                "The dialogue advance control is unavailable. Check the current event state.", true));
 
         hitbox.ForceClick();
 
@@ -312,8 +390,61 @@ public static partial class McpMod
         };
     }
 
-    private static Dictionary<string, object?> ExecuteChooseRestOption(Dictionary<string, JsonElement> data)
+    private static bool CanUseEventControls(NEventLayout? layout) =>
+        IsNodeVisible(layout) && !RunManager.Instance.IsChangingRooms &&
+        !IsMapScreenOpenOrVisible() && NOverlayStack.Instance?.Peek() == null && GetOpenModalNode() == null;
+
+    private static EventModel? GetReadyLocalEvent(EventRoom room) =>
+        !RunManager.Instance.IsChangingRooms && NEventRoom.Instance != null ? room.LocalMutableEvent : null;
+
+    private static NClickableControl? GetEventDialogueHitbox(NEventLayout? layout) =>
+        (layout as NAncientEventLayout)?.GetNodeOrNull<NClickableControl>("%DialogueHitbox");
+
+    private static IEnumerable<NEventOptionButton> GetActiveEventOptionButtons(EventModel? liveEvent, NEventLayout? layout)
     {
+        if (liveEvent == null || layout == null || !IsLiveNode(layout))
+            yield break;
+
+        var options = liveEvent.CurrentOptions;
+        foreach (var button in layout.OptionButtons)
+        {
+            if (!IsLiveNode(button) || !ReferenceEquals(button.Event, liveEvent))
+                continue;
+
+            int index = button.GetIndex();
+            // The native layout replaces the model's options with a synthetic Proceed button on completion.
+            if (liveEvent.IsFinished ? index == 0 && button.Option.IsProceed :
+                index < options.Count && ReferenceEquals(button.Option, options[index]))
+                yield return button;
+        }
+    }
+
+    private static bool IsEventOptionButtonEnabled(NEventOptionButton button) =>
+        IsControlVisibleOrActionable(button) && button.MouseFilter != Control.MouseFilterEnum.Ignore;
+
+    private static bool EventOptionWillKillPlayer(NEventOptionButton button) =>
+        button.Event.Owner is { } owner && button.Option.WillKillPlayer?.Invoke(owner) == true;
+
+    private static ActionBlock? GetEventOptionBlock(NEventOptionButton button, bool eventInputReady,
+        bool isEnabled, bool willKillPlayer)
+    {
+        if (button.Option.IsLocked)
+            return new("event_option_locked", "This event option is locked.", false);
+        if (willKillPlayer && button.Event.Owner is { RunState.Players.Count: > 1 })
+            return new("event_option_lethal_multiplayer", "The game blocks this lethal choice in multiplayer.", false);
+        if (!eventInputReady || !isEnabled)
+            return new("event_option_not_ready", "This event option is not ready. Check the current event state.", true);
+
+        return null;
+    }
+
+    private static Dictionary<string, object?> ExecuteChooseRestOption(Dictionary<string, JsonElement> data) =>
+        ExecuteChooseRestOption(data, out _);
+
+    private static Dictionary<string, object?> ExecuteChooseRestOption(Dictionary<string, JsonElement> data,
+        out Task<Dictionary<string, object?>>? completion)
+    {
+        completion = null;
         if (!data.TryGetValue("index", out var indexElem))
             return Error("Missing 'index' (rest site option index)");
 
@@ -333,6 +464,10 @@ public static partial class McpMod
         var button = buttons[index];
         if (!button.Option.IsEnabled)
             return Error($"Rest option {index} ({button.Option.OptionId}) is disabled");
+        if (button.Option is MendRestSiteOption mend)
+            return SubmitMend(restRoom, button, mend, data, out completion);
+        if (data.ContainsKey("target_player_slot"))
+            return Error("This rest option does not take a teammate target.");
         string optionName = SafeGetText(() => button.Option.Title) ?? button.Option.OptionId;
         button.ForceClick();
 
@@ -357,7 +492,7 @@ public static partial class McpMod
         }
         else if (player.RunState.CurrentRoom is EventRoom eventRoom
                  && eventRoom.CanonicalEvent is FakeMerchant
-                 && (eventRoom.LocalMutableEvent ?? eventRoom.CanonicalEvent) is FakeMerchant fakeMerchant)
+                 && GetReadyLocalEvent(eventRoom) is FakeMerchant fakeMerchant)
         {
             // Fake merchant event - auto-open via button if needed
             if (!fakeMerchant.StartedFight)
@@ -414,7 +549,7 @@ public static partial class McpMod
     }
 
     private static Dictionary<string, object?> ExecuteChooseMapNode(Dictionary<string, JsonElement> data,
-        CombatStateWait? wait = null)
+        CombatStateWait? wait = null, Player? mapVoter = null)
     {
         var mapScreen = NMapScreen.Instance;
         if (mapScreen == null || (!mapScreen.IsOpen && !IsNodeVisible(mapScreen)))
@@ -437,6 +572,26 @@ public static partial class McpMod
 
         var target = travelable[index];
         var pt = target.Point!;
+        if (mapVoter != null)
+        {
+            if (IsMultiplayerMapTraveling())
+                return BlockedAction(new("map_travel_in_progress", "The party is already traveling.", true));
+
+            // The native control pings teammates when the same node is selected again.
+            bool ping = RunManager.Instance.MapSelectionSynchronizer.GetVote(mapVoter)?.coord == pt.coord;
+            mapScreen.OnMapPointSelectedLocally(target);
+            return new Dictionary<string, object?>
+            {
+                ["status"] = "ok",
+                ["vote_status"] = ping ? "pinged" : "submitted",
+                ["vote_col"] = pt.coord.col,
+                ["vote_row"] = pt.coord.row,
+                ["message"] = ping
+                    ? $"Pinged your vote at ({pt.coord.col},{pt.coord.row})."
+                    : $"Voted for {pt.PointType} at ({pt.coord.col},{pt.coord.row}). Check multiplayer state for the resolved destination."
+            };
+        }
+
         if (wait != null && RunManager.Instance.DebugOnlyGetState() is { } run)
             wait.MapTravel = new(run, run.CurrentRoom, run.CurrentActIndex, pt.coord);
         mapScreen.OnMapPointSelectedLocally(target);
@@ -511,42 +666,66 @@ public static partial class McpMod
         };
     }
 
-    private static NCardRewardAlternativeButton? GetCardRewardSkipButton(NCardRewardSelectionScreen screen)
+    private static IEnumerable<(CardRewardAlternative Option, NCardRewardAlternativeButton Button)>
+        GetCardRewardAlternatives(NCardRewardSelectionScreen screen)
     {
         if (GetInstanceFieldValue(screen, "_extraOptions") is not IReadOnlyList<CardRewardAlternative> options ||
             GetInstanceFieldValue(screen, "_rewardAlternativesContainer") is not Control container)
-            return null;
+            yield break;
 
         // Godot keeps replaced buttons in the tree until the end of the frame.
         var buttons = container.GetChildren().OfType<NCardRewardAlternativeButton>()
             .Where(button => !button.IsQueuedForDeletion()).ToList();
         if (buttons.Count != options.Count)
-            return null;
+            yield break;
 
         for (int index = 0; index < options.Count; index++)
-        {
-            if (options[index].OptionId == "Skip" && IsControlVisibleOrActionable(buttons[index]))
-                return buttons[index];
-        }
-        return null;
+            yield return (options[index], buttons[index]);
     }
+
+    private static TaskCompletionSource<int?>? GetPendingCardRewardChoice(NCardRewardSelectionScreen screen) =>
+        GetInstanceFieldValue(screen, "_completionSource") is TaskCompletionSource<int?> choice &&
+        !choice.Task.IsCompleted ? choice : null;
 
     private static Dictionary<string, object?> ExecuteSkipCardReward()
     {
-        var overlay = NOverlayStack.Instance?.Peek();
-        if (overlay is not NCardRewardSelectionScreen cardScreen)
+        return ExecuteCardRewardAlternative("Skip");
+    }
+
+    private static Dictionary<string, object?> ExecuteSelectCardRewardAlternative(Dictionary<string, JsonElement> data)
+    {
+        if (!data.TryGetValue("alternative_id", out var idElement) ||
+            idElement.ValueKind != JsonValueKind.String ||
+            idElement.GetString() is not { Length: > 0 } id)
+            return Error("Missing or invalid 'alternative_id'");
+
+        return ExecuteCardRewardAlternative(id);
+    }
+
+    private static Dictionary<string, object?> ExecuteCardRewardAlternative(string id)
+    {
+        if (IsMapScreenOpenOrVisible() || NOverlayStack.Instance?.Peek() is not NCardRewardSelectionScreen cardScreen)
             return Error("Card reward selection screen is not open");
 
-        var skipButton = GetCardRewardSkipButton(cardScreen);
-        if (skipButton == null)
-            return Error("No skip option available on this card reward");
+        var choice = GetPendingCardRewardChoice(cardScreen);
+        if (choice == null)
+            return Error("The card reward is not ready for another choice");
 
-        skipButton.ForceClick();
+        var (_, button) = GetCardRewardAlternatives(cardScreen)
+            .FirstOrDefault(pair => pair.Option.OptionId == id && IsControlVisibleOrActionable(pair.Button));
+        if (button == null)
+            return Error(id == "Skip" ? "No skip option available on this card reward" :
+                $"Card reward alternative '{id}' is not available");
+
+        button.ForceClick();
+        if (!choice.Task.IsCompletedSuccessfully)
+            return Error($"The card reward did not accept alternative '{id}'");
 
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",
-            ["message"] = "Skipping card reward"
+            ["message"] = id == "Skip" ? "Skipping card reward" : $"Submitted card reward alternative '{id}'",
+            ["alternative_id"] = id
         };
     }
 
@@ -1036,67 +1215,73 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteCrystalSphereSetTool(Dictionary<string, JsonElement> data)
     {
-        var overlay = NOverlayStack.Instance?.Peek();
-        if (overlay is not NCrystalSphereScreen screen)
+        if (GetActiveCrystalSphere() is not { } screen)
             return Error("Crystal Sphere screen is not open");
 
-        if (!data.TryGetValue("tool", out var toolElem))
+        if (!data.TryGetValue("tool", out var toolElem) || toolElem.ValueKind != JsonValueKind.String)
             return Error("Missing 'tool' (expected 'big' or 'small')");
 
         string tool = toolElem.GetString() ?? "";
-        var button = tool switch
-        {
-            "big" => screen.GetNodeOrNull<NClickableControl>("%BigDivinationButton"),
-            "small" => screen.GetNodeOrNull<NClickableControl>("%SmallDivinationButton"),
-            _ => null
-        };
-
-        if (button == null)
+        if (tool is not ("big" or "small"))
             return Error($"Unknown Crystal Sphere tool: {tool}");
-        if (!button.Visible || !button.IsEnabled)
+
+        var minigame = GetCrystalSphereMinigame(screen);
+        var button = GetCrystalSphereToolButton(screen, tool);
+        if (!CanDivineAtCrystalSphere(minigame) || !IsControlVisibleOrActionable(button))
             return Error($"Crystal Sphere tool '{tool}' is not available");
 
-        button.ForceClick();
+        button!.ForceClick();
+        if (GetCrystalSphereTool(minigame) != tool)
+            return Error($"Crystal Sphere did not select the '{tool}' tool");
+
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",
-            ["message"] = $"Setting Crystal Sphere tool to {tool}"
+            ["message"] = $"Selected Crystal Sphere tool '{tool}'",
+            ["tool"] = tool
         };
     }
 
     private static Dictionary<string, object?> ExecuteCrystalSphereClickCell(Dictionary<string, JsonElement> data)
     {
-        var overlay = NOverlayStack.Instance?.Peek();
-        if (overlay is not NCrystalSphereScreen screen)
+        if (GetActiveCrystalSphere() is not { } screen)
             return Error("Crystal Sphere screen is not open");
 
-        if (!data.TryGetValue("x", out var xElem))
-            return Error("Missing 'x' (cell x-coordinate)");
-        if (!data.TryGetValue("y", out var yElem))
-            return Error("Missing 'y' (cell y-coordinate)");
+        if (!data.TryGetValue("x", out var xElem) || xElem.ValueKind != JsonValueKind.Number ||
+            !xElem.TryGetInt32(out int x))
+            return Error("Missing or invalid 'x' (cell x-coordinate)");
+        if (!data.TryGetValue("y", out var yElem) || yElem.ValueKind != JsonValueKind.Number ||
+            !yElem.TryGetInt32(out int y))
+            return Error("Missing or invalid 'y' (cell y-coordinate)");
 
-        int x = xElem.GetInt32();
-        int y = yElem.GetInt32();
-
+        var minigame = GetCrystalSphereMinigame(screen);
+        if (minigame == null)
+            return Error("Crystal Sphere is loading");
+        if (!CanDivineAtCrystalSphere(minigame))
+            return Error("No Crystal Sphere divinations remain");
         var cell = FindAll<NCrystalSphereCell>(screen)
             .FirstOrDefault(c => c.Entity.X == x && c.Entity.Y == y);
         if (cell == null)
             return Error($"Crystal Sphere cell ({x}, {y}) was not found");
-        if (!cell.Entity.IsHidden || !cell.Visible)
+        if (!cell.Entity.IsHidden || !IsControlVisibleOrActionable(cell))
             return Error($"Crystal Sphere cell ({x}, {y}) is not clickable");
 
+        int previousCount = minigame.DivinationCount;
         cell.EmitSignal(NClickableControl.SignalName.Released, cell);
+        if (minigame.DivinationCount >= previousCount)
+            return Error($"Crystal Sphere did not divine cell ({x}, {y})");
+
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",
-            ["message"] = $"Clicking Crystal Sphere cell ({x}, {y})"
+            ["message"] = $"Divined Crystal Sphere cell ({x}, {y})",
+            ["divinations_remaining"] = minigame.DivinationCount
         };
     }
 
     private static Dictionary<string, object?> ExecuteCrystalSphereProceed()
     {
-        var overlay = NOverlayStack.Instance?.Peek();
-        if (overlay is not NCrystalSphereScreen screen)
+        if (GetActiveCrystalSphere() is not { } screen)
             return Error("Crystal Sphere screen is not open");
 
         var proceedButton = FindCrystalSphereProceedButton(screen);
@@ -1110,6 +1295,25 @@ public static partial class McpMod
             ["message"] = "Proceeding from Crystal Sphere"
         };
     }
+
+    private static NCrystalSphereScreen? GetActiveCrystalSphere() =>
+        IsMapScreenOpenOrVisible() ? null : NOverlayStack.Instance?.Peek() as NCrystalSphereScreen;
+
+    private static CrystalSphereMinigame? GetCrystalSphereMinigame(NCrystalSphereScreen screen) =>
+        GetInstanceFieldValue(screen, "_entity") as CrystalSphereMinigame;
+
+    private static bool CanDivineAtCrystalSphere(CrystalSphereMinigame? minigame) =>
+        minigame is { DivinationCount: > 0 };
+
+    private static string GetCrystalSphereTool(CrystalSphereMinigame? minigame) => minigame?.CrystalSphereTool switch
+    {
+        CrystalSphereMinigame.CrystalSphereToolType.Big => "big",
+        CrystalSphereMinigame.CrystalSphereToolType.Small => "small",
+        _ => "none"
+    };
+
+    private static NClickableControl? GetCrystalSphereToolButton(NCrystalSphereScreen screen, string tool) =>
+        screen.GetNodeOrNull<NClickableControl>(tool == "big" ? "%BigDivinationButton" : "%SmallDivinationButton");
 
     private static NProceedButton? FindCrystalSphereProceedButton(NCrystalSphereScreen screen)
     {

@@ -219,7 +219,7 @@ public static partial class McpMod
                 if (request.HttpMethod == "GET")
                     HandleGetMultiplayerState(request, response);
                 else if (request.HttpMethod == "POST")
-                    HandlePostMultiplayerAction(request, response);
+                    await HandlePostMultiplayerAction(request, response).ConfigureAwait(false);
                 else
                     SendError(response, 405, "Method not allowed");
             }
@@ -250,6 +250,13 @@ public static partial class McpMod
             {
                 if (request.HttpMethod == "GET")
                     HandleGetWiki(request, response);
+                else
+                    SendError(response, 405, "Method not allowed");
+            }
+            else if (path == "/api/v1/chinese-names")
+            {
+                if (request.HttpMethod == "GET")
+                    HandleGetChineseNames(request, response);
                 else
                     SendError(response, 405, "Method not allowed");
             }
@@ -320,7 +327,7 @@ public static partial class McpMod
         }
     }
 
-    private static void HandlePostMultiplayerAction(HttpListenerRequest request, HttpListenerResponse response)
+    private static async Task HandlePostMultiplayerAction(HttpListenerRequest request, HttpListenerResponse response)
     {
         string body;
         using (var reader = new StreamReader(request.InputStream, request.ContentEncoding))
@@ -355,8 +362,7 @@ public static partial class McpMod
             {
                 var option = parsed.TryGetValue("option", out var optElem) ? optElem.GetString() ?? "" : "";
                 var seed = parsed.TryGetValue("seed", out var seedElem) ? seedElem.GetString() : null;
-                var resultTask = RunOnMainThread(() => ExecuteMenuSelect(option, seed));
-                var result = resultTask.GetAwaiter().GetResult();
+                var result = await RunOnMainThread(() => ExecuteMenuSelect(option, seed)).ConfigureAwait(false);
                 SendJson(response, result);
             }
             catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
@@ -368,9 +374,17 @@ public static partial class McpMod
 
         try
         {
-            var resultTask = RunOnMainThread(() => ExecuteMultiplayerAction(action, parsed));
-            var result = resultTask.GetAwaiter().GetResult();
-            SendJson(response, result);
+            var completion = await RunOnMainThread(() => ExecuteMultiplayerAction(action, parsed)).ConfigureAwait(false);
+            try
+            {
+                var result = await completion.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                SendJson(response, result);
+            }
+            catch (TimeoutException) when (!completion.IsCompleted)
+            {
+                SendJson(response, BlockedAction(new("action_pending",
+                    "The multiplayer action has not finished. Check fresh game state before retrying.", false)));
+            }
         }
         catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
         {

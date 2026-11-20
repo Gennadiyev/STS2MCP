@@ -15,6 +15,9 @@ using MegaCrit.Sts2.Core.MonsterMoves.MonsterMoveStateMachine;
 using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Entities.RestSite;
 using MegaCrit.Sts2.Core.Events;
+using MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent;
+using MegaCrit.Sts2.Core.Events.Custom.CrystalSphereEvent.CrystalSphereItems;
+using MegaCrit.Sts2.Core.Models.Cards;
 using MegaCrit.Sts2.Core.Models.Events;
 using MegaCrit.Sts2.Core.Nodes.Events;
 using MegaCrit.Sts2.Core.Nodes.Events.Custom;
@@ -39,6 +42,7 @@ using MegaCrit.Sts2.Core.Models.Monsters;
 using MegaCrit.Sts2.Core.Rooms;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Models.RelicPools;
+using MegaCrit.Sts2.Core.Models.Relics;
 using MegaCrit.Sts2.Core.Nodes.Screens.CharacterSelect;
 using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Multiplayer;
@@ -437,7 +441,7 @@ public static partial class McpMod
             // report "map" so state matches the screen the player can interact
             // with. See issue #73.
             result["state_type"] = "crystal_sphere";
-            result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen, runState);
+            result["crystal_sphere"] = BuildCrystalSphereState(crystalSphereScreen);
         }
         else if (!mapIsOpen && topOverlay is NCardRewardSelectionScreen cardRewardScreen)
         {
@@ -594,7 +598,8 @@ public static partial class McpMod
         {
             ["act"] = runState.CurrentActIndex + 1,
             ["floor"] = runState.TotalFloor,
-            ["ascension"] = runState.AscensionLevel
+            ["ascension"] = runState.AscensionLevel,
+            ["freed_repy"] = runState.ExtraFields.FreedRepy
         };
 
         // Always include full player data (relics, potions, deck, etc.) on every screen
@@ -1102,6 +1107,7 @@ public static partial class McpMod
         var state = new Dictionary<string, object?>();
         var creature = player.Creature;
         var combatState = player.PlayerCombatState;
+        bool inCombat = CombatManager.Instance.IsInProgress;
 
         state["character"] = SafeGetText(() => player.Character.Title);
         state["hp"] = creature.CurrentHp;
@@ -1111,7 +1117,7 @@ public static partial class McpMod
         // PlayerCombatState can linger after combat while on map/rest/shop. Energy/MaxEnergy getters
         // run hooks (e.g. Hook.ModifyMaxEnergy) that null-ref without a live combat - only serialize
         // combat fields when a fight is actually in progress.
-        if (combatState != null && CombatManager.Instance.IsInProgress)
+        if (combatState != null && inCombat)
         {
             state["energy"] = combatState.Energy;
             state["max_energy"] = combatState.MaxEnergy;
@@ -1120,6 +1126,11 @@ public static partial class McpMod
             if (player.Character.ShouldAlwaysShowStarCounter || combatState.Stars > 0)
             {
                 state["stars"] = combatState.Stars;
+            }
+            if (player.Character.BaseArrowSlotCount > 0 || combatState.Arrows.Count > 0)
+            {
+                state["arrow_count"] = combatState.AvailableArrowCount;
+                state["arrow_slots"] = combatState.Arrows.Count;
             }
 
             // Hand
@@ -1181,7 +1192,6 @@ public static partial class McpMod
                 state["orb_empty_slots"] = orbQueue.Capacity - orbQueue.Orbs.Count;
             }
 
-            // Pets (Osty for Necrobinder)
             var pets = BuildPetsState(player);
             if (pets.Count > 0)
             {
@@ -1190,6 +1200,18 @@ public static partial class McpMod
         }
 
         state["gold"] = player.Gold;
+        state["deck_count"] = player.Deck.Cards.Count;
+        if (!compact && !inCombat)
+            state["deck"] = player.Deck.Cards.Select(BuildDeckCardIdentity).ToList();
+
+        var questCards = player.Deck.Cards.Where(card => card.Type == CardType.Quest)
+            .Select(BuildQuestCardInfo)
+            .ToList();
+        if (questCards.Count > 0)
+            state["quest_cards"] = questCards;
+
+        if (player.ExtraFields.WongoPoints > 0)
+            state["wongo_points"] = player.ExtraFields.WongoPoints;
 
         // Powers (status effects)
         state["status"] = BuildPowersState(creature);
@@ -1198,14 +1220,22 @@ public static partial class McpMod
         var relics = new List<Dictionary<string, object?>>();
         foreach (var relic in player.Relics)
         {
-            relics.Add(new Dictionary<string, object?>
+            var info = new Dictionary<string, object?>
             {
                 ["id"] = relic.Id.Entry,
                 ["name"] = SafeGetText(() => relic.Title),
                 ["description"] = SafeGetText(() => relic.DynamicDescription),
                 ["counter"] = relic.ShowCounter ? relic.DisplayAmount : null,
+                ["status"] = relic.Status.ToString(),
+                ["is_used_up"] = relic.IsUsedUp,
                 ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
-            });
+            };
+            if (relic is SilverCrucible crucible)
+            {
+                info["card_rewards_remaining"] = Math.Max(0, crucible.DisplayAmount);
+                info["empty_chest_pending"] = crucible.TreasureRoomsEntered == 0;
+            }
+            relics.Add(info);
         }
         state["relics"] = relics;
 
@@ -1231,8 +1261,45 @@ public static partial class McpMod
         }
         state["potions"] = potions;
         state["max_potion_slots"] = player.MaxPotionCount;
+        state["can_use_or_remove_potions"] = player.CanUseOrRemovePotions;
 
         return state;
+    }
+
+    private static Dictionary<string, object?> BuildDeckCardIdentity(CardModel card)
+    {
+        var info = new Dictionary<string, object?>
+        {
+            ["id"] = card.Id.Entry,
+            ["name"] = SafeGetText(() => card.Title),
+            ["type"] = card.Type.ToString(),
+            ["upgrade_level"] = card.CurrentUpgradeLevel
+        };
+        if (card.Enchantment is { } enchantment)
+            info["enchantment_id"] = enchantment.Id.Entry;
+        if (card.Affliction is { } affliction)
+            info["affliction_id"] = affliction.Id.Entry;
+        return info;
+    }
+
+    private const int LanternKeyTargetActIndex = 2;
+
+    private static Dictionary<string, object?> BuildQuestCardInfo(CardModel card)
+    {
+        var info = BuildDeckCardIdentity(card);
+        info["description"] = SafeGetCardDescription(card, PileType.Deck);
+
+        if (card is SpoilsMap spoils)
+        {
+            info["target_act"] = spoils.SpoilsActIndex + 1;
+            if (spoils.SpoilsCoord is { } coord)
+                info["target_node"] = new Dictionary<string, object?> { ["col"] = coord.col, ["row"] = coord.row };
+        }
+        else if (card is LanternKey)
+        {
+            info["target_act"] = LanternKeyTargetActIndex + 1;
+        }
+        return info;
     }
 
     private static string GetCostDisplay(CardModel card)
@@ -1416,60 +1483,107 @@ public static partial class McpMod
     {
         var state = new Dictionary<string, object?>();
 
-        var eventModel = eventRoom.CanonicalEvent;
+        var liveEvent = GetReadyLocalEvent(eventRoom);
+        var eventModel = liveEvent ?? eventRoom.CanonicalEvent;
         bool isAncient = eventModel is AncientEventModel;
         state["event_id"] = eventModel.Id.Entry;
         state["event_name"] = SafeGetText(() => eventModel.Title);
         state["is_ancient"] = isAncient;
+        state["is_finished"] = liveEvent?.IsFinished;
 
-        // Check dialogue state for ancients
-        bool inDialogue = false;
-        var uiRoom = NEventRoom.Instance;
-        if (isAncient && uiRoom != null)
-        {
-            var ancientLayout = FindFirst<NAncientEventLayout>(uiRoom);
-            if (ancientLayout != null)
-            {
-                var hitbox = ancientLayout.GetNodeOrNull<NClickableControl>("%DialogueHitbox");
-                inDialogue = hitbox != null && hitbox.Visible && hitbox.IsEnabled;
-            }
-        }
+        var description = liveEvent?.Description;
+        var bodyKey = description?.LocEntryKey;
+        state["body"] = SafeGetText(() => description);
+        state["body_key"] = string.IsNullOrWhiteSpace(bodyKey) ? null : bodyKey;
+
+        var layout = NEventRoom.Instance?.Layout;
+        bool canUseEventControls = CanUseEventControls(layout);
+        var hitbox = GetEventDialogueHitbox(layout);
+        bool inDialogue = IsControlVisibleInTree(hitbox);
         state["in_dialogue"] = inDialogue;
-
-        // Event body text
-        state["body"] = SafeGetText(() => eventModel.Description);
-
-        // Options from UI
-        var options = new List<Dictionary<string, object?>>();
-        if (uiRoom != null)
+        state["can_advance_dialogue"] = canUseEventControls && IsControlVisibleOrActionable(hitbox);
+        if (layout is NAncientEventLayout ancientLayout &&
+            GetInstanceFieldValue(ancientLayout, "_currentDialogueLine") is int lineIndex &&
+            lineIndex >= 0 &&
+            GetInstanceFieldValue(ancientLayout, "_dialogueContainer") is Node lines &&
+            lines.GetChildOrNull<NAncientDialogueLine>(lineIndex) is { } line &&
+            IsNodeVisible(line))
         {
-            var buttons = FindAll<NEventOptionButton>(uiRoom);
-            int index = 0;
-            foreach (var button in buttons)
+            AddEventDialogueText(state, line, lineIndex);
+        }
+        else if (liveEvent is TheArchitect &&
+                 GetInstanceFieldValue(liveEvent, "_speechBubble") is Control speechBubble &&
+                 IsNodeVisible(speechBubble) &&
+                 GetInstanceFieldValue(liveEvent, "_currentLineIndex") is int architectLineIndex)
+        {
+            AddEventDialogueText(state, speechBubble, architectLineIndex);
+        }
+
+        var options = new List<Dictionary<string, object?>>();
+        foreach (var button in GetActiveEventOptionButtons(liveEvent, layout))
+        {
+            var opt = button.Option;
+            bool willKillPlayer = EventOptionWillKillPlayer(button);
+            bool isEnabled = IsEventOptionButtonEnabled(button);
+            var block = GetEventOptionBlock(button, canUseEventControls && !inDialogue, isEnabled, willKillPlayer);
+            var optData = new Dictionary<string, object?>
             {
-                var opt = button.Option;
-                var optData = new Dictionary<string, object?>
-                {
-                    ["index"] = index,
-                    ["title"] = SafeGetText(() => opt.Title),
-                    ["description"] = SafeGetText(() => opt.Description),
-                    ["is_locked"] = opt.IsLocked,
-                    ["is_proceed"] = opt.IsProceed,
-                    ["was_chosen"] = opt.WasChosen
-                };
-                if (opt.Relic != null)
-                {
-                    optData["relic_name"] = SafeGetText(() => opt.Relic.Title);
-                    optData["relic_description"] = SafeGetText(() => opt.Relic.DynamicDescription);
-                }
-                optData["keywords"] = BuildHoverTips(opt.HoverTips);
-                options.Add(optData);
-                index++;
+                ["index"] = button.GetIndex(),
+                ["option_key"] = opt.TextKey,
+                ["title"] = SafeGetText(() => opt.Title),
+                ["description"] = SafeGetText(() => opt.Description),
+                ["is_enabled"] = isEnabled,
+                ["can_choose"] = block == null,
+                ["blocked_reason"] = block?.Reason,
+                ["will_kill_player"] = willKillPlayer,
+                ["is_locked"] = opt.IsLocked,
+                ["is_proceed"] = opt.IsProceed,
+                ["was_chosen"] = opt.WasChosen
+            };
+            if (opt.Relic != null)
+            {
+                optData["relic_name"] = SafeGetText(() => opt.Relic.Title);
+                optData["relic_description"] = SafeGetText(() => opt.Relic.DynamicDescription);
             }
+            optData["keywords"] = BuildHoverTips(opt.HoverTips);
+            options.Add(optData);
         }
         state["options"] = options;
+        state["page_key"] = GetEventPageKey(bodyKey, options);
 
         return state;
+    }
+
+    private static void AddEventDialogueText(Dictionary<string, object?> state, Control owner, int lineIndex)
+    {
+        var textNode = owner.GetNodeOrNull<Control>("%Text");
+        if (GetNodeText(textNode) is { } text)
+        {
+            state["dialogue_text"] = StripRichTextTags(text);
+            state["dialogue_line_index"] = lineIndex;
+        }
+    }
+
+    private static string? GetEventPageKey(string? bodyKey, List<Dictionary<string, object?>> options)
+    {
+        const string DescriptionSuffix = ".description";
+        if (bodyKey != "PROCEED.description" && bodyKey?.EndsWith(DescriptionSuffix, StringComparison.Ordinal) == true)
+            return bodyKey[..^DescriptionSuffix.Length];
+
+        foreach (var option in options)
+        {
+            if (option["option_key"] is not string key)
+                continue;
+
+            int marker = key.IndexOf(".options.", StringComparison.Ordinal);
+            if (marker > 0)
+                return key[..marker];
+
+            if (key.StartsWith("THE_ARCHITECT.dialogue.", StringComparison.Ordinal))
+                return key;
+        }
+
+        return null;
     }
 
     private static Dictionary<string, object?> BuildFakeMerchantState(EventRoom eventRoom, RunState runState)
@@ -1477,7 +1591,7 @@ public static partial class McpMod
         var state = new Dictionary<string, object?>();
         // LocalMutableEvent holds the per-player mutable copy with populated inventory;
         // CanonicalEvent is the shared template which may not have it.
-        var fakeMerchant = (FakeMerchant)(eventRoom.LocalMutableEvent ?? eventRoom.CanonicalEvent);
+        var fakeMerchant = (FakeMerchant)(GetReadyLocalEvent(eventRoom) ?? eventRoom.CanonicalEvent);
 
         state["event_id"] = fakeMerchant.Id.Entry;
         state["event_name"] = SafeGetText(() => fakeMerchant.Title);
@@ -1509,14 +1623,17 @@ public static partial class McpMod
         int index = 0;
         foreach (var opt in restSiteRoom.Options)
         {
-            options.Add(new Dictionary<string, object?>
+            var option = new Dictionary<string, object?>
             {
                 ["index"] = index,
                 ["id"] = opt.OptionId,
                 ["name"] = SafeGetText(() => opt.Title),
                 ["description"] = SafeGetText(() => opt.Description),
                 ["is_enabled"] = opt.IsEnabled
-            });
+            };
+            if (opt is MendRestSiteOption)
+                option["target_player_slots"] = GetMendTargetSlots(runState);
+            options.Add(option);
             index++;
         }
         state["options"] = options;
@@ -1664,27 +1781,57 @@ public static partial class McpMod
 
         var map = runState.Map;
         var visitedCoords = runState.VisitedMapCoords;
+        var furCoatMarks = runState.Players.SelectMany(player => player.Relics).OfType<FurCoat>()
+            .Where(coat => coat.FurCoatActIndex == runState.CurrentActIndex)
+            .SelectMany(coat => coat.GetMarkedCoords() ?? [])
+            .ToHashSet();
+        bool goldenCompassActive = runState.Players.SelectMany(player => player.Relics).OfType<GoldenCompass>()
+            .Any(compass => compass.GoldenPathAct == runState.CurrentActIndex);
+        bool lanternKeyActive = runState.CurrentActIndex == LanternKeyTargetActIndex
+            && runState.Players.Any(player => player.Deck.Cards.Any(card => card is LanternKey));
+        // The first-run tutorial overrides the outcomes of the first three Unknown rooms.
+        bool unknownsAreEvents = (goldenCompassActive || lanternKeyActive)
+            && (runState.UnlockState.NumberOfRuns > 0 || runState.MapPointHistory
+                .SelectMany(act => act).Count(entry => entry.MapPointType == MapPointType.Unknown) >= 3);
+        int? currentRow = visitedCoords.Count > 0 ? visitedCoords[^1].row : null;
+
+        if (lanternKeyActive)
+        {
+            var repy = ModelDb.Event<WarHistorianRepy>();
+            state["next_event"] = new Dictionary<string, object?>
+            {
+                ["id"] = repy.Id.Entry,
+                ["name"] = SafeGetText(() => repy.Title),
+                ["source"] = "LANTERN_KEY"
+            };
+        }
+
+        Dictionary<string, object?> BuildFuturePointInfo(MapPoint point) =>
+            BuildMapPointInfo(point.coord, point, furCoatMarks,
+                unknownsAreEvents && (currentRow == null || point.coord.row > currentRow));
+
+        Dictionary<string, object?> BuildMapNode(MapPoint point)
+        {
+            var node = BuildFuturePointInfo(point);
+            node["children"] = point.Children
+                .OrderBy(child => child.coord.col)
+                .Select(child => new List<int> { child.coord.col, child.coord.row })
+                .ToList();
+            return node;
+        }
 
         // Current position
         if (visitedCoords.Count > 0)
         {
             var cur = visitedCoords[visitedCoords.Count - 1];
-            state["current_position"] = new Dictionary<string, object?>
-            {
-                ["col"] = cur.col, ["row"] = cur.row,
-                ["type"] = map.GetPoint(cur)?.PointType.ToString()
-            };
+            state["current_position"] = BuildMapPointInfo(cur, map.GetPoint(cur), furCoatMarks);
         }
 
         // Visited path
         var visited = new List<Dictionary<string, object?>>();
         foreach (var coord in visitedCoords)
         {
-            visited.Add(new Dictionary<string, object?>
-            {
-                ["col"] = coord.col, ["row"] = coord.row,
-                ["type"] = map.GetPoint(coord)?.PointType.ToString()
-            });
+            visited.Add(BuildMapPointInfo(coord, map.GetPoint(coord), furCoatMarks));
         }
         state["visited"] = visited;
 
@@ -1702,22 +1849,14 @@ public static partial class McpMod
             foreach (var nmp in travelable)
             {
                 var pt = nmp.Point;
-                var option = new Dictionary<string, object?>
-                {
-                    ["index"] = index,
-                    ["col"] = pt.coord.col,
-                    ["row"] = pt.coord.row,
-                    ["type"] = pt.PointType.ToString()
-                };
+                var option = BuildFuturePointInfo(pt);
+                option["index"] = index;
 
                 // 1-level lookahead
                 var children = pt.Children
                     .OrderBy(c => c.coord.col)
-                    .Select(c => new Dictionary<string, object?>
-                    {
-                        ["col"] = c.coord.col, ["row"] = c.coord.row,
-                        ["type"] = c.PointType.ToString()
-                    }).ToList();
+                    .Select(BuildFuturePointInfo)
+                    .ToList();
                 if (children.Count > 0)
                     option["leads_to"] = children;
 
@@ -1792,18 +1931,32 @@ public static partial class McpMod
             target["name"] = bossName;
     }
 
-    private static Dictionary<string, object?> BuildMapNode(MapPoint pt)
+    private static Dictionary<string, object?> BuildMapPointInfo(
+        MapCoord coord, MapPoint? point, HashSet<MapCoord> furCoatMarks, bool unknownsAreEvents = false)
     {
-        return new Dictionary<string, object?>
+        var info = new Dictionary<string, object?>
         {
-            ["col"] = pt.coord.col,
-            ["row"] = pt.coord.row,
-            ["type"] = pt.PointType.ToString(),
-            ["children"] = pt.Children
-                .OrderBy(c => c.coord.col)
-                .Select(c => new List<int> { c.coord.col, c.coord.row })
-                .ToList()
+            ["col"] = coord.col,
+            ["row"] = coord.row,
+            ["type"] = point?.PointType.ToString()
         };
+        if (furCoatMarks.Contains(coord))
+            info["enemy_starting_hp"] = 1;
+        if (point?.PointType == MapPointType.Unknown && unknownsAreEvents)
+            info["guaranteed_room_type"] = RoomType.Event.ToString();
+        if (point?.Quests.Count > 0)
+        {
+            var quests = point.Quests.OfType<CardModel>()
+                .Select(card => new Dictionary<string, object?>
+                {
+                    ["id"] = card.Id.Entry,
+                    ["name"] = SafeGetText(() => card.Title)
+                })
+                .ToList();
+            if (quests.Count > 0)
+                info["quests"] = quests;
+        }
+        return info;
     }
 
     private static Dictionary<string, object?> BuildRewardsState(NRewardsScreen rewardsScreen, RunState runState)
@@ -1834,6 +1987,10 @@ public static partial class McpMod
                 item["potion_id"] = potionReward.Potion.Id.Entry;
                 item["potion_name"] = SafeGetText(() => potionReward.Potion.Title);
                 item["potion_description"] = SafeGetText(() => potionReward.Potion.DynamicDescription);
+            }
+            else if (reward is SpecialCardReward && reward.HoverTips.OfType<CardHoverTip>().FirstOrDefault() is { } cardTip)
+            {
+                item["card"] = BuildCardInfo(cardTip.Card);
             }
 
             items.Add(item);
@@ -1867,7 +2024,28 @@ public static partial class McpMod
         }
         state["cards"] = cards;
 
-        state["can_skip"] = GetCardRewardSkipButton(cardScreen) != null;
+        bool canSkip = false;
+        bool isAwaitingChoice = GetPendingCardRewardChoice(cardScreen) != null;
+        var alternatives = new List<Dictionary<string, object?>>();
+        foreach (var (option, button) in GetCardRewardAlternatives(cardScreen))
+        {
+            if (!IsControlVisibleInTree(button))
+                continue;
+
+            bool isEnabled = isAwaitingChoice && IsControlVisibleOrActionable(button);
+            if (option.OptionId == "Skip" && isEnabled)
+                canSkip = true;
+
+            alternatives.Add(new Dictionary<string, object?>
+            {
+                ["id"] = option.OptionId,
+                ["title"] = SafeGetText(() => option.Title),
+                ["is_enabled"] = isEnabled,
+                ["after_selected"] = option.AfterSelected.ToString()
+            });
+        }
+        state["alternatives"] = alternatives;
+        state["can_skip"] = canSkip;
 
         return state;
     }
@@ -2138,9 +2316,17 @@ public static partial class McpMod
         return state;
     }
 
-    private static Dictionary<string, object?> BuildCrystalSphereState(NCrystalSphereScreen screen, RunState runState)
+    private static Dictionary<string, object?> BuildCrystalSphereState(NCrystalSphereScreen screen)
     {
-        var state = new Dictionary<string, object?>();
+        var minigame = GetCrystalSphereMinigame(screen);
+        bool canDivine = CanDivineAtCrystalSphere(minigame);
+        var state = new Dictionary<string, object?>
+        {
+            ["divinations_remaining"] = minigame?.DivinationCount,
+            ["tool"] = GetCrystalSphereTool(minigame),
+            ["can_use_big_tool"] = canDivine && IsControlVisibleOrActionable(GetCrystalSphereToolButton(screen, "big")),
+            ["can_use_small_tool"] = canDivine && IsControlVisibleOrActionable(GetCrystalSphereToolButton(screen, "small"))
+        };
 
         var instructionsTitle = screen.GetNodeOrNull<Godot.Control>("%InstructionsTitle");
         if (instructionsTitle != null)
@@ -2159,31 +2345,37 @@ public static partial class McpMod
         }
 
         var cells = FindAll<NCrystalSphereCell>(screen);
-        state["grid_width"] = cells.Count > 0 ? cells.Max(c => c.Entity.X) + 1 : 0;
-        state["grid_height"] = cells.Count > 0 ? cells.Max(c => c.Entity.Y) + 1 : 0;
+        state["grid_width"] = minigame?.GridSize.X ?? 0;
+        state["grid_height"] = minigame?.GridSize.Y ?? 0;
+
+        var revealed = minigame == null
+            ? new HashSet<CrystalSphereItem>()
+            : (GetInstanceFieldValue(minigame, "_revealed") as IEnumerable<CrystalSphereItem> ?? [])
+                .ToHashSet();
 
         var cellStates = new List<Dictionary<string, object?>>();
         var clickableCells = new List<Dictionary<string, object?>>();
         foreach (var cell in cells.OrderBy(c => c.Entity.Y).ThenBy(c => c.Entity.X))
         {
+            bool isClickable = canDivine && cell.Entity.IsHidden && IsControlVisibleOrActionable(cell);
             var cellState = new Dictionary<string, object?>
             {
                 ["x"] = cell.Entity.X,
                 ["y"] = cell.Entity.Y,
                 ["is_hidden"] = cell.Entity.IsHidden,
-                ["is_clickable"] = cell.Entity.IsHidden && cell.Visible,
+                ["is_clickable"] = isClickable,
                 ["is_highlighted"] = cell.Entity.IsHighlighted,
                 ["is_hovered"] = cell.Entity.IsHovered
             };
 
-            if (!cell.Entity.IsHidden && cell.Entity.Item != null)
+            if (!cell.Entity.IsHidden && cell.Entity.Item is { } item && revealed.Contains(item))
             {
-                cellState["item_type"] = cell.Entity.Item.GetType().Name;
-                cellState["is_good"] = cell.Entity.Item.IsGood;
+                cellState["item_type"] = item.GetType().Name;
+                cellState["is_good"] = item.IsGood;
             }
 
             cellStates.Add(cellState);
-            if (cell.Entity.IsHidden && cell.Visible)
+            if (isClickable)
             {
                 clickableCells.Add(new Dictionary<string, object?>
                 {
@@ -2196,33 +2388,29 @@ public static partial class McpMod
         state["clickable_cells"] = clickableCells;
 
         var revealedItems = new List<Dictionary<string, object?>>();
-        foreach (var item in cells
-                     .Where(c => !c.Entity.IsHidden && c.Entity.Item != null)
-                     .Select(c => c.Entity.Item!)
-                     .Distinct())
+        foreach (var item in revealed.OrderBy(item => item.Position.Y).ThenBy(item => item.Position.X))
         {
-            revealedItems.Add(new Dictionary<string, object?>
+            var itemState = new Dictionary<string, object?>
             {
                 ["item_type"] = item.GetType().Name,
                 ["x"] = item.Position.X,
                 ["y"] = item.Position.Y,
                 ["width"] = item.Size.X,
                 ["height"] = item.Size.Y,
-                ["is_good"] = item.IsGood
-            });
+                ["is_good"] = item.IsGood,
+                ["is_fully_revealed"] = true
+            };
+            if (item is CrystalSphereGold &&
+                item.GetType().GetProperty("Amount", System.Reflection.BindingFlags.Instance |
+                    System.Reflection.BindingFlags.NonPublic)?.GetValue(item) is int amount)
+                itemState["gold_amount"] = amount;
+            if (item is CrystalSphereCardReward or CrystalSpherePotion &&
+                GetInstanceFieldValue(item, "_rarity") is { } rarity)
+                itemState["rarity"] = rarity.ToString();
+
+            revealedItems.Add(itemState);
         }
         state["revealed_items"] = revealedItems;
-
-        var bigButton = screen.GetNodeOrNull<Godot.Control>("%BigDivinationButton");
-        var smallButton = screen.GetNodeOrNull<Godot.Control>("%SmallDivinationButton");
-        bool bigVisible = bigButton?.Visible == true;
-        bool smallVisible = smallButton?.Visible == true;
-        bool bigActive = bigButton?.GetNodeOrNull<Godot.Control>("%Outline")?.Visible == true;
-        bool smallActive = smallButton?.GetNodeOrNull<Godot.Control>("%Outline")?.Visible == true;
-
-        state["tool"] = bigActive ? "big" : smallActive ? "small" : "none";
-        state["can_use_big_tool"] = bigVisible;
-        state["can_use_small_tool"] = smallVisible;
 
         var divinationsLeft = screen.GetNodeOrNull<Godot.Control>("%DivinationsLeft");
         if (divinationsLeft != null)
@@ -2369,19 +2557,18 @@ public static partial class McpMod
         var combatState = player.PlayerCombatState;
         if (combatState == null) return pets;
 
-        // Check Osty specifically (Byrdpip/PaelsLegion are cosmetic with no real combat state)
-        var osty = combatState.GetPet<Osty>();
-        if (osty != null)
+        foreach (var pet in combatState.Pets)
         {
             pets.Add(new Dictionary<string, object?>
             {
-                ["id"] = osty.Monster?.Id.Entry ?? "OSTY",
-                ["name"] = SafeGetText(() => osty.Monster?.Title) ?? "Otsy",
-                ["alive"] = osty.IsAlive,
-                ["hp"] = osty.CurrentHp,
-                ["max_hp"] = osty.MaxHp,
-                ["block"] = osty.Block,
-                ["status"] = BuildPowersState(osty)
+                ["id"] = pet.Monster?.Id.Entry,
+                ["name"] = SafeGetText(() => pet.Monster?.Title) ?? pet.Name,
+                ["alive"] = pet.IsAlive,
+                ["is_interactable"] = pet.Monster?.IsInteractable ?? true,
+                ["hp"] = pet.CurrentHp,
+                ["max_hp"] = pet.MaxHp,
+                ["block"] = pet.Block,
+                ["status"] = BuildPowersState(pet)
             });
         }
 

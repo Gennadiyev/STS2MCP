@@ -1,0 +1,10 @@
+{
+  "id": "STS2_Coordination",
+  "name": "STS2 Co-op Coordination",
+  "author": "STS2MCP contributors",
+  "description": "Quick replies and direct chat for coordinating a co-op run.",
+  "version": "0.1.0",
+  "has_pck": false,
+  "has_dll": true,
+  "affects_gameplay": true
+}

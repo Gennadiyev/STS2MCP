@@ -22,6 +22,10 @@ public static partial class McpMod
         if (state.TryGetValue("run", out var runObj) && runObj is Dictionary<string, object?> run)
         {
             sb.AppendLine($"**Act {run["act"]}** | Floor {run["floor"]} | Ascension {run["ascension"]}");
+            if (run.GetValueOrDefault("freed_repy") is true)
+                sb.AppendLine("War Historian Repy has been freed.");
+            if (run.GetValueOrDefault("is_traveling") is true)
+                sb.AppendLine("**Party traveling.** Wait for the destination screen.");
             sb.AppendLine();
         }
 
@@ -53,40 +57,44 @@ public static partial class McpMod
                 string youTag = p["is_local"] is true ? " **(YOU)**" : "";
                 string aliveTag = p["is_alive"] is false ? " [DEAD]" : "";
                 string readyTag = p.TryGetValue("is_ready_to_end_turn", out var rdy) && rdy is true ? " [READY]" : "";
-                sb.AppendLine($"- **{p["character"]}**{youTag}{aliveTag}{readyTag} - HP: {p["hp"]}/{p["max_hp"]} | Gold: {p["gold"]}");
+                sb.AppendLine($"- Slot {p["player_slot"]} · **{p["character"]}**{youTag}{aliveTag}{readyTag} - HP: {p["hp"]}/{p["max_hp"]} | Gold: {p["gold"]}");
 
                 // Show teammate pets inline
                 if (p.TryGetValue("pets", out var tPetsObj) && tPetsObj is List<Dictionary<string, object?>> tPets)
                 {
                     foreach (var pet in tPets)
                     {
-                        bool petAlive = pet.TryGetValue("alive", out var pa) && pa is true;
-                        string petStatus = petAlive
-                            ? $"HP: {pet["hp"]}/{pet["max_hp"]} | Block: {pet["block"]}"
-                            : "DEAD";
-                        sb.AppendLine($"  - Pet: **{pet["name"]}** - {petStatus}");
+                        sb.AppendLine($"  - Pet: **{pet["name"]}** - {FormatPetHealth(pet)}");
                     }
                 }
             }
             sb.AppendLine();
         }
 
-        // Top-level player summary (non-combat singleplayer only; combat renders its own detailed view)
+        // Combat renders its own detailed player view.
         bool hasBattle = state.ContainsKey("battle");
-        if (!isMultiplayer && !hasBattle
+        if (!hasBattle
             && state.TryGetValue("player", out var topPlayerObj) && topPlayerObj is Dictionary<string, object?> topPlayer)
         {
-            sb.AppendLine("## Player (You)");
-            string stars = topPlayer.TryGetValue("stars", out var s) && s != null ? $" | Stars: {s}" : "";
-            sb.AppendLine($"**{topPlayer["character"]}** - HP: {topPlayer["hp"]}/{topPlayer["max_hp"]} | Gold: {topPlayer["gold"]}{stars}");
-            sb.AppendLine();
-
-            FormatListSection(sb, "Relics", topPlayer, "relics", r =>
+            if (!isMultiplayer)
             {
-                string counter = r.TryGetValue("counter", out var c) && c != null ? $" [{c}]" : "";
-                return $"- **{r["name"]}**{counter}: {r["description"]}";
-            });
-            FormatPotionsSection(sb, topPlayer);
+                sb.AppendLine("## Player (You)");
+                string stars = topPlayer.TryGetValue("stars", out var s) && s != null ? $" | Stars: {s}" : "";
+                sb.AppendLine($"**{topPlayer["character"]}** - HP: {topPlayer["hp"]}/{topPlayer["max_hp"]} | Gold: {topPlayer["gold"]}{stars}");
+                sb.AppendLine();
+
+                FormatListSection(sb, "Relics", topPlayer, "relics", FormatRelicLine);
+            }
+            else
+            {
+                FormatListSection(sb, "Relics", topPlayer, "relics", FormatRelicLine,
+                    relic => relic.GetValueOrDefault("is_used_up") is true ||
+                        relic.GetValueOrDefault("status") as string is "Active" or "Disabled" ||
+                        relic.ContainsKey("card_rewards_remaining"));
+            }
+            if (!isMultiplayer || topPlayer.GetValueOrDefault("can_use_or_remove_potions") is false)
+                FormatPotionsSection(sb, topPlayer);
+            FormatRunProgressMarkdown(sb, topPlayer);
         }
 
         if (state.TryGetValue("battle", out var battleObj) && battleObj is Dictionary<string, object?> battle)
@@ -131,7 +139,7 @@ public static partial class McpMod
 
         if (state.TryGetValue("card_reward", out var cardRewardObj) && cardRewardObj is Dictionary<string, object?> cardReward)
         {
-            FormatCardRewardMarkdown(sb, cardReward);
+            FormatCardRewardMarkdown(sb, cardReward, isMultiplayer);
         }
 
         if (state.TryGetValue("hand_select", out var handSelectObj) && handSelectObj is Dictionary<string, object?> handSelect)
@@ -156,7 +164,7 @@ public static partial class McpMod
 
         if (state.TryGetValue("crystal_sphere", out var crystalSphereObj) && crystalSphereObj is Dictionary<string, object?> crystalSphere)
         {
-            FormatCrystalSphereMarkdown(sb, crystalSphere);
+            FormatCrystalSphereMarkdown(sb, crystalSphere, isMultiplayer);
         }
 
         if (state.TryGetValue("treasure", out var treasureObj) && treasureObj is Dictionary<string, object?> treasureData)
@@ -355,6 +363,8 @@ public static partial class McpMod
             else if (battle.TryGetValue("action_blocked_message", out var blockedMessage))
                 sb.AppendLine($"**Actions waiting.** {blockedMessage}");
         }
+        if (battle.GetValueOrDefault("can_undo_end_turn") is true)
+            sb.AppendLine("**Undo End Turn is available.**");
         sb.AppendLine();
 
         FormatListSection(sb, "Combat warnings", battle, "warnings", warning =>
@@ -366,15 +376,13 @@ public static partial class McpMod
         {
             sb.AppendLine("## Player (You)");
             string stars = player.TryGetValue("stars", out var s) && s != null ? $" | Stars: {s}" : "";
-            sb.AppendLine($"**{player["character"]}** - HP: {player["hp"]}/{player["max_hp"]} | Block: {player["block"]} | Energy: {player["energy"]}/{player["max_energy"]}{stars} | Gold: {player["gold"]}");
+            string arrows = player.TryGetValue("arrow_count", out var count)
+                ? $" | Arrows: {count}/{player["arrow_slots"]}" : "";
+            sb.AppendLine($"**{player["character"]}** - HP: {player["hp"]}/{player["max_hp"]} | Block: {player["block"]} | Energy: {player["energy"]}/{player["max_energy"]}{stars}{arrows} | Gold: {player["gold"]}");
             sb.AppendLine();
 
             FormatListSection(sb, "Status", player, "status", p => $"- **{p["name"]}** ({FormatStatusAmount(p["amount"])}): {p["description"]}");
-            FormatListSection(sb, "Relics", player, "relics", r =>
-            {
-                string counter = r.TryGetValue("counter", out var c) && c != null ? $" [{c}]" : "";
-                return $"- **{r["name"]}**{counter}: {r["description"]}";
-            });
+            FormatListSection(sb, "Relics", player, "relics", FormatRelicLine);
             FormatPotionsSection(sb, player);
 
             if (player.TryGetValue("hand", out var handObj) && handObj is List<Dictionary<string, object?>> hand && hand.Count > 0)
@@ -465,10 +473,7 @@ public static partial class McpMod
         foreach (var pet in pets)
         {
             bool alive = pet.TryGetValue("alive", out var a) && a is true;
-            string status = alive
-                ? $"HP: {pet["hp"]}/{pet["max_hp"]} | Block: {pet["block"]}"
-                : "DEAD";
-            sb.AppendLine($"- **{pet["name"]}** (`{pet["id"]}`) - {status}");
+            sb.AppendLine($"- **{pet["name"]}** (`{pet["id"]}`) - {FormatPetHealth(pet)}");
             if (alive && pet.TryGetValue("status", out var statusObj)
                 && statusObj is List<Dictionary<string, object?>> statusList && statusList.Count > 0)
             {
@@ -478,6 +483,15 @@ public static partial class McpMod
             }
         }
         sb.AppendLine();
+    }
+
+    private static string FormatPetHealth(Dictionary<string, object?> pet)
+    {
+        if (pet.GetValueOrDefault("alive") is false)
+            return "DEAD";
+        if (pet.GetValueOrDefault("is_interactable") is false)
+            return "Cosmetic companion";
+        return $"HP: {pet["hp"]}/{pet["max_hp"]} | Block: {pet["block"]}";
     }
 
     private static void FormatPileMarkdown(StringBuilder sb, Dictionary<string, object?> player,
@@ -504,12 +518,26 @@ public static partial class McpMod
         sb.AppendLine($"## {(isAncient ? "Ancient" : "Event")}: {name}");
         sb.AppendLine();
 
+        if (evt.TryGetValue("body", out var body) && body is string bodyText && !string.IsNullOrWhiteSpace(bodyText))
+        {
+            sb.AppendLine(bodyText);
+            sb.AppendLine();
+        }
+
+        if (evt.TryGetValue("dialogue_text", out var dialogue) && dialogue is string dialogueText)
+        {
+            sb.AppendLine(dialogueText);
+            sb.AppendLine();
+        }
+
         bool inDialogue = evt.TryGetValue("in_dialogue", out var d) && d is true;
         if (inDialogue)
         {
-            sb.AppendLine("*Ancient dialogue in progress - use `advance_dialogue` to continue.*");
+            bool canAdvance = evt.TryGetValue("can_advance_dialogue", out var advance) && advance is true;
+            sb.AppendLine(canAdvance
+                ? "*Use the Ancient dialogue advance action to continue.*"
+                : "*The Ancient dialogue advance control is unavailable.*");
             sb.AppendLine();
-            return;
         }
 
         if (evt.TryGetValue("options", out var optObj) && optObj is List<Dictionary<string, object?>> options && options.Count > 0)
@@ -520,14 +548,47 @@ public static partial class McpMod
                 bool locked = opt["is_locked"] is true;
                 bool proceed = opt["is_proceed"] is true;
                 bool chosen = opt["was_chosen"] is true;
+                bool canChoose = opt["can_choose"] is true;
+                bool lethal = opt["will_kill_player"] is true;
 
-                string tag = locked ? " (LOCKED)" : chosen ? " (CHOSEN)" : proceed ? " (PROCEED)" : "";
-                string relic = opt.TryGetValue("relic_name", out var rn) && rn != null ? $" [Relic: {rn}]" : "";
-                sb.AppendLine($"- [{opt["index"]}] **{opt["title"]}**{tag}{relic} - {opt["description"]}");
+                string tag = locked ? " (LOCKED)" : proceed ? " (PROCEED)" : chosen ? " (CHOSEN)" : "";
+                if (opt["blocked_reason"] as string == "event_option_lethal_multiplayer")
+                    tag += " (LETHAL, BLOCKED IN MULTIPLAYER)";
+                else if (lethal && !locked)
+                    tag += " (LETHAL)";
+                if (!canChoose && opt["blocked_reason"] as string == "event_option_not_ready")
+                    tag += " (UNAVAILABLE)";
+
+                string? description = opt["description"] as string;
+                string optionDescription = string.IsNullOrWhiteSpace(description) ? "" : $" - {description}";
+                sb.AppendLine($"- [{opt["index"]}] **{opt["title"]}**{tag}{optionDescription}");
+
+                var shownDetails = new HashSet<string>(StringComparer.Ordinal);
+                if (!string.IsNullOrWhiteSpace(description))
+                    shownDetails.Add(description);
+                if (opt.TryGetValue("relic_name", out var relicName) && relicName is string relic)
+                {
+                    opt.TryGetValue("relic_description", out var relicDescription);
+                    var detail = relicDescription as string;
+                    string relicText = string.IsNullOrWhiteSpace(detail) || !shownDetails.Add(detail) ? "" : $" - {detail}";
+                    sb.AppendLine($"  - **Relic {relic}**{relicText}");
+                }
+
+                if (opt["keywords"] is List<Dictionary<string, object?>> tips)
+                {
+                    foreach (var tip in tips)
+                    {
+                        if (tip["description"] is string text && !string.IsNullOrWhiteSpace(text) && shownDetails.Add(text))
+                        {
+                            var tipName = tip["name"] as string;
+                            sb.AppendLine(string.IsNullOrWhiteSpace(tipName) ? $"  - {text}" : $"  - **{tipName}** - {text}");
+                        }
+                    }
+                }
             }
             sb.AppendLine();
         }
-        else
+        else if (!inDialogue)
         {
             sb.AppendLine("No options available.");
             sb.AppendLine();
@@ -542,7 +603,10 @@ public static partial class McpMod
             foreach (var opt in options)
             {
                 string enabled = opt["is_enabled"] is true ? "" : " (DISABLED)";
-                sb.AppendLine($"- [{opt["index"]}] **{opt["name"]}**{enabled} - {opt["description"]}");
+                string targets = opt.TryGetValue("target_player_slots", out var slots) && slots is int[] { Length: > 0 } playerSlots
+                    ? $" Choose a `target_player_slot` from {string.Join(", ", playerSlots)}."
+                    : "";
+                sb.AppendLine($"- [{opt["index"]}] **{opt["name"]}**{enabled} - {opt["description"]}{targets}");
             }
             sb.AppendLine();
         }
@@ -643,11 +707,17 @@ public static partial class McpMod
 
     private static void FormatMapMarkdown(StringBuilder sb, Dictionary<string, object?> map)
     {
+        if (map.GetValueOrDefault("next_event") is Dictionary<string, object?> nextEvent)
+        {
+            sb.AppendLine($"**Next Event:** {nextEvent["name"]} (Lantern Key)");
+            sb.AppendLine();
+        }
+
         // Path taken
         if (map.TryGetValue("visited", out var visitedObj) && visitedObj is List<Dictionary<string, object?>> visited && visited.Count > 0)
         {
             sb.AppendLine("## Path Taken");
-            var parts = visited.Select((v, i) => $"{i + 1}. {v["type"]} ({v["col"]},{v["row"]})");
+            var parts = visited.Select((v, i) => $"{i + 1}. {FormatMapNodeLabel(v)}");
             sb.AppendLine(string.Join(" → ", parts) + " ← current");
             sb.AppendLine();
         }
@@ -666,7 +736,7 @@ public static partial class McpMod
             sb.AppendLine("## Choose Next Node");
             foreach (var opt in options)
             {
-                sb.AppendLine($"- [{opt["index"]}] **{opt["type"]}** ({opt["col"]},{opt["row"]})");
+                sb.AppendLine($"- [{opt["index"]}] {FormatMapNodeLabel(opt, boldType: true)}");
                 string tree = BuildFuturePathTree(opt, nodeLookup);
                 if (tree.Length > 0)
                     sb.AppendLine($"  Future paths: {tree}");
@@ -679,6 +749,17 @@ public static partial class McpMod
             sb.AppendLine("No travelable nodes available.");
             sb.AppendLine();
         }
+    }
+
+    private static string FormatMapNodeLabel(Dictionary<string, object?> node, bool boldType = false)
+    {
+        string type = node.GetValueOrDefault("type")?.ToString() ?? "Unknown";
+        if (node.GetValueOrDefault("guaranteed_room_type") is string guaranteedType)
+            type = $"{guaranteedType} (guaranteed)";
+        string note = node.GetValueOrDefault("enemy_starting_hp") is 1 ? " [Fur Coat · 1 HP enemies]" : "";
+        if (node.GetValueOrDefault("quests") is List<Dictionary<string, object?>> quests)
+            note += $" [{string.Join(", ", quests.Select(quest => quest["name"] ?? quest["id"]))}]";
+        return $"{(boldType ? $"**{type}**" : type)} ({node["col"]},{node["row"]}){note}";
     }
 
     /// <summary>
@@ -696,17 +777,14 @@ public static partial class McpMod
         while (currentKeys.Count > 0)
         {
             // Collect node info for this level
-            var levelNodes = new List<(string type, int col, int row)>();
+            var levelNodes = new List<string>();
             var nextKeys = new HashSet<string>();
 
             foreach (var key in currentKeys.OrderBy(k => k))
             {
                 if (nodeLookup.TryGetValue(key, out var node))
                 {
-                    string type = node["type"]?.ToString() ?? "Unknown";
-                    int col = node["col"] is int c ? c : Convert.ToInt32(node["col"]);
-                    int row = node["row"] is int r ? r : Convert.ToInt32(node["row"]);
-                    levelNodes.Add((type, col, row));
+                    levelNodes.Add(FormatMapNodeLabel(node));
 
                     foreach (var childKey in GetChildKeys(node))
                         nextKeys.Add(childKey);
@@ -716,7 +794,7 @@ public static partial class McpMod
             if (levelNodes.Count == 0) break;
 
             sb.Append("-> ");
-            sb.Append(string.Join(" or ", levelNodes.Select(n => $"{n.type} ({n.col},{n.row})")));
+            sb.Append(string.Join(" or ", levelNodes));
             sb.Append(' ');
 
             currentKeys = nextKeys;
@@ -753,6 +831,8 @@ public static partial class McpMod
                     extra = $" - {pDesc}";
                 else if (item.TryGetValue("potion_name", out var pName) && pName != null)
                     extra = $" ({pName})";
+                else if (item.GetValueOrDefault("card") is Dictionary<string, object?> card)
+                    extra = $" — **{card["name"]}**: {card["description"]}";
                 sb.AppendLine($"- [{item["index"]}] **{item["type"]}**: {item["description"]}{extra}");
             }
             sb.AppendLine();
@@ -769,7 +849,7 @@ public static partial class McpMod
         sb.AppendLine();
     }
 
-    private static void FormatCardRewardMarkdown(StringBuilder sb, Dictionary<string, object?> cardReward)
+    private static void FormatCardRewardMarkdown(StringBuilder sb, Dictionary<string, object?> cardReward, bool isMultiplayer)
     {
         sb.AppendLine("## Card Reward Selection");
         sb.AppendLine("Choose a card to add to your deck:");
@@ -788,6 +868,23 @@ public static partial class McpMod
 
         bool canSkip = cardReward.TryGetValue("can_skip", out var cs) && cs is true;
         sb.AppendLine($"**Can skip:** {(canSkip ? "Yes" : "No")}");
+
+        if (cardReward.TryGetValue("alternatives", out var choices) &&
+            choices is List<Dictionary<string, object?>> alternatives && alternatives.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("### Alternatives");
+            foreach (var alternative in alternatives)
+            {
+                string availability = alternative["is_enabled"] is true ? "" : " (unavailable)";
+                sb.AppendLine($"- `{alternative["id"]}` {alternative["title"]}{availability}");
+            }
+            if (alternatives.Any(alternative => alternative["is_enabled"] is true))
+            {
+                string prefix = isMultiplayer ? "mp_" : "";
+                sb.AppendLine($"Use `{prefix}rewards_choose_alternative(alternative_id)` with the listed ID.");
+            }
+        }
         sb.AppendLine();
     }
 
@@ -990,7 +1087,7 @@ public static partial class McpMod
         sb.AppendLine();
     }
 
-    private static void FormatCrystalSphereMarkdown(StringBuilder sb, Dictionary<string, object?> crystalSphere)
+    private static void FormatCrystalSphereMarkdown(StringBuilder sb, Dictionary<string, object?> crystalSphere, bool isMultiplayer)
     {
         sb.AppendLine("## Crystal Sphere");
 
@@ -1001,17 +1098,24 @@ public static partial class McpMod
         sb.AppendLine();
 
         string tool = crystalSphere.TryGetValue("tool", out var toolObj) ? toolObj?.ToString() ?? "none" : "none";
-        string divinationsLeft = crystalSphere.TryGetValue("divinations_left_text", out var dlObj) && dlObj != null
-            ? dlObj.ToString()!
-            : "Unknown";
-        sb.AppendLine($"**Tool:** {tool} | **Divinations:** {divinationsLeft}");
+        string divinationsLeft = crystalSphere["divinations_remaining"]?.ToString() ?? "Unknown";
+        sb.AppendLine($"**Grid:** {crystalSphere["grid_width"]}x{crystalSphere["grid_height"]} | **Tool:** {tool} | **Divinations remaining:** {divinationsLeft}");
+
+        var availableTools = new List<string>();
+        if (crystalSphere["can_use_big_tool"] is true)
+            availableTools.Add("big");
+        if (crystalSphere["can_use_small_tool"] is true)
+            availableTools.Add("small");
+        if (availableTools.Count > 0)
+            sb.AppendLine($"**Available tools:** {string.Join(", ", availableTools)}");
         sb.AppendLine();
 
-        if (crystalSphere.TryGetValue("clickable_cells", out var cellsObj) && cellsObj is List<Dictionary<string, object?>> clickableCells && clickableCells.Count > 0)
+        var clickableCells = crystalSphere["clickable_cells"] as List<Dictionary<string, object?>>;
+        if (clickableCells is { Count: > 0 })
         {
             sb.AppendLine("### Clickable Cells");
-            foreach (var cell in clickableCells)
-                sb.AppendLine($"- ({cell["x"]}, {cell["y"]})");
+            foreach (var row in clickableCells.GroupBy(cell => cell["y"]))
+                sb.AppendLine(string.Join(" ", row.Select(cell => $"({cell["x"]}, {cell["y"]})")));
             sb.AppendLine();
         }
 
@@ -1019,18 +1123,26 @@ public static partial class McpMod
         {
             sb.AppendLine("### Revealed Items");
             foreach (var item in revealedItems)
-                sb.AppendLine($"- **{item["item_type"]}** at ({item["x"]}, {item["y"]}) size {item["width"]}x{item["height"]}");
+            {
+                string kind = item["is_good"] is true ? "Reward" : "Hazard";
+                string details = item.TryGetValue("gold_amount", out var amount) ? $", {amount} gold" :
+                    item.TryGetValue("rarity", out var rarity) ? $", {rarity}" : "";
+                sb.AppendLine($"- **{item["item_type"]}** at ({item["x"]}, {item["y"]}) size {item["width"]}x{item["height"]} ({kind}{details})");
+            }
             sb.AppendLine();
         }
 
+        string prefix = isMultiplayer ? "mp_" : "";
         bool canProceed = crystalSphere.TryGetValue("can_proceed", out var cp) && cp is true;
         if (canProceed)
         {
-            sb.AppendLine("Use `crystal_sphere_proceed()` to continue.");
+            sb.AppendLine($"Use `{prefix}crystal_sphere_proceed()` to continue.");
         }
-        else
+        else if (clickableCells is { Count: > 0 })
         {
-            sb.AppendLine("Use `crystal_sphere_set_tool(tool)` with `big` or `small`, then `crystal_sphere_click_cell(x, y)`.");
+            if (availableTools.Count > 0)
+                sb.AppendLine($"Use `{prefix}crystal_sphere_set_tool(tool)` to switch between available tools.");
+            sb.AppendLine($"Use `{prefix}crystal_sphere_click_cell(x, y)` to divine a cell.");
         }
         sb.AppendLine();
     }
@@ -1067,19 +1179,72 @@ public static partial class McpMod
     }
 
     private static void FormatListSection(StringBuilder sb, string title, Dictionary<string, object?> parent, string key,
-        Func<Dictionary<string, object?>, string> formatter)
+        Func<Dictionary<string, object?>, string> formatter, Func<Dictionary<string, object?>, bool>? filter = null)
     {
         if (parent.TryGetValue(key, out var listObj) && listObj is List<Dictionary<string, object?>> list && list.Count > 0)
         {
+            var items = filter == null ? list : list.Where(filter).ToList();
+            if (items.Count == 0)
+                return;
             sb.AppendLine($"### {title}");
-            foreach (var item in list)
+            foreach (var item in items)
                 sb.AppendLine(formatter(item));
             sb.AppendLine();
         }
     }
 
+    private static string FormatRelicLine(Dictionary<string, object?> relic)
+    {
+        string counter = relic.GetValueOrDefault("counter") is { } count ? $" [{count}]" : "";
+        string? nativeStatus = relic.GetValueOrDefault("status") as string;
+        string status = relic.GetValueOrDefault("is_used_up") is true ? " (used up)"
+            : nativeStatus is "Active" or "Disabled" ? $" ({nativeStatus.ToLowerInvariant()})" : "";
+        string treasure = relic.GetValueOrDefault("empty_chest_pending") is true ? " The next chest is empty." : "";
+        return $"- **{relic["name"]}**{counter}{status}: {relic["description"]}{treasure}";
+    }
+
+    private static void FormatRunProgressMarkdown(StringBuilder sb, Dictionary<string, object?> player)
+    {
+        if (player.GetValueOrDefault("deck") is List<Dictionary<string, object?>> deck && deck.Count > 0)
+        {
+            var cards = deck.Select(FormatDeckCardName).GroupBy(name => name)
+                .Select(group => group.Count() == 1 ? group.Key : $"{group.Key} ×{group.Count()}");
+            sb.AppendLine($"**Deck ({deck.Count}):** {string.Join(", ", cards)}");
+            sb.AppendLine();
+        }
+
+        FormatListSection(sb, "Quests", player, "quest_cards", quest =>
+        {
+            string act = quest.GetValueOrDefault("target_act") is { } targetAct ? $" · Act {targetAct}" : "";
+            string location = quest.GetValueOrDefault("target_node") is Dictionary<string, object?> coord
+                ? $" ({coord["col"]},{coord["row"]})" : "";
+            return $"- **{quest["name"]}**{act}{location}: {quest["description"]}";
+        });
+
+        if (player.GetValueOrDefault("wongo_points") is int points)
+        {
+            sb.AppendLine($"**Wongo Points:** {points}");
+            sb.AppendLine();
+        }
+    }
+
+    private static string FormatDeckCardName(Dictionary<string, object?> card)
+    {
+        string name = card["name"]?.ToString() ?? card["id"]?.ToString() ?? "Unknown card";
+        if (card.GetValueOrDefault("enchantment_id") is string enchantment)
+            name += $" [{enchantment}]";
+        if (card.GetValueOrDefault("affliction_id") is string affliction)
+            name += $" [{affliction}]";
+        return name;
+    }
+
     private static void FormatPotionsSection(StringBuilder sb, Dictionary<string, object?> playerDict)
     {
+        if (playerDict.GetValueOrDefault("can_use_or_remove_potions") is false)
+        {
+            sb.AppendLine("**Potion use and removal are currently disabled.**");
+            sb.AppendLine();
+        }
         if (!playerDict.TryGetValue("potions", out var potionsObj)
             || potionsObj is not List<Dictionary<string, object?>> potions
             || potions.Count == 0)
@@ -1105,9 +1270,15 @@ public static partial class McpMod
             else
                 sb.AppendLine($"- **{vote["player"]}**{youTag}: *waiting...*");
         }
-        bool allVoted = mapData.TryGetValue("all_voted", out var av) && av is true;
-        if (allVoted)
-            sb.AppendLine("**All players have voted!**");
+        switch (mapData.GetValueOrDefault("vote_phase"))
+        {
+            case "waiting_for_teammates":
+                sb.AppendLine("**Waiting for teammates to vote.**");
+                break;
+            case "resolving_votes":
+                sb.AppendLine("**All votes are visible.** Wait for the game to resolve the destination.");
+                break;
+        }
         sb.AppendLine();
     }
 
@@ -1146,10 +1317,9 @@ public static partial class McpMod
         foreach (var bid in bids)
         {
             string youTag = bid["is_local"] is true ? " (YOU)" : "";
-            if (bid["voted"] is true)
-                sb.AppendLine($"- **{bid["player"]}**{youTag}: bid on relic #{bid["vote_relic_index"]}");
-            else
-                sb.AppendLine($"- **{bid["player"]}**{youTag}: *waiting...*");
+            string status = bid["voted"] is not true ? "*waiting...*" :
+                bid["vote_relic_index"] is int index ? $"bid on relic #{index}" : "skipped";
+            sb.AppendLine($"- **{bid["player"]}**{youTag}: {status}");
         }
         bool allBid = treasureData.TryGetValue("all_bid", out var ab) && ab is true;
         if (allBid)

@@ -11,7 +11,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -246,7 +246,13 @@ async def menu_select(option: str, seed: str | None = None) -> str:
     if seed is not None:
         body["seed"] = seed
     try:
-        return await _post(body)
+        try:
+            return await _post(body)
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code != 409:
+                raise
+            # The single-player route rejects active multiplayer runs before dispatch.
+            return await _mp_post(body)
     except Exception as e:
         return _handle_error(e)
 
@@ -298,6 +304,38 @@ async def search_wiki(query: str, item_type: str = "all", limit: int = 10) -> st
     """
     try:
         return await _wiki_get(query, item_type, limit)
+    except Exception as e:
+        return _handle_error(e)
+
+
+class GameNameReference(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal[
+        "act", "affliction", "card", "character", "enchantment", "encounter",
+        "enemy", "event", "orb", "potion", "power", "relic",
+    ]
+    id: str = Field(min_length=1, max_length=100, description="Stable game ID or current enemy entity ID.")
+
+
+@mcp.tool()
+async def get_simplified_chinese_names(
+    entries: Annotated[list[GameNameReference], Field(min_length=1, max_length=24)],
+) -> str:
+    """Look up official Simplified Chinese names from the installed game.
+
+    Use game IDs from state or wiki results and enemy entity IDs from combat.
+    Works even while this copy of the game is in English. Use these names when
+    writing a co-op prompt or chat message to a teammate who uses Simplified
+    Chinese. Keep the original IDs for game actions.
+    """
+    try:
+        response = await _get_client().get(
+            f"{_base_url}/api/v1/chinese-names",
+            params=[("entry", f"{entry.kind}:{entry.id}") for entry in entries],
+        )
+        response.raise_for_status()
+        return response.text
     except Exception as e:
         return _handle_error(e)
 
@@ -580,6 +618,15 @@ async def rewards_pick_card(card_index: int) -> str:
 
 
 @mcp.tool()
+async def rewards_choose_alternative(alternative_id: str) -> str:
+    """[Rewards] Choose an enabled card reward alternative by the exact ID reported in game state, such as REROLL or SACRIFICE."""
+    try:
+        return await _post({"action": "select_card_reward_alternative", "alternative_id": alternative_id})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
 async def rewards_skip_card() -> str:
     """[Rewards] Skip the card reward without selecting a card."""
     try:
@@ -659,11 +706,11 @@ async def shop_purchase(item_index: int) -> str:
 async def event_choose_option(option_index: int) -> str:
     """[Event] Choose an event option.
 
-    Works for both regular events and ancients (after dialogue ends).
-    Also used to click the Proceed option after an event resolves.
+    Use an option with can_choose=true from the current event state.
+    This also handles Proceed, and the Architect's Continue and Respond choices.
 
     Args:
-        option_index: 0-based index of the option from the event state.
+        option_index: Native index of the option from the event state.
     """
     try:
         return await _post({"action": "choose_event_option", "index": option_index})
@@ -675,7 +722,7 @@ async def event_choose_option(option_index: int) -> str:
 async def event_advance_dialogue() -> str:
     """[Event] Advance ancient event dialogue.
 
-    Click through dialogue text in ancient events. Call repeatedly until options appear.
+    Use while can_advance_dialogue is true. Check the event state for each line.
     """
     try:
         return await _post({"action": "advance_dialogue"})
@@ -874,8 +921,11 @@ async def mp_get_game_state(format: str = "markdown") -> str:
     detail for the local player (relics, potions, deck, etc.), along with
     multiplayer-specific data: map votes, event votes, treasure bids,
     end-turn ready status. Only works during a multiplayer run.
-    Wait for battle.can_act before ordinary local combat actions and for the
-    treasure readiness fields before claiming, skipping, or proceeding.
+    Wait for battle.can_act before ordinary local combat actions. The separate
+    battle.can_undo_end_turn flag indicates when you can retract your vote.
+    On the map, use map.vote_phase and run.is_traveling to follow the party.
+    run.map_coord is the actual location. Use treasure readiness fields before
+    claiming, skipping, or proceeding.
 
     Args:
         format: "markdown" for human-readable output, "json" for structured data.
@@ -886,21 +936,109 @@ async def mp_get_game_state(format: str = "markdown") -> str:
         return _handle_error(e)
 
 
-@mcp.tool()
-async def mp_combat_play_card(card_index: int, target: str | None = None) -> str:
-    """[Multiplayer Combat] Play a card from the local player's hand.
+class CoordinationOption(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-    Same as singleplayer combat_play_card but routed through the multiplayer
-    endpoint for sync safety.
+    label: str | None = Field(
+        default=None, min_length=1, max_length=40,
+        description="Button text. Omit for a built-in translated label. Custom choices require text.",
+    )
+    kind: Literal["choice", "agent_first", "teammate_first", "focus_enemy", "no_preference"] = "choice"
+    target: str | None = Field(default=None, description="Current enemy entity ID for a focus_enemy choice.")
+
+
+@mcp.tool()
+async def mp_coordination_prompt(
+    recipient_slot: Annotated[int, Field(ge=0)],
+    options: Annotated[list[CoordinationOption], Field(min_length=2, max_length=4)],
+    question: Annotated[str | None, Field(min_length=1, max_length=140)] = None,
+    allow_text: bool = True,
+    lifetime_seconds: Annotated[int, Field(ge=5, le=60)] = 25,
+) -> str:
+    """[Multiplayer Coordination] Ask one teammate a combat question with quick replies.
+
+    Requires the in-game coordination companion on the participating clients.
+    Keep the affected combat action on hold while the prompt is pending. Only
+    one outgoing prompt can be active per seat. Read mp_coordination_state()
+    for the answer, then refresh multiplayer game state before acting.
 
     Args:
-        card_index: Index of the card in hand (0-based).
-        target: Enemy entity ID from the current combat. It stays assigned to that enemy until combat ends.
-            Required for single-target cards.
+        recipient_slot: Teammate's zero-based index in the state players array.
+        question: What you need the teammate to decide. Omit for a standard
+            question in the recipient's language. Write custom text in their language.
+        options: Two to four button labels and their meanings. A focus_enemy
+            choice needs a target from the current enemy entity IDs. Omit
+            built-in labels to use the recipient's language and native enemy names. A
+            teammate_first choice waits for the teammate to finish or say Go ahead.
+        allow_text: Allow a free-text answer alongside the buttons.
+        lifetime_seconds: Seconds to wait for a reply or a teammate's first play.
     """
-    body: dict = {"action": "play_card", "card_index": card_index}
-    if target is not None:
-        body["target"] = target
+    try:
+        return await _mp_post({
+            "action": "coordination_prompt",
+            "recipient_slot": recipient_slot,
+            "question": question,
+            "options": [option.model_dump(exclude_none=True) for option in options],
+            "allow_text": allow_text,
+            "lifetime_seconds": lifetime_seconds,
+        })
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_coordination_state(after_id: Annotated[int, Field(ge=0)] = 0) -> str:
+    """[Multiplayer Coordination] Read your prompts and recent messages.
+
+    Returns the incoming and outgoing prompts and events after after_id. Use
+    the returned latest_id for the next call within this run. This is a quick
+    read. Allow a teammate time to respond between reads.
+
+    Look up the recipient in teammates by player_slot. If language is "zhs",
+    write custom prompts and chat in Simplified Chinese and use
+    get_simplified_chinese_names() for game terms. Standard prompts and
+    built-in reply labels can be generated in the recipient's language.
+
+    Check for new events before committing to a turn or route. Human players
+    can start a conversation using Chat at any point in the run, even without
+    an active prompt. Reply to a direct message with mp_coordination_message()
+    using the event's sender_slot.
+
+    Keep the affected action on hold while the outgoing prompt is pending or
+    waiting_for_teammate. If it is answered, refresh the fight state before
+    executing the agreed action with its coordination_prompt_id. An expired
+    or cancelled prompt no longer authorizes the proposed action.
+    """
+    try:
+        return await _mp_post({"action": "coordination_state", "after_id": after_id})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_coordination_reply(
+    prompt_id: Annotated[str, Field(min_length=1)],
+    choice_index: Annotated[int | None, Field(ge=0)] = None,
+    text: Annotated[str | None, Field(min_length=1, max_length=200)] = None,
+    go_ahead: bool = False,
+) -> str:
+    """[Multiplayer Coordination] Reply to your incoming prompt.
+
+    Supply exactly one reply. Use a zero-based choice_index to select a
+    button, text when the prompt permits a text answer, or go_ahead=true
+    after choosing to go first and completing your play. A reply changes
+    coordination state without playing a card or ending anyone's turn.
+    """
+    reply_count = sum((choice_index is not None, text is not None, go_ahead))
+    if reply_count != 1:
+        return "Error: supply exactly one of choice_index, text, or go_ahead=true."
+    body: dict = {"action": "coordination_reply", "prompt_id": prompt_id}
+    if choice_index is not None:
+        body["choice_index"] = choice_index
+    if text is not None:
+        body["text"] = text
+    if go_ahead:
+        body["go_ahead"] = True
     try:
         return await _mp_post(body)
     except Exception as e:
@@ -908,14 +1046,86 @@ async def mp_combat_play_card(card_index: int, target: str | None = None) -> str
 
 
 @mcp.tool()
-async def mp_combat_end_turn() -> str:
-    """[Multiplayer Combat] Submit end-turn vote.
+async def mp_coordination_message(
+    recipient_slot: Annotated[int, Field(ge=0)],
+    text: Annotated[str, Field(min_length=1, max_length=200)],
+) -> str:
+    """[Multiplayer Coordination] Send a short text message to one teammate.
 
-    In multiplayer, ending the turn is a VOTE — the turn only ends when ALL
-    players have submitted. Use mp_combat_undo_end_turn() to retract.
+    Recipient slot is the teammate's zero-based index in the state players
+    array. Use mp_coordination_reply() for a response to a specific prompt.
     """
     try:
-        return await _mp_post({"action": "end_turn"})
+        return await _mp_post({
+            "action": "coordination_message",
+            "recipient_slot": recipient_slot,
+            "text": text,
+        })
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_coordination_cancel(prompt_id: Annotated[str, Field(min_length=1)]) -> str:
+    """[Multiplayer Coordination] Withdraw your outgoing prompt and free its slot."""
+    try:
+        return await _mp_post({"action": "coordination_cancel", "prompt_id": prompt_id})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_combat_play_card(
+    card_index: int, target: str | None = None, coordination_prompt_id: str | None = None,
+    target_player_slot: Annotated[int | None, Field(ge=0)] = None,
+) -> str:
+    """[Multiplayer Combat] Play a card from the local player's hand.
+
+    Same as singleplayer combat_play_card but routed through the multiplayer
+    endpoint for sync safety.
+
+    Args:
+        card_index: Index of the card in hand (0-based).
+        target: Enemy entity ID from the current combat. Required for enemy-targeted cards.
+        target_player_slot: Required for AnyAlly or AnyPlayer cards. Use a living player's
+            player_slot from the current players list. AnyAlly excludes the caster.
+        coordination_prompt_id: Bind this action to an answered combat coordination prompt.
+            Refresh the hand and enemy state before using it.
+    """
+    body: dict = {"action": "play_card", "card_index": card_index}
+    if target is not None:
+        body["target"] = target
+    if target_player_slot is not None:
+        body["target_player_slot"] = target_player_slot
+    if coordination_prompt_id is not None:
+        body["coordination_prompt_id"] = coordination_prompt_id
+    try:
+        return await _mp_post(body)
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_combat_end_turn(
+    allow_playable_cards: bool = False, coordination_prompt_id: str | None = None
+) -> str:
+    """[Multiplayer Combat] Submit end-turn vote.
+
+    Finish planned card plays and check the current hand before ending. If
+    playable cards remain, the tool returns their indices without submitting.
+    Use mp_combat_undo_end_turn() while battle.can_undo_end_turn is true.
+
+    Args:
+        allow_playable_cards: Set true to deliberately end with playable cards
+            remaining, for example when every useful play is complete.
+        coordination_prompt_id: Bind ending the turn to an answered
+            coordination prompt for the current combat turn.
+    """
+    body: dict = {"action": "end_turn", "allow_playable_cards": allow_playable_cards}
+    if coordination_prompt_id is not None:
+        body["coordination_prompt_id"] = coordination_prompt_id
+    try:
+        return await _mp_post(body)
     except Exception as e:
         return _handle_error(e)
 
@@ -924,8 +1134,8 @@ async def mp_combat_end_turn() -> str:
 async def mp_combat_undo_end_turn() -> str:
     """[Multiplayer Combat] Retract end-turn vote.
 
-    If you submitted end turn but want to play more cards, use this to undo.
-    Only works if other players haven't all committed yet.
+    Use while battle.can_undo_end_turn is true. After submitting, wait for
+    battle.can_act before playing more cards.
     """
     try:
         return await _mp_post({"action": "undo_end_turn"})
@@ -934,16 +1144,26 @@ async def mp_combat_undo_end_turn() -> str:
 
 
 @mcp.tool()
-async def mp_use_potion(slot: int, target: str | None = None) -> str:
+async def mp_use_potion(
+    slot: int, target: str | None = None, coordination_prompt_id: str | None = None,
+    target_player_slot: Annotated[int | None, Field(ge=0)] = None,
+) -> str:
     """[Multiplayer] Use a potion from the local player's potion slots.
 
     Args:
         slot: Potion slot index (as shown in game state).
         target: Enemy entity ID from the current combat. Required for enemy-targeted potions.
+        target_player_slot: Living player's player_slot from the current players list.
+            Required for AnyAlly potions. AnyPlayer potions default to the user.
+        coordination_prompt_id: Bind this action to an answered combat coordination prompt.
     """
     body: dict = {"action": "use_potion", "slot": slot}
     if target is not None:
         body["target"] = target
+    if target_player_slot is not None:
+        body["target_player_slot"] = target_player_slot
+    if coordination_prompt_id is not None:
+        body["coordination_prompt_id"] = coordination_prompt_id
     try:
         return await _mp_post(body)
     except Exception as e:
@@ -953,6 +1173,9 @@ async def mp_use_potion(slot: int, target: str | None = None) -> str:
 @mcp.tool()
 async def mp_discard_potion(slot: int) -> str:
     """[Multiplayer] Discard a potion from the local player's potion slots to free up space.
+
+    This queues a synchronized action. Confirm the slot is empty in fresh game
+    state before claiming a replacement.
 
     Args:
         slot: Potion slot index to discard (as shown in game state).
@@ -967,8 +1190,9 @@ async def mp_discard_potion(slot: int) -> str:
 async def mp_map_vote(node_index: int) -> str:
     """[Multiplayer Map] Vote for a map node to travel to.
 
-    In multiplayer, map selection is a vote — travel happens when all players
-    agree. Re-voting for the same node sends a ping to other players.
+    After a split vote, the party can travel to another player's choice.
+    Check run.map_coord and run.is_traveling in multiplayer state before
+    acting in the new room. Re-selecting your node sends a ping.
 
     Args:
         node_index: 0-based index of the node from the next_options list.
@@ -983,11 +1207,11 @@ async def mp_map_vote(node_index: int) -> str:
 async def mp_event_choose_option(option_index: int) -> str:
     """[Multiplayer Event] Choose or vote for an event option.
 
-    For shared events: this is a vote (resolves when all players vote).
-    For individual events: immediate choice, same as singleplayer.
+    Use an option with can_choose=true from the current event state.
+    A shared choice returns choice_status=vote_submitted. Check state for the party's result.
 
     Args:
-        option_index: 0-based index of the option from the event state.
+        option_index: Native index of the option from the event state.
     """
     try:
         return await _mp_post({"action": "choose_event_option", "index": option_index})
@@ -997,7 +1221,7 @@ async def mp_event_choose_option(option_index: int) -> str:
 
 @mcp.tool()
 async def mp_event_advance_dialogue() -> str:
-    """[Multiplayer Event] Advance ancient event dialogue."""
+    """[Multiplayer Event] Advance ancient dialogue while can_advance_dialogue is true."""
     try:
         return await _mp_post({"action": "advance_dialogue"})
     except Exception as e:
@@ -1005,16 +1229,23 @@ async def mp_event_advance_dialogue() -> str:
 
 
 @mcp.tool()
-async def mp_rest_choose_option(option_index: int) -> str:
+async def mp_rest_choose_option(
+    option_index: int, target_player_slot: Annotated[int | None, Field(ge=0)] = None,
+) -> str:
     """[Multiplayer Rest Site] Choose a rest site option (rest, smith, etc.).
 
     Per-player choice — no voting needed.
 
     Args:
         option_index: 0-based index of the option.
+        target_player_slot: Required for Mend. Use one of the option's
+            target_player_slots from the current rest site state.
     """
+    body = {"action": "choose_rest_option", "index": option_index}
+    if target_player_slot is not None:
+        body["target_player_slot"] = target_player_slot
     try:
-        return await _mp_post({"action": "choose_rest_option", "index": option_index})
+        return await _mp_post(body)
     except Exception as e:
         return _handle_error(e)
 
@@ -1056,6 +1287,15 @@ async def mp_rewards_pick_card(card_index: int) -> str:
     """
     try:
         return await _mp_post({"action": "select_card_reward", "card_index": card_index})
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def mp_rewards_choose_alternative(alternative_id: str) -> str:
+    """[Multiplayer Rewards] Choose an enabled card reward alternative by the exact ID reported in game state, such as REROLL or SACRIFICE."""
+    try:
+        return await _mp_post({"action": "select_card_reward_alternative", "alternative_id": alternative_id})
     except Exception as e:
         return _handle_error(e)
 

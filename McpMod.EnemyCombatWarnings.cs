@@ -9,6 +9,9 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
+    private const string StolenCardRewardTip =
+        "Claim the card from rewards if you want it back. Leave a Curse or another unwanted card unclaimed to keep it out of your deck.";
+
     private static void CollectEnemyCombatWarnings(ICombatState combat, Creature player, List<CombatWarning> warnings)
     {
         foreach (var (enemy, entityId) in GetLivingEnemies(combat))
@@ -53,7 +56,7 @@ public static partial class McpMod
                 EnemyWarningForSwipe(swipe, entityId),
             "ESCAPE_ARTIST_POWER" => new(id, "Escape Artist", "enemy",
                 (amount == 1 ? "This enemy tries to escape this turn." : $"This enemy tries to escape in {amount} turns.") +
-                " Defeat it before it leaves to recover any stolen card.",
+                " Defeat it before it leaves to make any stolen card available as a reward. " + StolenCardRewardTip,
                 amount, EntityId: entityId),
             "THIEVERY_POWER" when ReferenceEquals(power.Target, player) && player.Player is { Gold: > 0 } localPlayer =>
                 EnemyWarningForThievery(id, Math.Min(amount, localPlayer.Gold), entityId),
@@ -86,7 +89,7 @@ public static partial class McpMod
         var title = SafeGetText(() => power.StolenCard?.Title);
         string card = string.IsNullOrWhiteSpace(title) ? "a card from your deck" : $"\"{title}\" from your deck";
         return new(power.Id.Entry, "Swipe", "enemy",
-            $"This enemy stole {card}. Defeat it before it escapes, then claim the card from rewards.",
+            $"This enemy stole {card}. Defeat it before it escapes to make the card available as a reward. {StolenCardRewardTip}",
             EntityId: entityId);
     }
 
