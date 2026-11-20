@@ -22,7 +22,7 @@ public static partial class McpMod
             return Error("No run in progress");
 
         if (!RunManager.Instance.NetService.Type.IsMultiplayer())
-            return Error("Not in a multiplayer run. Use /api/v1/singleplayer instead.");
+            return BlockedAction(RunModeConflict(isMultiplayer: false));
 
         var runState = RunManager.Instance.DebugOnlyGetState()!;
         var player = LocalContext.GetMe(runState);

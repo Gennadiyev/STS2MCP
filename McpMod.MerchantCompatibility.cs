@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using MegaCrit.Sts2.Core.Entities.Merchant;
 using MegaCrit.Sts2.Core.Helpers;
@@ -13,6 +14,9 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
+    private sealed record MerchantPurchaseAttempt(int Index, int Price, Task<bool> Completion);
+    private static readonly ConditionalWeakTable<MerchantInventory, MerchantPurchaseAttempt> MerchantPurchases = new();
+
     // The beta moved inventory lookup and purchases from the room and entry
     // to the synchronizer. AllEntries also changed its CLR return signature.
     private static readonly PropertyInfo? MerchantSynchronizerProperty =
@@ -81,7 +85,7 @@ public static partial class McpMod
         };
     }
 
-    private static bool TryStartMerchantPurchase(MerchantInventory inventory, MerchantEntry entry)
+    private static Task<bool>? StartMerchantPurchase(MerchantInventory inventory, MerchantEntry entry)
     {
         if (UseSynchronizedMerchant)
         {
@@ -89,18 +93,53 @@ public static partial class McpMod
             if (synchronizer == null
                 || !ReferenceEquals(GetSynchronizedMerchantInventory(synchronizer), inventory)
                 || !GetMerchantEntries(inventory).Any(candidate => ReferenceEquals(candidate, entry)))
-                return false;
+                return null;
 
             var purchase = SynchronizedPurchaseMethod
                 ?? throw new MissingMethodException(synchronizer.GetType().FullName, "PurchaseLocalEntry");
-            TaskHelper.RunSafely(purchase.CreateDelegate<Func<MerchantEntry, Task<bool>>>(synchronizer)(entry));
-            return true;
+            return purchase.CreateDelegate<Func<MerchantEntry, Task<bool>>>(synchronizer)(entry);
         }
 
         var legacyPurchase = LegacyPurchaseMethod
             ?? throw new MissingMethodException(typeof(MerchantEntry).FullName, "OnTryPurchaseWrapper");
-        TaskHelper.RunSafely(
-            legacyPurchase.CreateDelegate<Func<MerchantInventory, bool, Task<bool>>>(entry)(inventory, false));
-        return true;
+        return legacyPurchase.CreateDelegate<Func<MerchantInventory, bool, Task<bool>>>(entry)(inventory, false);
+    }
+
+    private static MerchantPurchaseAttempt? GetLastMerchantPurchase(MerchantInventory inventory) =>
+        MerchantPurchases.TryGetValue(inventory, out var purchase) ? purchase : null;
+
+    private static MerchantPurchaseAttempt RecordMerchantPurchase(
+        MerchantInventory inventory, int index, int price, Task<bool> completion)
+    {
+        var purchase = new MerchantPurchaseAttempt(index, price, completion);
+        MerchantPurchases.Remove(inventory);
+        MerchantPurchases.Add(inventory, purchase);
+        TaskHelper.RunSafely(completion);
+        return purchase;
+    }
+
+    private static Dictionary<string, object?> BuildMerchantPurchaseResult(MerchantPurchaseAttempt purchase)
+    {
+        var result = purchase.Completion.Status switch
+        {
+            TaskStatus.RanToCompletion when purchase.Completion.Result => new Dictionary<string, object?>
+            {
+                ["status"] = "ok",
+                ["message"] = $"Purchased item for {purchase.Price} gold."
+            },
+            TaskStatus.RanToCompletion or TaskStatus.Canceled =>
+                BlockedAction(new("purchase_rejected", "The game rejected or cancelled the purchase.", false)),
+            TaskStatus.Faulted =>
+                BlockedAction(new("purchase_failed", "The shop purchase failed in the game.", false)),
+            _ => new Dictionary<string, object?>
+            {
+                ["status"] = "pending",
+                ["message"] = "Purchase is underway. Resolve any open selection and check shop state for the result."
+            }
+        };
+
+        result["item_index"] = purchase.Index;
+        result["price"] = purchase.Price;
+        return result;
     }
 }

@@ -194,8 +194,7 @@ public static partial class McpMod
                 // to prevent calling the non-sync-safe end_turn path
                 if (IsMultiplayerRun())
                 {
-                    SendError(response, 409,
-                        "Multiplayer run is active. Use /api/v1/multiplayer instead.");
+                    SendActionResult(response, BlockedAction(RunModeConflict(isMultiplayer: true)));
                     return;
                 }
 
@@ -211,8 +210,7 @@ public static partial class McpMod
                 // Guard: reject multiplayer endpoint during singleplayer runs
                 if (!IsMultiplayerRun())
                 {
-                    SendError(response, 409,
-                        "Not in a multiplayer run. Use /api/v1/singleplayer instead.");
+                    SendActionResult(response, BlockedAction(RunModeConflict(isMultiplayer: false)));
                     return;
                 }
 
@@ -289,6 +287,19 @@ public static partial class McpMod
                 && MegaCrit.Sts2.Core.Runs.RunManager.Instance.NetService.Type.IsMultiplayer();
         }
         catch { return false; }
+    }
+
+    private static ActionBlock RunModeConflict(bool isMultiplayer) => new("run_mode_conflict",
+        isMultiplayer ? "Multiplayer run is active. Use /api/v1/multiplayer instead." :
+            "Not in a multiplayer run. Use /api/v1/singleplayer instead.", false);
+
+    private static void SendActionResult(HttpListenerResponse response, Dictionary<string, object?> result, bool compact = false)
+    {
+        if (result.GetValueOrDefault("reason") is "run_mode_conflict" ||
+            (result.GetValueOrDefault("stop_reason") is "run_mode_conflict" &&
+             result.GetValueOrDefault("submitted") is List<string> { Count: 0 }))
+            response.StatusCode = (int)HttpStatusCode.Conflict;
+        SendJson(response, result, compact);
     }
 
     private static void HandleGetMultiplayerState(HttpListenerRequest request, HttpListenerResponse response)
@@ -378,7 +389,7 @@ public static partial class McpMod
             try
             {
                 var result = await completion.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
-                SendJson(response, result);
+                SendActionResult(response, result);
             }
             catch (TimeoutException) when (!completion.IsCompleted)
             {
@@ -484,7 +495,7 @@ public static partial class McpMod
         {
             if (action == "play_card_sequence")
             {
-                SendJson(response, await ExecuteCardSequence(parsed).ConfigureAwait(false), compact: true);
+                SendActionResult(response, await ExecuteCardSequence(parsed).ConfigureAwait(false), compact: true);
                 return;
             }
 
@@ -507,7 +518,7 @@ public static partial class McpMod
                     result["state_error"] = "The action was accepted. Refresh game state to check the result.";
                 }
             }
-            SendJson(response, result, compact: wait != null);
+            SendActionResult(response, result, compact: wait != null);
         }
         catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
         {

@@ -6,10 +6,10 @@ using System.Linq;
 using System.Net;
 using System.Reflection;
 using System.Text.Json;
-using MegaCrit.Sts2.Core.Platform.Steam;
+using Godot;
+using MegaCrit.Sts2.Core.Platform;
 using MegaCrit.Sts2.Core.Runs;
 using MegaCrit.Sts2.Core.Saves;
-using MegaCrit.Sts2.Core.Saves.Managers;
 
 namespace STS2_MCP;
 
@@ -46,8 +46,8 @@ public static partial class McpMod
             return new CompendiumSnapshot { Error = "No profile data available." };
 
         var profileId = saveManager.CurrentProfileId;
-        var progressPath = GetProfileProgressPath(profileId);
-        var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
+        var saveDirectory = GetActiveProfileSaveDirectory(saveManager);
+        var profileDirectory = UserDataPathProvider.GetProfileDir(profileId);
 
         var cardStats = progress.CardStats.Select(kv => new Dictionary<string, object?>
         {
@@ -74,10 +74,10 @@ public static partial class McpMod
         return new CompendiumSnapshot
         {
             ProfileId = profileId,
-            ProgressPath = progressPath,
-            ProfileRoot = profileRoot,
-            SaveScope = GetSaveScope(profileRoot),
+            SaveDirectory = saveDirectory,
+            SaveScope = profileDirectory.Replace('\\', '/').StartsWith("modded/", StringComparison.Ordinal) ? "modded" : "vanilla",
             IsRunInProgress = RunManager.Instance?.IsInProgress == true,
+            CurrentRunFile = IsMultiplayerRun() ? "current_run_mp.save" : "current_run.save",
             DiscoveredCards = progress.DiscoveredCards.Select(id => id.Entry).ToList(),
             DiscoveredRelics = progress.DiscoveredRelics.Select(id => id.Entry).ToList(),
             DiscoveredPotions = progress.DiscoveredPotions.Select(id => id.Entry).ToList(),
@@ -167,10 +167,10 @@ public static partial class McpMod
     {
         public string? Error { get; init; }
         public int ProfileId { get; init; }
-        public string? ProgressPath { get; init; }
-        public string ProfileRoot { get; init; } = "";
+        public string? SaveDirectory { get; init; }
         public string SaveScope { get; init; } = "vanilla";
         public bool IsRunInProgress { get; init; }
+        public string CurrentRunFile { get; init; } = "current_run.save";
         public List<string> DiscoveredCards { get; init; } = new();
         public List<string> DiscoveredRelics { get; init; } = new();
         public List<string> DiscoveredPotions { get; init; } = new();
@@ -264,8 +264,9 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildRunHistorySection(CompendiumSnapshot snapshot)
     {
         var values = snapshot.RunHistoryProgressMembers;
-        var historyDirectory = FindRunHistoryDirectory(snapshot);
-        if (historyDirectory != null)
+        bool activeDirectoryExists = Directory.Exists(snapshot.SaveDirectory);
+        var historyDirectory = snapshot.SaveDirectory == null ? null : Path.Combine(snapshot.SaveDirectory, "history");
+        if (historyDirectory != null && Directory.Exists(historyDirectory))
         {
             var files = Directory.GetFiles(historyDirectory, "*.run")
                 .Select(path => new FileInfo(path))
@@ -290,12 +291,14 @@ public static partial class McpMod
         return new Dictionary<string, object?>
         {
             ["ui_label"] = "Run History",
-            ["status"] = values.Count > 0 ? "partially_exposed" : "exposed_empty",
+            ["status"] = !activeDirectoryExists ? "unavailable" : values.Count > 0 ? "partially_exposed" : "exposed_empty",
             ["source"] = "SaveManager.Progress reflected run-history members",
             ["entries"] = values,
-            ["limitation"] = values.Count > 0
-                ? "Run history is serialized from discovered progress members and capped for response size."
-                : "No run-history files or typed run-history members were found for the active profile."
+            ["limitation"] = !activeDirectoryExists
+                ? "The game did not resolve an existing active profile save directory. File-backed run history is unavailable."
+                : values.Count > 0
+                    ? "Run history is serialized from discovered progress members and capped for response size."
+                    : "No run-history files or typed run-history members were found for the active profile."
         };
     }
 
@@ -370,10 +373,18 @@ public static partial class McpMod
             ["id_format"] = "{save_scope}:profile{profile_id}:{start_time}"
         };
 
-        var currentRunPath = ResolveCurrentRunPath(snapshot);
-        if (currentRunPath == null || !File.Exists(currentRunPath))
+        if (snapshot.SaveDirectory == null || !Directory.Exists(snapshot.SaveDirectory))
         {
-            result["limitation"] = "Run is in progress, but current_run.save was not found yet.";
+            result["status"] = "unavailable";
+            result["limitation"] = "The game did not resolve an existing active profile save directory.";
+            return result;
+        }
+
+        var currentRunPath = Path.Combine(snapshot.SaveDirectory, snapshot.CurrentRunFile);
+        if (!File.Exists(currentRunPath))
+        {
+            result["status"] = "unavailable";
+            result["limitation"] = $"The active profile does not yet have a {snapshot.CurrentRunFile} file.";
             return result;
         }
 
@@ -444,180 +455,21 @@ public static partial class McpMod
         };
     }
 
-    private static string? FindRunHistoryDirectory(CompendiumSnapshot snapshot)
-    {
-        var saveDirectory = GetSaveDirectoryFromProgressPath(snapshot.ProgressPath);
-        if (saveDirectory != null)
-        {
-            var historyPath = Path.Combine(saveDirectory, "history");
-            if (Directory.Exists(historyPath))
-                return historyPath;
-        }
-
-        foreach (var saveRoot in EnumerateSaveRoots())
-        {
-            var historyPath = Path.Combine(saveRoot, snapshot.ProfileRoot, "saves", "history");
-            if (Directory.Exists(historyPath))
-                return historyPath;
-        }
-
-        return null;
-    }
-
-    private static string GetProfileRootFromProgressPath(string? progressPath, int profileId)
-    {
-        var normalized = progressPath?.Replace('\\', '/');
-        if (!string.IsNullOrWhiteSpace(normalized))
-        {
-            var moddedProfile = $"modded/profile{profileId}";
-            if (normalized.Contains($"{moddedProfile}/", StringComparison.OrdinalIgnoreCase)
-                || normalized.Equals(moddedProfile, StringComparison.OrdinalIgnoreCase))
-                return $"modded/profile{profileId}";
-
-            var profile = $"profile{profileId}";
-            if (normalized.Contains($"/{profile}/", StringComparison.OrdinalIgnoreCase)
-                || normalized.StartsWith($"{profile}/", StringComparison.OrdinalIgnoreCase)
-                || normalized.Equals(profile, StringComparison.OrdinalIgnoreCase))
-                return $"profile{profileId}";
-        }
-
-        return $"profile{profileId}";
-    }
-
-    private static string GetSaveScope(string profileRoot)
-    {
-        return profileRoot.StartsWith("modded/", StringComparison.OrdinalIgnoreCase)
-            ? "modded"
-            : "vanilla";
-    }
-
-    private static IEnumerable<string> EnumerateSaveRoots()
-    {
-        var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var steamRoots = EnumerateSteamDataRoots().ToList();
-
-        var activeSteamId = GetActiveSteamId();
-        if (!string.IsNullOrWhiteSpace(activeSteamId))
-        {
-            foreach (var steamRoot in steamRoots)
-            {
-                var accountRoot = Path.Combine(steamRoot, activeSteamId);
-                if (Directory.Exists(accountRoot) && yielded.Add(accountRoot))
-                    yield return accountRoot;
-            }
-        }
-
-        if (yielded.Count > 0)
-            yield break;
-
-        foreach (var steamRoot in steamRoots)
-        {
-            foreach (var accountRoot in Directory.GetDirectories(steamRoot))
-            {
-                if (yielded.Add(accountRoot))
-                    yield return accountRoot;
-            }
-        }
-    }
-
-    private static IEnumerable<string> EnumerateSteamDataRoots()
-    {
-        var candidates = new List<string?>();
-
-        candidates.Add(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
-        candidates.Add(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
-        candidates.Add(Environment.GetEnvironmentVariable("XDG_DATA_HOME"));
-
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (!string.IsNullOrWhiteSpace(home))
-            candidates.Add(Path.Combine(home, ".local", "share"));
-
-        var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var root in candidates)
-        {
-            if (string.IsNullOrWhiteSpace(root))
-                continue;
-
-            var steamRoot = Path.Combine(root, "SlayTheSpire2", "steam");
-            if (Directory.Exists(steamRoot) && yielded.Add(steamRoot))
-                yield return steamRoot;
-        }
-    }
-
-    private static string? GetActiveSteamId()
+    private static string? GetActiveProfileSaveDirectory(SaveManager saveManager)
     {
         try
         {
-            if (!SteamInitializer.Initialized)
+            if (PlatformUtil.GetLocalPlayerId(PlatformUtil.PrimaryPlatform) == 0)
                 return null;
 
-            var steamUtil = typeof(SteamInitializer).Assembly.GetType("MegaCrit.Sts2.Core.Platform.Steam.SteamUtil");
-            var getSteamId = steamUtil?.GetMethod("GetSteamID64", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            var steamId = getSteamId?.Invoke(null, null)?.ToString();
-            if (string.IsNullOrWhiteSpace(steamId) || steamId == "0")
-                return null;
-
-            return steamId;
+            // The save manager is already bound to the game's account and mod scope.
+            var path = ProjectSettings.GlobalizePath(saveManager.GetProfileScopedPath(UserDataPathProvider.SavesDir));
+            return Path.IsPathFullyQualified(path) ? path : null;
         }
         catch
         {
             return null;
         }
-    }
-
-    private static string? GetProfileProgressPath(int profileId)
-    {
-        try { return ProgressSaveManager.GetProgressPathForProfile(profileId); }
-        catch { return null; }
-    }
-
-    private static string? ResolveProfileProgressPath(int profileId)
-    {
-        var progressPath = GetProfileProgressPath(profileId);
-        if (!string.IsNullOrWhiteSpace(progressPath) && Path.IsPathRooted(progressPath))
-            return progressPath;
-
-        var profileRoot = GetProfileRootFromProgressPath(progressPath, profileId);
-
-        foreach (var saveRoot in EnumerateSaveRoots())
-        {
-            var absolutePath = Path.Combine(saveRoot, profileRoot, "saves", "progress.save");
-            if (File.Exists(absolutePath))
-                return absolutePath;
-        }
-
-        return progressPath;
-    }
-
-    private static string? ResolveCurrentRunPath(CompendiumSnapshot snapshot)
-    {
-        var saveDirectory = GetSaveDirectoryFromProgressPath(snapshot.ProgressPath);
-        if (saveDirectory != null)
-        {
-            var currentRunPath = Path.Combine(saveDirectory, "current_run.save");
-            if (File.Exists(currentRunPath))
-                return currentRunPath;
-        }
-
-        foreach (var saveRoot in EnumerateSaveRoots())
-        {
-            var absolutePath = Path.Combine(saveRoot, snapshot.ProfileRoot, "saves", "current_run.save");
-            if (File.Exists(absolutePath))
-                return absolutePath;
-        }
-
-        return null;
-    }
-
-    private static string? GetSaveDirectoryFromProgressPath(string? progressPath)
-    {
-        if (string.IsNullOrWhiteSpace(progressPath) || !Path.IsPathRooted(progressPath))
-            return null;
-
-        var saveDirectory = Path.GetDirectoryName(progressPath);
-        return !string.IsNullOrWhiteSpace(saveDirectory) && Directory.Exists(saveDirectory)
-            ? saveDirectory
-            : null;
     }
 
     private static object? ToJsonSafe(object? value, int depth, int maxItems)

@@ -354,8 +354,15 @@ public static partial class McpMod
 
     private static void FormatBattleMarkdown(StringBuilder sb, Dictionary<string, object?> battle, Dictionary<string, object?>? player)
     {
+        if (!battle.TryGetValue("round", out var round) || !battle.TryGetValue("turn", out var turn) ||
+            !battle.TryGetValue("is_play_phase", out var playPhase))
+        {
+            sb.AppendLine("**Combat loading.** Wait for combat state before acting.");
+            return;
+        }
+
         string allReady = battle.TryGetValue("all_players_ready", out var ar) ? $" | All Ready: {ar}" : "";
-        sb.AppendLine($"**Round {battle["round"]}** | Turn: {battle["turn"]} | Play Phase: {battle["is_play_phase"]}{allReady}");
+        sb.AppendLine($"**Round {round}** | Turn: {turn} | Play Phase: {playPhase}{allReady}");
         if (battle.TryGetValue("can_act", out var canAct))
         {
             if (canAct is true)
@@ -372,13 +379,14 @@ public static partial class McpMod
             string priority = warning.GetValueOrDefault("interrupt_sequence") is true ? "Danger" : "Note";
             return $"- **{priority} · {warning["name"]}** — {warning["message"]}";
         });
-        if (player != null)
+        if (player != null && player.TryGetValue("energy", out var energy) &&
+            player.TryGetValue("max_energy", out var maxEnergy))
         {
             sb.AppendLine("## Player (You)");
             string stars = player.TryGetValue("stars", out var s) && s != null ? $" | Stars: {s}" : "";
             string arrows = player.TryGetValue("arrow_count", out var count)
                 ? $" | Arrows: {count}/{player["arrow_slots"]}" : "";
-            sb.AppendLine($"**{player["character"]}** - HP: {player["hp"]}/{player["max_hp"]} | Block: {player["block"]} | Energy: {player["energy"]}/{player["max_energy"]}{stars}{arrows} | Gold: {player["gold"]}");
+            sb.AppendLine($"**{player["character"]}** - HP: {player["hp"]}/{player["max_hp"]} | Block: {player["block"]} | Energy: {energy}/{maxEnergy}{stars}{arrows} | Gold: {player["gold"]}");
             sb.AppendLine();
 
             FormatListSection(sb, "Status", player, "status", p => $"- **{p["name"]}** ({FormatStatusAmount(p["amount"])}): {p["description"]}");
@@ -393,7 +401,7 @@ public static partial class McpMod
                     string playable = card["can_play"] is true ? "✓" : "✗";
                     string keywords = FormatInlineKeywords(card);
                     string starCost = card.TryGetValue("star_cost", out var sc) && sc != null ? $" + {sc} star" : "";
-                    sb.AppendLine($"- [{card["index"]}] **{card["name"]}** ({card["cost"]} energy{starCost}) [{card["type"]}] {playable}{keywords} - {card["description"]} (target: {card["target_type"]})");
+                    sb.AppendLine($"- [{card["index"]}] **{card["name"]}** (`{card["id"]}`) ({card["cost"]} energy{starCost}) [{card["type"]}] {playable}{keywords} - {card["description"]} (target: {card["target_type"]})");
                 }
                 sb.AppendLine();
             }
@@ -622,6 +630,13 @@ public static partial class McpMod
         {
             sb.AppendLine("## Shop");
             sb.AppendLine($"**Note:** {err}");
+            sb.AppendLine();
+        }
+
+        if (shop.GetValueOrDefault("last_purchase") is Dictionary<string, object?> purchase)
+        {
+            var outcome = purchase.GetValueOrDefault("message") ?? purchase.GetValueOrDefault("error");
+            sb.AppendLine($"**Last purchase [{purchase["item_index"]}]** — {outcome}");
             sb.AppendLine();
         }
 

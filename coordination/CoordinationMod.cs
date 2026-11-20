@@ -158,7 +158,7 @@ public static class CoordinationMod
             return;
         UpdateChatRecipients(_run!, _network.NetId, languageChanged);
 
-        if (_incoming is { IsOpen: true } incoming && !IsCurrent(incoming))
+        if (_incoming is { } incoming && incoming.Status is not (Cancelled or Expired) && !IsCurrent(incoming))
             Finish(incoming, Expired);
         if (_outgoing is not { } outgoing || outgoing.Status is Cancelled or Expired)
             return;

@@ -31,6 +31,10 @@ public static partial class McpMod
         int amount = power.Amount;
         return id switch
         {
+            SandpitPowerId when ReferenceEquals(power.Target, player) => SandpitWarning(power, entityId),
+            ThornsPowerId => new(id, "Thorns", "enemy",
+                $"Each Attack hit on this enemy can deal {amount} damage back, even through its Block. Budget Block per hit for multi-hit or area Attacks.",
+                amount, InterruptSequence: true, EntityId: entityId),
             "STEAM_ERUPTION_POWER" => new(id, "Steam Eruption", "enemy",
                 $"Lethal damage triggers a final Death Blow at the end of your next turn. It currently deals {amount} damage and can grow. Check the updated intent and save Block for it.",
                 amount, InterruptSequence: true, EntityId: entityId),

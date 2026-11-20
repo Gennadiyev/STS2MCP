@@ -357,7 +357,8 @@ async def switch_profile(profile_id: int) -> str:
     """Switch to a profile slot through the game's profile UI.
 
     Use an empty slot to create or enter a fresh profile for testing. This cannot
-    be used while a run is in progress.
+    be used while a run is in progress. When the result includes
+    restart_required, restart the game before using the selected profile.
 
     Args:
         profile_id: Profile slot to switch to. Must be 1, 2, or 3.
@@ -367,7 +368,7 @@ async def switch_profile(profile_id: int) -> str:
         result = await _profiles_post(body)
         try:
             parsed = json.loads(result)
-            if parsed.get("status") == "error":
+            if parsed.get("status") == "error" or parsed.get("restart_required") is True:
                 return result
 
             message = parsed.get("message", "")
@@ -379,7 +380,7 @@ async def switch_profile(profile_id: int) -> str:
                     if state.get("menu_screen") == "profile_select":
                         result = await _profiles_post(body)
                         parsed = json.loads(result)
-                        if parsed.get("status") == "error":
+                        if parsed.get("status") == "error" or parsed.get("restart_required") is True:
                             return result
                         break
             result = await _wait_for_profile(profile_id, result)
@@ -687,6 +688,8 @@ async def shop_purchase(item_index: int) -> str:
 
     Works for both regular shops (state_type: shop) and the fake merchant
     event (state_type: fake_merchant). The fake merchant only sells relics.
+    If the result is pending, resolve any open selection and then check
+    last_purchase in the shop state before placing another order.
 
     Args:
         item_index: 0-based index of the item from the shop state.
@@ -1255,6 +1258,8 @@ async def mp_shop_purchase(item_index: int) -> str:
     """[Multiplayer Shop] Purchase an item from the shop.
 
     Per-player inventory — no voting needed.
+    If the result is pending, resolve any open selection and then check
+    last_purchase in the shop state before placing another order.
 
     Args:
         item_index: 0-based index of the item.

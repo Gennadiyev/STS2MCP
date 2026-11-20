@@ -263,14 +263,10 @@ public static partial class McpMod
     private static Dictionary<string, object?> BuildMultiplayerBattleState(RunState runState, CombatRoom combatRoom)
     {
         var combatState = CombatManager.Instance.DebugOnlyGetState();
-        var battle = new Dictionary<string, object?>();
-
         if (combatState == null)
-        {
-            battle["error"] = "Combat state unavailable";
-            return battle;
-        }
+            return BuildLoadingBattleState();
 
+        var battle = new Dictionary<string, object?>();
         battle["round"] = combatState.RoundNumber;
         battle["turn"] = combatState.CurrentSide.ToString().ToLower();
         battle["is_play_phase"] = IsPlayPhase(combatState);

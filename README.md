@@ -6,7 +6,7 @@
 
 A mod for [**Slay the Spire 2**](https://store.steampowered.com/app/2868840/Slay_the_Spire_2/) that lets AI agents play the game. Exposes game state and actions via a localhost REST API, with an optional MCP server for Claude Desktop / Claude Code integration.
 
-Singleplayer and multiplayer (co-op) supported, plus full menu and lobby control: profile switching, character select (SP and MP host/client) with optional seed, multiplayer host / Steam-friend join / FastMP localhost join, multiplayer load lobby for resuming saved co-op runs, game-over dismissal, FTUE/tutorial popup handling, and Timeline visibility. Tested against STS2 `v0.103.2`.
+Singleplayer and multiplayer (co-op) supported, plus full menu and lobby control: profile switching, character select (SP and MP host/client) with optional seed, multiplayer host / Steam-friend join / FastMP localhost join, multiplayer load lobby for resuming saved co-op runs, game-over dismissal, FTUE/tutorial popup handling, and Timeline visibility. Tested against STS2 `v0.113.1`.
 
 > [!warning]
 > This mod allows external programs to read and control your game via a localhost API. Use at your own risk with runs you care less about.
@@ -18,51 +18,33 @@ Singleplayer and multiplayer (co-op) supported, plus full menu and lobby control
 
 ### 1. Install the Mod
 
-Grab the [latest release](https://github.com/Gennadiyev/STS2MCP/releases/latest) and follow the instructions:
+1. Clone or download this repository and follow the [source build and install instructions](#build--install) for your OS. Build the mod and run the Python bridge from the same checkout so both use the same authentication protocol.
+2. Launch the game and enable the mod under **Settings → Mods**. Accept the mod-loading consent dialog if it appears.
+3. Return to the main menu. The mod starts the HTTP server on `localhost:15526` and logs the path to its `STS2_MCP.token` file.
 
-1. Copy `STS2_MCP.dll` and `STS2_MCP.json` to `<game_install>/mods/`
-2. Launch the game and enable mods in settings (a consent dialog appears on first launch)
-3. The mod starts an HTTP server on `localhost:15526` automatically
+Verify the installation with an authenticated state read. On Windows, the following example uses the default token path. Substitute the logged path if it differs.
 
-> [!note]
-> The release DLL is a platform-agnostic .NET assembly — the same `STS2_MCP.dll` and `STS2_MCP.json` work on Windows, Linux, and macOS. No separate builds are needed.
-
-#### macOS install
-
-On macOS, the mods directory lives inside the app bundle. The default Steam install path is:
-
-```
-~/Library/Application Support/Steam/steamapps/common/Slay the Spire 2/
-    SlayTheSpire2.app/Contents/MacOS/mods/
+```powershell
+$tokenFile = Join-Path $env:APPDATA "SlayTheSpire2/STS2_MCP.token"
+$token = (Get-Content -Raw -LiteralPath $tokenFile).Trim()
+Invoke-RestMethod 'http://localhost:15526/api/v1/singleplayer?format=json' `
+  -Headers @{ Authorization = "Bearer $token" }
 ```
 
-To install, right-click `SlayTheSpire2.app` → **Show Package Contents**, navigate to `Contents/MacOS/`, and create a `mods` folder. Or from the terminal:
+On macOS or Linux, use the path from the game log.
 
 ```bash
-GAME_DIR="$HOME/Library/Application Support/Steam/steamapps/common/Slay the Spire 2"
-MODS_DIR="$GAME_DIR/SlayTheSpire2.app/Contents/MacOS/mods"
-mkdir -p "$MODS_DIR"
-cp STS2_MCP.dll "$MODS_DIR/"
-cp STS2_MCP.json "$MODS_DIR/"
+TOKEN_FILE="/path/from/game/log/STS2_MCP.token"
+printf 'Authorization: Bearer %s\n' "$(cat "$TOKEN_FILE")" |
+  curl --fail --silent --show-error --header @- \
+    'http://localhost:15526/api/v1/singleplayer?format=json'
 ```
 
-Launch the game and open **Settings → Mods**. The mod should appear in the list. A consent dialog appears on first launch — accept it to enable mod loading. Once enabled, verify the HTTP server is running:
-
-```bash
-curl -s http://localhost:15526/
-```
-
-A successful response looks like:
-
-```json
-{"message": "Hello from STS2 MCP v0.3.4", "status": "ok"}
-```
-
-If you get "Connection refused", the mod is not loaded — check that mods are enabled in the game's settings.
+Expect game state with a `state_type` field. If the token is missing, check that the source-built DLL loaded and check the game's log for the token path. HTTP 401 means the server rejected the token.
 
 ### 2. Give Your AI Instructions to Interact with the Game
 
-**Clone or download the repository**, then:
+From the same checkout you built above:
 
 | I prefer a skill | I prefer an MCP Server |
 |---|---|
@@ -116,7 +98,9 @@ The HTTP API exposes profile-level progress separately from live run state:
 
 The MCP server exposes the same profile data through `get_profile()`, `get_compendium()`, `search_wiki(query, item_type, limit)`, `list_profiles()`, `switch_profile(profile_id)`, and `delete_profile(profile_id)`.
 
-`get_compendium()` is intended for agents that need durable context outside the current room or current run. It works from the main menu, includes a `current_run` block while a run is active, and summarizes saved `saves/history/*.run` files for the active profile. Run history is capped to the 20 most recent files in the response so long-lived profiles do not create unbounded tool output.
+`get_compendium()` works from the main menu and includes a `current_run` block while a run is active. It reads saved run history from the game's active profile directory and returns at most 20 entries. If the game cannot resolve an existing active save directory, file-backed run data is marked `unavailable`.
+
+If `switch_profile()` returns `"restart_required": true`, restart the game to load the selected profile.
 
 `search_wiki()` is the selective lookup path for durable card and relic text. It never returns the full game catalog: the mod first filters to the active profile's discovered card and relic IDs, then returns only the best fuzzy matches. Use `item_type="card"` or `item_type="relic"` when the query is known, and raise `limit` only when the default 10 results are not enough.
 
@@ -142,6 +126,12 @@ The script builds `STS2_MCP.dll` into `out/STS2_MCP/`. Copy it along with the ma
 ```
 out/STS2_MCP/STS2_MCP.dll           ->  <game_install>/mods/STS2_MCP.dll
 mod_manifest.json                   ->  <game_install>/mods/STS2_MCP.json
+```
+
+On Linux, build with the .NET SDK and use the same output and install paths.
+
+```bash
+dotnet build STS2_MCP.csproj -c Release -o out/STS2_MCP -p:STS2GameDir="/path/to/Slay the Spire 2"
 ```
 
 ### Build instructions for macOS

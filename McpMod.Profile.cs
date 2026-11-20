@@ -92,6 +92,8 @@ public static partial class McpMod
         if (sm == null)
             return Error("Save manager is not available");
 
+        var activeSaveDirectory = GetActiveProfileSaveDirectory(sm);
+        var profileContainer = Path.GetDirectoryName(Path.GetDirectoryName(activeSaveDirectory));
         var profiles = new List<Dictionary<string, object?>>();
         for (int i = 1; i <= 3; i++)
         {
@@ -104,7 +106,9 @@ public static partial class McpMod
             try
             {
                 var path = ProgressSaveManager.GetProgressPathForProfile(i);
-                var resolvedPath = ResolveProfileProgressPath(i);
+                var resolvedPath = profileContainer == null ? null : Path.Combine(
+                    profileContainer, Path.GetFileName(UserDataPathProvider.GetProfileDir(i)),
+                    UserDataPathProvider.SavesDir, Path.GetFileName(path));
                 profileData["has_data"] = resolvedPath != null && File.Exists(resolvedPath);
                 profileData["path"] = path;
                 profileData["resolved_path"] = resolvedPath;
@@ -170,6 +174,8 @@ public static partial class McpMod
             {
                 ["status"] = "ok",
                 ["message"] = $"Switched to profile {profileId} (requires restart)",
+                ["restart_required"] = true,
+                ["target_profile_id"] = profileId,
                 ["current_profile_id"] = sm.CurrentProfileId
             };
         }

@@ -43,6 +43,8 @@ using MegaCrit.Sts2.Core.Nodes.Screens.MainMenu;
 using MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen;
 using MegaCrit.Sts2.Core.Nodes.Screens.Timeline;
 using MegaCrit.Sts2.Core.Nodes.Screens.ProfileScreen;
+using MegaCrit.Sts2.Core.Nodes.Screens.Settings;
+using MegaCrit.Sts2.Core.Multiplayer.Game;
 using Godot;
 
 namespace STS2_MCP;
@@ -52,10 +54,13 @@ public static partial class McpMod
     private static Dictionary<string, object?> ExecuteAction(string action, Dictionary<string, JsonElement> data,
         CombatStateWait? wait = null)
     {
-        if (!RunManager.Instance.IsInProgress)
+        var manager = RunManager.Instance;
+        if (!manager.IsInProgress)
             return Error("No run in progress");
+        if (manager.NetService.Type.IsMultiplayer())
+            return BlockedAction(RunModeConflict(isMultiplayer: true));
 
-        var runState = RunManager.Instance.DebugOnlyGetState()!;
+        var runState = manager.DebugOnlyGetState()!;
         var player = LocalContext.GetMe(runState);
         if (player == null)
             return Error("Could not find local player");
@@ -480,39 +485,31 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteShopPurchase(Player player, Dictionary<string, JsonElement> data)
     {
-        MerchantInventory? inventory = null;
+        if (!data.TryGetValue("index", out var indexElem) ||
+            indexElem.ValueKind != JsonValueKind.Number || !indexElem.TryGetInt32(out int index))
+            return Error("Missing or invalid 'index' (shop item index)");
+
+        MerchantInventory? inventory;
+        System.Action? openInventory = null;
 
         if (player.RunState.CurrentRoom is MerchantRoom merchantRoom)
         {
-            // Regular merchant - auto-open inventory if needed
-            var merchUI = NMerchantRoom.Instance;
-            if (merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
-                merchUI.OpenInventory();
             inventory = GetLocalMerchantInventory(merchantRoom);
+            if (NMerchantRoom.Instance is { Inventory: { IsOpen: false } } room)
+                openInventory = room.OpenInventory;
         }
         else if (player.RunState.CurrentRoom is EventRoom eventRoom
                  && eventRoom.CanonicalEvent is FakeMerchant
                  && GetReadyLocalEvent(eventRoom) is FakeMerchant fakeMerchant)
         {
-            // Fake merchant event - auto-open via button if needed
-            if (!fakeMerchant.StartedFight)
-            {
-                var uiRoom = NEventRoom.Instance;
-                if (uiRoom != null)
-                {
-                    var fmNode = FindFirst<NFakeMerchant>(uiRoom);
-                    if (fmNode != null)
-                    {
-                        if (fmNode.Inventory is { IsOpen: false })
-                        {
-                            var btn = fmNode.MerchantButton;
-                            if (btn != null && btn.Visible && btn.IsEnabled)
-                                btn.ForceClick();
-                        }
-                    }
-                }
-            }
+            if (fakeMerchant.StartedFight)
+                return Error("The fake merchant is no longer available");
+
             inventory = GetLocalMerchantInventory(fakeMerchant);
+            if (NEventRoom.Instance is { } eventView &&
+                FindFirst<NFakeMerchant>(eventView) is { Inventory: { IsOpen: false } } view &&
+                view.MerchantButton is { Visible: true, IsEnabled: true } button)
+                openInventory = button.ForceClick;
         }
         else
         {
@@ -522,10 +519,11 @@ public static partial class McpMod
         if (inventory == null)
             return Error("Shop inventory not ready yet; wait a moment and retry");
 
-        if (!data.TryGetValue("index", out var indexElem))
-            return Error("Missing 'index' (shop item index)");
-
-        int index = indexElem.GetInt32();
+        if (GetLastMerchantPurchase(inventory) is { } previous &&
+            BuildMerchantPurchaseResult(previous) is { } receipt && receipt["status"] is "pending")
+            return receipt;
+        if (!CanUseShopControls())
+            return Error("Shop controls are blocked. Check the current state.");
 
         var allEntries = GetMerchantEntries(inventory);
         if (index < 0 || index >= allEntries.Count)
@@ -538,14 +536,12 @@ public static partial class McpMod
             return Error($"Not enough gold (need {entry.Cost}, have {player.Gold})");
 
         int price = entry.Cost;
-        if (!TryStartMerchantPurchase(inventory, entry))
+        // Interactive orders use the native inventory UI and may await a selection.
+        openInventory?.Invoke();
+        var completion = StartMerchantPurchase(inventory, entry);
+        if (completion == null)
             return Error("Shop inventory changed. Read shop state before trying again.");
-
-        return new Dictionary<string, object?>
-        {
-            ["status"] = "ok",
-            ["message"] = $"Purchasing item for {price} gold"
-        };
+        return BuildMerchantPurchaseResult(RecordMerchantPurchase(inventory, index, price, completion));
     }
 
     private static Dictionary<string, object?> ExecuteChooseMapNode(Dictionary<string, JsonElement> data,
@@ -651,7 +647,7 @@ public static partial class McpMod
 
         int cardIndex = indexElem.GetInt32();
 
-        var cardHolders = FindAllSortedByPosition<NCardHolder>(cardScreen);
+        var cardHolders = GetCardRewardHolders(cardScreen);
         if (cardIndex < 0 || cardIndex >= cardHolders.Count)
             return Error($"Card index {cardIndex} out of range (screen has {cardHolders.Count} cards)");
 
@@ -665,6 +661,9 @@ public static partial class McpMod
             ["message"] = $"Selecting card: {cardName}"
         };
     }
+
+    private static List<NCardHolder> GetCardRewardHolders(NCardRewardSelectionScreen screen) =>
+        FindAllSortedByPosition<NCardHolder>(screen).Where(holder => holder.CardModel != null).ToList();
 
     private static IEnumerable<(CardRewardAlternative Option, NCardRewardAlternativeButton Button)>
         GetCardRewardAlternatives(NCardRewardSelectionScreen screen)
@@ -1150,7 +1149,7 @@ public static partial class McpMod
 
         int index = indexElem.GetInt32();
 
-        var holders = FindAll<NRelicBasicHolder>(screen);
+        var holders = GetRelicSelectionHolders(screen);
         if (index < 0 || index >= holders.Count)
             return Error($"Relic index {index} out of range ({holders.Count} relics available)");
 
@@ -1164,6 +1163,9 @@ public static partial class McpMod
             ["message"] = $"Selecting relic: {relicName}"
         };
     }
+
+    private static List<NRelicBasicHolder> GetRelicSelectionHolders(NChooseARelicSelection screen) =>
+        FindAll<NRelicBasicHolder>(screen).Where(holder => holder.Relic?.Model != null).ToList();
 
     private static Dictionary<string, object?> ExecuteSkipRelicSelection()
     {
@@ -1558,6 +1560,19 @@ public static partial class McpMod
             return ExecuteProfileSelectMenuOption(profileScreen, option);
         }
 
+        Control? detailScreen = FindFirst<NCompendiumSubmenu>(tree.Root);
+        if (!IsNodeVisible(detailScreen))
+            detailScreen = FindFirst<NSettingsScreen>(tree.Root);
+        if (detailScreen != null && IsNodeVisible(detailScreen))
+        {
+            if (!string.Equals(option, "back", System.StringComparison.OrdinalIgnoreCase))
+                return Error($"Unknown screen option: {option}. Use back.");
+            if (GetVisibleMenuBackButton(detailScreen) is not { IsEnabled: true } back)
+                return Error("Back button is not available yet.");
+            back.ForceClick();
+            return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Going back to the main menu" };
+        }
+
         // Main menu — click a menu button
         var mainMenu = FindFirst<NMainMenu>(tree.Root);
         if (mainMenu != null)
@@ -1878,9 +1893,13 @@ public static partial class McpMod
         if (string.Equals(option, "confirm", System.StringComparison.OrdinalIgnoreCase) ||
             string.Equals(option, "embark", System.StringComparison.OrdinalIgnoreCase))
         {
-            if (!string.IsNullOrWhiteSpace(seed))
+            if (GetInstanceFieldValue(charSelect, "_embarkButton") is not NClickableControl { IsEnabled: true } embark
+                || !IsNodeVisible(embark))
+                return Error("Embark button not available — select a character first");
+
+            seed = string.IsNullOrWhiteSpace(seed) ? null : seed.Trim();
+            if (seed != null)
             {
-                seed = seed.Trim();
                 if (charSelect.Lobby == null)
                 {
                     return Error("Seeded embark is not supported for standard singleplayer from this API. Seed was not applied and the run was not started.");
@@ -1896,14 +1915,9 @@ public static partial class McpMod
                 }
             }
 
-            var embarkBtn = GetInstanceFieldValue(charSelect, "_embarkButton");
-            if (embarkBtn is NClickableControl embarkClickable && embarkClickable.IsEnabled)
-            {
-                var msg = string.IsNullOrEmpty(seed) ? "Embarking on run" : $"Embarking on run (seed: {seed})";
-                embarkClickable.ForceClick();
-                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = msg };
-            }
-            return Error("Embark button not available — select a character first");
+            embark.ForceClick();
+            var message = seed == null ? "Embarking on run" : $"Embarking on run (seed: {seed})";
+            return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = message };
         }
 
         var buttons = FindAll<NCharacterSelectButton>(charSelect);
@@ -2128,6 +2142,9 @@ public static partial class McpMod
             return new List<string>();
         }
     }
+
+    private static NBackButton? GetVisibleMenuBackButton(Control screen) =>
+        GetInstanceFieldValue(screen, "_backButton") is NBackButton button && IsNodeVisible(button) ? button : null;
 
     private static Dictionary<string, object?> ClickMenuButtonField(
         object owner,

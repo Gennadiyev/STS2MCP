@@ -22,7 +22,7 @@ public static partial class McpMod
     private sealed record PlannedPlay(int? CardIndex, string? CardId, string? Target);
     private sealed record SequencePlay(CardModel Card, string CardId, string? Target);
     private sealed record SequencePlan(Player Player, ICombatState Combat, int Turn, HashSet<Creature> Enemies,
-        List<SequencePlay> Plays);
+        HashSet<CombatWarningKey> StartingWarnings, List<SequencePlay> Plays);
 
     private static async Task<Dictionary<string, object?>> ExecuteCardSequence(Dictionary<string, JsonElement> data)
     {
@@ -118,13 +118,13 @@ public static partial class McpMod
 
         return (new(player, combat, playerState.TurnNumber,
             new HashSet<Creature>(GetLivingEnemies(combat).Select(entry => entry.Creature), ReferenceEqualityComparer.Instance),
-            bound), null);
+            CaptureInterruptingCombatWarnings(combat, player.Creature), bound), null);
     }
 
     private static ActionBlock? GetSequenceBlock(Player? player, SequencePlan? plan = null)
     {
         if (IsMultiplayerRun())
-            return new("multiplayer", "Card sequences are for single-player combat.", false);
+            return RunModeConflict(isMultiplayer: true);
         if (IsMapScreenOpenOrVisible() || NOverlayStack.Instance?.Peek() != null || GetOpenModalNode() != null ||
             Engine.GetMainLoop() is SceneTree tree && IsAnyFtueVisible(tree.Root))
             return new("screen_changed", "A different screen is active.", false);
@@ -133,8 +133,12 @@ public static partial class McpMod
         if (plan != null && (!ReferenceEquals(player?.Creature.CombatState, plan.Combat) ||
                             player?.PlayerCombatState?.TurnNumber != plan.Turn))
             return new("turn_changed", "The original combat turn ended.", false);
-        if (HasNewInterruptingCombatWarning())
-            return new("combat_warning", "A new danger warning needs attention.", false);
+        if (plan != null && FindNewInterruptingCombatWarning(plan.Combat, plan.Player.Creature,
+                plan.StartingWarnings) is { } newWarning)
+        {
+            string source = newWarning.EntityId is { } entityId ? $" ({entityId})" : "";
+            return new("combat_warning", $"{newWarning.Name}{source}. {newWarning.Message}", false);
+        }
         if (plan != null && !plan.Enemies.SetEquals(GetLivingEnemies(plan.Combat).Select(entry => entry.Creature)))
             return new("enemies_changed", "The enemies changed. Check the new state before continuing.", false);
         return null;

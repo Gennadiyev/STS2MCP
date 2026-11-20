@@ -283,11 +283,13 @@ public static partial class McpMod
                         {
                             result["menu_screen"] = "compendium";
                             result["message"] = "Compendium screen.";
+                            AddBackMenuOption(result, compendiumSubmenu);
                         }
                         else if (settingsScreen != null && IsNodeVisible(settingsScreen))
                         {
                             result["menu_screen"] = "settings";
                             result["message"] = "Settings screen.";
+                            AddBackMenuOption(result, settingsScreen);
                         }
                         else
                         {
@@ -1081,17 +1083,30 @@ public static partial class McpMod
         result["message"] = "Multiplayer load lobby. Confirm to ready up; once everyone is connected and ready, the run resumes.";
     }
 
+    private static void AddBackMenuOption(Dictionary<string, object?> state, Control screen)
+    {
+        if (GetVisibleMenuBackButton(screen) is { } back)
+            state["options"] = new List<Dictionary<string, object?>>
+            {
+                new() { ["name"] = "back", ["enabled"] = back.IsEnabled }
+            };
+    }
+
+    private static Dictionary<string, object?> BuildLoadingBattleState() => new()
+    {
+        ["error"] = "Combat state unavailable",
+        ["can_act"] = false,
+        ["action_blocked_reason"] = "combat_loading",
+        ["action_blocked_message"] = "Wait for combat to finish loading."
+    };
+
     private static Dictionary<string, object?> BuildBattleState(RunState runState, CombatRoom combatRoom)
     {
         var combatState = CombatManager.Instance.DebugOnlyGetState();
-        var battle = new Dictionary<string, object?>();
-
         if (combatState == null)
-        {
-            battle["error"] = "Combat state unavailable";
-            return battle;
-        }
+            return BuildLoadingBattleState();
 
+        var battle = new Dictionary<string, object?>();
         battle["round"] = combatState.RoundNumber;
         battle["turn"] = combatState.CurrentSide.ToString().ToLower();
         battle["is_play_phase"] = IsPlayPhase(combatState);
@@ -1725,7 +1740,11 @@ public static partial class McpMod
         state["items"] = items;
         if (inventory == null && unavailableMessage != null)
             state["error"] = unavailableMessage;
-        AddShopActions(state, inventoryUi, proceedButton, entries);
+        var purchase = inventory != null ? GetLastMerchantPurchase(inventory) : null;
+        var receipt = purchase != null ? BuildMerchantPurchaseResult(purchase) : null;
+        if (receipt != null)
+            state["last_purchase"] = receipt;
+        AddShopActions(state, inventoryUi, proceedButton, entries, receipt?.GetValueOrDefault("status") is "pending");
         return state;
     }
 
@@ -1733,7 +1752,8 @@ public static partial class McpMod
         Dictionary<string, object?> shop,
         NMerchantInventory? inventoryUi,
         NProceedButton? proceedButton,
-        IReadOnlyList<MerchantEntry> entries)
+        IReadOnlyList<MerchantEntry> entries,
+        bool purchasePending)
     {
         bool isOpen = inventoryUi?.IsOpen == true;
         bool canUseControls = CanUseShopControls();
@@ -1743,7 +1763,7 @@ public static partial class McpMod
         shop["can_proceed"] = canLeave;
 
         var actions = new List<Dictionary<string, object?>>();
-        if (entries.Any(entry => entry.IsStocked && entry.EnoughGold))
+        if (canUseControls && !purchasePending && entries.Any(entry => entry.IsStocked && entry.EnoughGold))
         {
             actions.Add(new Dictionary<string, object?>
             {
@@ -2009,15 +2029,12 @@ public static partial class McpMod
     {
         var state = new Dictionary<string, object?>();
 
-        var cardHolders = FindAllSortedByPosition<NCardHolder>(cardScreen);
+        var cardHolders = GetCardRewardHolders(cardScreen);
         var cards = new List<Dictionary<string, object?>>();
         int index = 0;
         foreach (var holder in cardHolders)
         {
-            var card = holder.CardModel;
-            if (card == null) continue;
-
-            var cardInfo = BuildCardInfo(card);
+            var cardInfo = BuildCardInfo(holder.CardModel!);
             cardInfo["index"] = index;
             cards.Add(cardInfo);
             index++;
@@ -2289,13 +2306,12 @@ public static partial class McpMod
 
         state["prompt"] = "Choose a relic.";
 
-        var relicHolders = FindAll<NRelicBasicHolder>(screen);
+        var relicHolders = GetRelicSelectionHolders(screen);
         var relics = new List<Dictionary<string, object?>>();
         int index = 0;
         foreach (var holder in relicHolders)
         {
-            var relic = holder.Relic?.Model;
-            if (relic == null) continue;
+            var relic = holder.Relic!.Model!;
 
             relics.Add(new Dictionary<string, object?>
             {

@@ -581,6 +581,7 @@ When visible, Ancient dialogue and the Architect's speech bubble add `dialogue_t
 State reads list the shop inventory without opening it. A valid `shop_purchase` can be made while the inventory is closed.
 `is_open` reports whether the inventory is open. `can_proceed` reports whether the room can be left directly.
 If the inventory is open, use the `proceed` action when it is listed in `available_actions` to close the inventory. Read the state again before leaving.
+After a purchase starts, `last_purchase` reports its item index, price, and outcome. The Fake Merchant exposes the same receipt in its nested shop.
 
 ```jsonc
 {
@@ -1292,6 +1293,8 @@ Choose a rest site option (rest, smith, etc.).
 ### `shop_purchase`
 
 Purchase a shop item.
+
+The response is `ok` when the game confirms the purchase, `error` when it rejects or fails, and `pending` while it is still underway. Resolve any open card or potion selection, then read `last_purchase` in shop state for the outcome. A second purchase request during that time returns the original pending receipt.
 
 ```json
 { "action": "shop_purchase", "index": 0 }
