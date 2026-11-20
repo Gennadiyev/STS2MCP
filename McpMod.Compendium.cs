@@ -27,7 +27,7 @@ public static partial class McpMod
             var snapshot = snapshotTask.GetAwaiter().GetResult();
             SendJson(response, BuildCompendiumResponse(snapshot));
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
         {
             SendError(response, 500, $"Failed to build compendium: {ex.Message}");
         }

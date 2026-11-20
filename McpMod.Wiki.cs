@@ -31,7 +31,7 @@ public static partial class McpMod
             var dataTask = RunOnMainThread(() => BuildWikiSearch(query, itemType, limit));
             SendJson(response, dataTask.GetAwaiter().GetResult());
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
         {
             SendError(response, 500, $"Failed to search wiki: {ex.Message}");
         }

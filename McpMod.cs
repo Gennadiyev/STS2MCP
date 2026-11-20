@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -25,7 +24,7 @@ public static partial class McpMod
 
     private static HttpListener? _listener;
     private static Thread? _serverThread;
-    private static readonly ConcurrentQueue<Action> _mainThreadQueue = new();
+    private static readonly MainThreadWorkQueue _mainThreadQueue = new(TimeSpan.FromSeconds(5), TimeProvider.System);
     internal static readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = true,
@@ -124,38 +123,9 @@ public static partial class McpMod
         }
     }
 
-    private static void ProcessMainThreadQueue()
-    {
-        int processed = 0;
-        while (_mainThreadQueue.TryDequeue(out var action) && processed < 10)
-        {
-            try { action(); }
-            catch (Exception ex) { GD.PrintErr($"[STS2 MCP] Main thread action error: {ex}"); }
-            processed++;
-        }
-    }
+    private static void ProcessMainThreadQueue() => _mainThreadQueue.ProcessFrame(10);
 
-    internal static Task<T> RunOnMainThread<T>(Func<T> func)
-    {
-        var tcs = new TaskCompletionSource<T>();
-        _mainThreadQueue.Enqueue(() =>
-        {
-            try { tcs.SetResult(func()); }
-            catch (Exception ex) { tcs.SetException(ex); }
-        });
-        return tcs.Task;
-    }
-
-    internal static Task RunOnMainThread(Action action)
-    {
-        var tcs = new TaskCompletionSource<bool>();
-        _mainThreadQueue.Enqueue(() =>
-        {
-            try { action(); tcs.SetResult(true); }
-            catch (Exception ex) { tcs.SetException(ex); }
-        });
-        return tcs.Task;
-    }
+    internal static Task<T> RunOnMainThread<T>(Func<T> func) => _mainThreadQueue.Enqueue(func);
 
     private static void ServerLoop()
     {
@@ -269,7 +239,10 @@ public static partial class McpMod
         {
             try
             {
-                SendError(context.Response, 500, $"Internal error: {ex.Message}");
+                if (ex is MainThreadQueueTimeoutException)
+                    SendError(context.Response, 503, ex.Message);
+                else
+                    SendError(context.Response, 500, $"Internal error: {ex.Message}");
             }
             catch { /* response may already be closed */ }
         }
@@ -307,7 +280,7 @@ public static partial class McpMod
                 SendJson(response, state);
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
         {
             GD.PrintErr($"[STS2 MCP] HandleGetMultiplayerState: {ex}");
             try
@@ -363,7 +336,7 @@ public static partial class McpMod
                 var result = resultTask.GetAwaiter().GetResult();
                 SendJson(response, result);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
             {
                 SendError(response, 500, $"Menu action failed: {ex.Message}");
             }
@@ -376,7 +349,7 @@ public static partial class McpMod
             var result = resultTask.GetAwaiter().GetResult();
             SendJson(response, result);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
         {
             SendError(response, 500, $"Multiplayer action failed: {ex.Message}");
         }
@@ -408,7 +381,7 @@ public static partial class McpMod
                 SendJson(response, state);
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
         {
             GD.PrintErr($"[STS2 MCP] HandleGetState: {ex}");
             try
@@ -461,7 +434,7 @@ public static partial class McpMod
                 var result = resultTask.GetAwaiter().GetResult();
                 SendJson(response, result);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
             {
                 SendError(response, 500, $"Menu action failed: {ex.Message}");
             }
@@ -474,7 +447,7 @@ public static partial class McpMod
             var result = resultTask.GetAwaiter().GetResult();
             SendJson(response, result);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
         {
             SendError(response, 500, $"Action failed: {ex.Message}");
         }

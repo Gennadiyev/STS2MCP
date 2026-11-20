@@ -22,7 +22,7 @@ public static partial class McpMod
             var dataTask = RunOnMainThread(BuildProfile);
             SendJson(response, dataTask.GetAwaiter().GetResult());
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
         {
             SendError(response, 500, $"Failed to build profile: {ex.Message}");
         }
@@ -35,7 +35,7 @@ public static partial class McpMod
             var dataTask = RunOnMainThread(BuildProfilesSummary);
             SendJson(response, dataTask.GetAwaiter().GetResult());
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
         {
             SendError(response, 500, $"Failed to get profiles: {ex.Message}");
         }
@@ -74,7 +74,7 @@ public static partial class McpMod
             var resultTask = RunOnMainThread(() => ExecuteProfileAction(action, profileId));
             SendJson(response, resultTask.GetAwaiter().GetResult());
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
         {
             SendError(response, 500, $"Profile action failed: {ex.Message}");
         }
