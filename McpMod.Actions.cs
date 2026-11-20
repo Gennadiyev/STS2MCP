@@ -634,11 +634,14 @@ public static partial class McpMod
 
         if (overlay is NCardGridSelectionScreen gridScreen)
         {
+            if (GetVisibleCardSelectionPreview(gridScreen) != null)
+                return Error("A card preview is already open - confirm or cancel it first");
+
             var grid = FindFirst<NCardGrid>(gridScreen);
             if (grid == null)
                 return Error("Card grid not found in selection screen");
 
-            var holders = FindAllSortedByPosition<NGridCardHolder>(gridScreen);
+            var holders = GetSelectableGridCards(gridScreen);
             if (index < 0 || index >= holders.Count)
                 return Error($"Card index {index} out of range ({holders.Count} cards available)");
 
@@ -654,7 +657,7 @@ public static partial class McpMod
         }
         else if (overlay is NChooseACardSelectionScreen chooseScreen)
         {
-            var holders = FindAllSortedByPosition<NGridCardHolder>(chooseScreen);
+            var holders = GetSelectableGridCards(chooseScreen);
             if (index < 0 || index >= holders.Count)
                 return Error($"Card index {index} out of range ({holders.Count} cards available)");
 
@@ -672,6 +675,57 @@ public static partial class McpMod
         return Error("No card selection screen is open");
     }
 
+    private static readonly string[] CardSelectionPreviewPaths =
+    {
+        "%UpgradeSinglePreviewContainer",
+        "%UpgradeMultiPreviewContainer",
+        "%EnchantSinglePreviewContainer",
+        "%EnchantMultiPreviewContainer",
+        "%PreviewContainer"
+    };
+
+    private static Control? GetVisibleCardSelectionPreview(NCardGridSelectionScreen screen)
+    {
+        foreach (var path in CardSelectionPreviewPaths)
+        {
+            var preview = screen.GetNodeOrNull<Control>(path);
+            if (IsNodeVisible(preview))
+                return preview;
+        }
+
+        return null;
+    }
+
+    private static T? GetEnabledSelectionButton<T>(Node parent, string path) where T : NClickableControl
+    {
+        var button = parent.GetNodeOrNull<T>(path);
+        return IsControlVisibleOrActionable(button) ? button : null;
+    }
+
+    private static (Control? Preview, NConfirmButton? Confirm, NBackButton? Cancel)
+        GetCardSelectionControls(NCardGridSelectionScreen screen)
+    {
+        var preview = GetVisibleCardSelectionPreview(screen);
+        if (preview != null)
+        {
+            return (preview,
+                GetEnabledSelectionButton<NConfirmButton>(preview, "Confirm")
+                    ?? GetEnabledSelectionButton<NConfirmButton>(preview, "%PreviewConfirm"),
+                GetEnabledSelectionButton<NBackButton>(preview, "Cancel")
+                    ?? GetEnabledSelectionButton<NBackButton>(preview, "%PreviewCancel"));
+        }
+
+        return (null,
+            GetEnabledSelectionButton<NConfirmButton>(screen, "Confirm")
+                ?? GetEnabledSelectionButton<NConfirmButton>(screen, "%Confirm"),
+            GetEnabledSelectionButton<NBackButton>(screen, "%Close"));
+    }
+
+    private static List<NGridCardHolder> GetSelectableGridCards(Node screen) =>
+        FindAllSortedByPosition<NGridCardHolder>(screen)
+            .Where(holder => holder.CardModel != null && IsNodeVisible(holder))
+            .ToList();
+
     private static Dictionary<string, object?> ExecuteConfirmSelection()
     {
         var overlay = NOverlayStack.Instance?.Peek();
@@ -680,117 +734,61 @@ public static partial class McpMod
         if (overlay is not NCardGridSelectionScreen screen)
             return Error("No card selection screen is open");
 
-        // Check all preview containers (upgrade uses UpgradeSinglePreviewContainer / UpgradeMultiPreviewContainer,
-        // NDeckCardSelectScreen uses PreviewContainer with %PreviewConfirm)
-        foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer" })
-        {
-            var container = screen.GetNodeOrNull<Godot.Control>(containerName);
-            if (container?.Visible == true)
-            {
-                var confirm = container.GetNodeOrNull<NConfirmButton>("Confirm")
-                              ?? container.GetNodeOrNull<NConfirmButton>("%PreviewConfirm");
-                if (confirm is { IsEnabled: true })
-                {
-                    confirm.ForceClick();
-                    return new Dictionary<string, object?>
-                    {
-                        ["status"] = "ok",
-                        ["message"] = "Confirming selection from preview"
-                    };
-                }
-            }
-        }
+        var (preview, confirm, _) = GetCardSelectionControls(screen);
+        if (confirm == null)
+            return Error("No confirm button is currently enabled");
 
-        // Try main confirm button
-        var mainConfirm = screen.GetNodeOrNull<NConfirmButton>("Confirm")
-                          ?? screen.GetNodeOrNull<NConfirmButton>("%Confirm");
-        if (mainConfirm is { IsEnabled: true })
+        confirm.ForceClick();
+        bool openedPreview = preview == null
+            && IsLiveNode(screen)
+            && NOverlayStack.Instance?.Peek() == screen
+            && GetVisibleCardSelectionPreview(screen) != null;
+        return new Dictionary<string, object?>
         {
-            mainConfirm.ForceClick();
-            return new Dictionary<string, object?>
-            {
-                ["status"] = "ok",
-                ["message"] = "Confirming selection"
-            };
-        }
-
-        // Fallback: find ANY enabled NConfirmButton in the screen tree.
-        // Covers NCardGridSelectionScreen subclasses (like NDeckEnchantSelectScreen)
-        // whose confirm button isn't in any of the known container paths above.
-        var allConfirmButtons = FindAll<NConfirmButton>(screen);
-        foreach (var btn in allConfirmButtons)
-        {
-            if (btn.IsEnabled && btn.IsVisibleInTree())
-            {
-                btn.ForceClick();
-                return new Dictionary<string, object?>
-                {
-                    ["status"] = "ok",
-                    ["message"] = "Confirming selection"
-                };
-            }
-        }
-
-        return Error("No confirm button is currently enabled - select more cards first");
+            ["status"] = "ok",
+            ["message"] = openedPreview
+                ? "Preview opened. Use confirm_selection to commit it."
+                : "Confirming card selection"
+        };
     }
 
     private static Dictionary<string, object?> ExecuteCancelSelection()
     {
         var overlay = NOverlayStack.Instance?.Peek();
 
-        // Handle choose-a-card screen (skip button)
         if (overlay is NChooseACardSelectionScreen chooseScreen)
         {
-            var skipButton = chooseScreen.GetNodeOrNull<NClickableControl>("SkipButton");
-            if (skipButton is { IsEnabled: true })
+            var skip = GetEnabledSelectionButton<NClickableControl>(chooseScreen, "SkipButton");
+            if (skip == null)
+                return Error("No skip option available - a card must be chosen");
+
+            skip.ForceClick();
+            return new Dictionary<string, object?>
             {
-                skipButton.ForceClick();
-                return new Dictionary<string, object?>
-                {
-                    ["status"] = "ok",
-                    ["message"] = "Skipping card choice"
-                };
-            }
-            return Error("No skip option available - a card must be chosen");
+                ["status"] = "ok",
+                ["message"] = "Skipping card choice"
+            };
         }
 
         if (overlay is not NCardGridSelectionScreen screen)
             return Error("No card selection screen is open");
 
-        // If preview is showing, cancel back to selection
-        foreach (var containerName in new[] { "%UpgradeSinglePreviewContainer", "%UpgradeMultiPreviewContainer", "%PreviewContainer" })
-        {
-            var container = screen.GetNodeOrNull<Godot.Control>(containerName);
-            if (container?.Visible == true)
-            {
-                var cancelBtn = container.GetNodeOrNull<NBackButton>("Cancel")
-                                ?? container.GetNodeOrNull<NBackButton>("%PreviewCancel");
-                if (cancelBtn is { IsEnabled: true })
-                {
-                    cancelBtn.ForceClick();
-                    return new Dictionary<string, object?>
-                    {
-                        ["status"] = "ok",
-                        ["message"] = "Cancelling preview - returning to card selection"
-                    };
-                }
-            }
-        }
+        var (preview, _, cancel) = GetCardSelectionControls(screen);
+        if (cancel == null)
+            return Error("No cancel/close button is currently enabled");
 
-        // Close the screen entirely
-        var closeButton = screen.GetNodeOrNull<NBackButton>("%Close");
-        if (closeButton is { IsEnabled: true })
+        cancel.ForceClick();
+        return new Dictionary<string, object?>
         {
-            closeButton.ForceClick();
-            return new Dictionary<string, object?>
-            {
-                ["status"] = "ok",
-                ["message"] = "Closing card selection screen"
-            };
-        }
-
-        return Error("No cancel/close button is currently enabled - selection may be mandatory");
+            ["status"] = "ok",
+            ["message"] = preview != null
+                ? "Cancelling preview - returning to card selection"
+                : "Closing card selection screen"
+        };
     }
+
+    private static bool IsBundlePreviewShowing(NChooseABundleSelectionScreen screen) =>
+        IsNodeVisible(screen.GetNodeOrNull<Control>("%BundlePreviewContainer"));
 
     private static Dictionary<string, object?> ExecuteSelectBundle(Dictionary<string, JsonElement> data)
     {
@@ -802,15 +800,18 @@ public static partial class McpMod
             return Error("Missing 'index' (bundle index)");
 
         int index = indexElem.GetInt32();
-        var previewContainer = screen.GetNodeOrNull<Godot.Control>("%BundlePreviewContainer");
-        if (previewContainer?.Visible == true)
+        if (IsBundlePreviewShowing(screen))
             return Error("A bundle preview is already open - confirm or cancel it first");
 
         var bundles = FindAll<NCardBundle>(screen);
         if (index < 0 || index >= bundles.Count)
             return Error($"Bundle index {index} out of range ({bundles.Count} bundles available)");
 
-        bundles[index].Hitbox.ForceClick();
+        var hitbox = bundles[index].Hitbox;
+        if (!IsControlVisibleOrActionable(hitbox))
+            return Error($"Bundle {index} is not selectable");
+
+        hitbox.ForceClick();
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",
@@ -824,8 +825,8 @@ public static partial class McpMod
         if (overlay is not NChooseABundleSelectionScreen screen)
             return Error("No bundle selection screen is open");
 
-        var confirmButton = screen.GetNodeOrNull<NConfirmButton>("%Confirm");
-        if (confirmButton is not { IsEnabled: true })
+        var confirmButton = GetEnabledSelectionButton<NConfirmButton>(screen, "%Confirm");
+        if (!IsBundlePreviewShowing(screen) || confirmButton == null)
             return Error("Bundle confirm button is not enabled");
 
         confirmButton.ForceClick();
@@ -842,8 +843,8 @@ public static partial class McpMod
         if (overlay is not NChooseABundleSelectionScreen screen)
             return Error("No bundle selection screen is open");
 
-        var cancelButton = screen.GetNodeOrNull<NBackButton>("%Cancel");
-        if (cancelButton is not { IsEnabled: true })
+        var cancelButton = GetEnabledSelectionButton<NBackButton>(screen, "%Cancel");
+        if (!IsBundlePreviewShowing(screen) || cancelButton == null)
             return Error("Bundle cancel button is not enabled");
 
         cancelButton.ForceClick();
@@ -869,7 +870,10 @@ public static partial class McpMod
             return Error($"Card index {index} out of range ({holders.Count} selectable cards)");
 
         var holder = holders[index];
-        string cardName = SafeGetText(() => holder.CardModel?.Title) ?? "unknown";
+        if (holder.CardModel == null)
+            return Error($"No selectable card at index {index}");
+
+        string cardName = SafeGetText(() => holder.CardModel.Title) ?? "unknown";
 
         // Emit the Pressed signal - same path the game UI uses
         holder.EmitSignal(NCardHolder.SignalName.Pressed, holder);
@@ -887,8 +891,8 @@ public static partial class McpMod
         if (hand == null || !hand.IsInCardSelection)
             return Error("No in-combat card selection is active");
 
-        var confirmBtn = hand.GetNodeOrNull<NConfirmButton>("%SelectModeConfirmButton");
-        if (confirmBtn == null || !confirmBtn.IsEnabled)
+        var confirmBtn = GetEnabledSelectionButton<NConfirmButton>(hand, "%SelectModeConfirmButton");
+        if (confirmBtn == null)
             return Error("Confirm button is not enabled - select more cards first");
 
         confirmBtn.ForceClick();

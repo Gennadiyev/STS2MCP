@@ -733,7 +733,10 @@ Covers deck transforms, upgrades, removals, and choose-a-card effects. Appears o
         "keywords": [ /* Keyword Objects */ ]
       }
     ],
-    "preview_showing": false,    // true when selection is complete and preview is displayed
+    "selected_cards": [],       // native grid selection, when available
+    "selected_count": 0,
+    "preview_showing": false,    // true while the preview is displayed
+    "can_select": true,          // true when the grid can be used
     "can_confirm": false,        // true when confirm button is available
     "can_cancel": true           // true when close/cancel button is available
 
@@ -776,6 +779,7 @@ Choose between bundles of cards (e.g. from Scroll Boxes relic).
       }
     ],
     "preview_showing": false,
+    "can_select": true,         // true while bundle choices are available
     "preview_cards": [ /* Card Objects — shown when a bundle is selected */ ],
     "can_cancel": false,
     "can_confirm": false
@@ -1165,6 +1169,8 @@ Select a card during in-combat hand selection (exhaust, discard, upgrade prompts
 |---|---|---|---|
 | `card_index` | int | Yes | Index in the selectable hand cards |
 
+During a hand upgrade, selecting a different card changes the pending selection. Use `combat_confirm_selection` when `can_confirm` is true to apply it.
+
 ### `combat_confirm_selection`
 
 Confirm the in-combat hand card selection.
@@ -1297,7 +1303,7 @@ Select a card in a card selection overlay.
 | `index` | int | Yes | 0-based card index in the grid |
 
 **Behavior varies by screen type:**
-- Grid screens (transform, upgrade, select): toggles selection. When enough cards are selected, a preview may appear.
+- Grid screens (transform, upgrade, enchant, select): toggles selection. When a preview opens, use its confirm or cancel action.
 - Choose-a-card screens (potions, effects): picks the card immediately.
 
 ### `confirm_selection`
@@ -1308,7 +1314,7 @@ Confirm card selection (grid screens only).
 { "action": "confirm_selection" }
 ```
 
-Checks preview containers first, then main confirm button. Not needed for choose-a-card screens.
+Presses the active confirm control. If the grid confirm opens a preview, inspect the new state and call `confirm_selection` again to accept that preview. Choose-a-card screens pick the card immediately.
 
 ### `cancel_selection`
 
@@ -1334,6 +1340,8 @@ Open a bundle preview in the bundle selection screen.
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `index` | int | Yes | 0-based bundle index |
+
+While a bundle preview is open, select its confirm or cancel action before choosing a bundle again.
 
 ### `confirm_bundle_selection`
 

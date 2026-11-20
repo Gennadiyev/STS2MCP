@@ -821,7 +821,12 @@ public static partial class McpMod
         }
 
         bool canConfirm = handSelect.TryGetValue("can_confirm", out var cc) && cc is true;
-        sb.AppendLine($"Use `combat_select_card(card_index)` to select. Can confirm: {(canConfirm ? "Yes - use `combat_confirm_selection`" : "No - select more cards")}");
+        if (mode == "upgrade_select" && canConfirm)
+            sb.AppendLine("Use `combat_confirm_selection()` to upgrade the selected card, or `combat_select_card(card_index)` to change the selection.");
+        else if (canConfirm)
+            sb.AppendLine("Use `combat_confirm_selection()` to finish, or `combat_select_card(card_index)` to adjust the selection.");
+        else
+            sb.AppendLine("Use `combat_select_card(card_index)` to select a card.");
         sb.AppendLine();
     }
 
@@ -832,6 +837,7 @@ public static partial class McpMod
         {
             "transform" => "Transform",
             "upgrade" => "Upgrade",
+            "NDeckEnchantSelectScreen" => "Enchant",
             "select" => "Select",
             "simple_select" => "Select",
             _ => screenType
@@ -844,7 +850,9 @@ public static partial class McpMod
         }
         sb.AppendLine();
 
-        if (cardSelect.TryGetValue("cards", out var cardsObj) && cardsObj is List<Dictionary<string, object?>> cards)
+        bool preview = cardSelect.TryGetValue("preview_showing", out var pv) && pv is true;
+        if (!preview && cardSelect.TryGetValue("cards", out var cardsObj)
+            && cardsObj is List<Dictionary<string, object?>> cards)
         {
             sb.AppendLine("### Cards");
             foreach (var card in cards)
@@ -855,13 +863,26 @@ public static partial class McpMod
             sb.AppendLine();
         }
 
-        bool preview = cardSelect.TryGetValue("preview_showing", out var pv) && pv is true;
+        if (!preview && cardSelect.TryGetValue("selected_cards", out var selectedObj)
+            && selectedObj is List<Dictionary<string, object?>> selected && selected.Count > 0)
+        {
+            sb.AppendLine("### Already Selected");
+            foreach (var card in selected)
+                sb.AppendLine($"- {card["name"]}");
+            sb.AppendLine();
+        }
+
+        bool canSelect = cardSelect.TryGetValue("can_select", out var cs) && cs is true;
         bool canConfirm = cardSelect.TryGetValue("can_confirm", out var cc) && cc is true;
         bool canCancel = cardSelect.TryGetValue("can_cancel", out var cn) && cn is true;
 
         if (preview)
         {
-            sb.AppendLine("**Preview is showing** - use `confirm_selection` to confirm or `cancel_selection` to go back.");
+            sb.AppendLine("**Preview is showing**");
+            if (canConfirm)
+                sb.AppendLine("Use `confirm_selection()` to confirm the preview.");
+            if (canCancel)
+                sb.AppendLine("Use `cancel_selection()` to return to the card grid.");
             if (cardSelect.TryGetValue("preview_cards", out var previewCardsObj) && previewCardsObj is List<Dictionary<string, object?>> previewCards && previewCards.Count > 0)
             {
                 sb.AppendLine("### Preview Cards");
@@ -875,7 +896,12 @@ public static partial class McpMod
         }
         else
         {
-            sb.AppendLine($"**Select cards** using `select_card(index)`. Can confirm: {(canConfirm ? "Yes" : "No")} | Can cancel: {(canCancel ? "Yes" : "No")}");
+            if (canSelect)
+                sb.AppendLine("Use `select_card(index)` to select a card.");
+            if (canConfirm)
+                sb.AppendLine("Use `confirm_selection()` to continue. Some screens open a preview for a separate confirmation.");
+            if (canCancel)
+                sb.AppendLine("Use `cancel_selection()` to leave this selection.");
         }
         sb.AppendLine();
     }
@@ -888,7 +914,9 @@ public static partial class McpMod
             sb.AppendLine($"*{promptObj}*");
         sb.AppendLine();
 
-        if (bundleSelect.TryGetValue("bundles", out var bundlesObj) && bundlesObj is List<Dictionary<string, object?>> bundles && bundles.Count > 0)
+        bool preview = bundleSelect.TryGetValue("preview_showing", out var pv) && pv is true;
+        if (!preview && bundleSelect.TryGetValue("bundles", out var bundlesObj)
+            && bundlesObj is List<Dictionary<string, object?>> bundles && bundles.Count > 0)
         {
             sb.AppendLine("### Bundles");
             foreach (var bundle in bundles)
@@ -906,13 +934,17 @@ public static partial class McpMod
             sb.AppendLine();
         }
 
-        bool preview = bundleSelect.TryGetValue("preview_showing", out var pv) && pv is true;
+        bool canSelect = bundleSelect.TryGetValue("can_select", out var cs) && cs is true;
         bool canConfirm = bundleSelect.TryGetValue("can_confirm", out var cc) && cc is true;
         bool canCancel = bundleSelect.TryGetValue("can_cancel", out var cn) && cn is true;
 
         if (preview)
         {
-            sb.AppendLine("**Preview is showing** - use `confirm_bundle_selection()` to confirm or `cancel_bundle_selection()` to go back.");
+            sb.AppendLine("**Preview is showing**");
+            if (canConfirm)
+                sb.AppendLine("Use `confirm_bundle_selection()` to accept the bundle.");
+            if (canCancel)
+                sb.AppendLine("Use `cancel_bundle_selection()` to return to the bundle list.");
             if (bundleSelect.TryGetValue("preview_cards", out var previewCardsObj) && previewCardsObj is List<Dictionary<string, object?>> previewCards && previewCards.Count > 0)
             {
                 sb.AppendLine("### Preview Cards");
@@ -924,11 +956,11 @@ public static partial class McpMod
                 sb.AppendLine();
             }
         }
-        else
+        else if (canSelect)
         {
-            sb.AppendLine($"Use `select_bundle(index)` to open a bundle preview. Can confirm: {(canConfirm ? "Yes" : "No")} | Can cancel: {(canCancel ? "Yes" : "No")}");
-            sb.AppendLine();
+            sb.AppendLine("Use `select_bundle(index)` to open a bundle preview.");
         }
+        sb.AppendLine();
     }
 
     private static void FormatCrystalSphereMarkdown(StringBuilder sb, Dictionary<string, object?> crystalSphere)

@@ -1913,7 +1913,7 @@ public static partial class McpMod
         }
 
         // Cards in the grid (sorted by visual position - MoveToFront can reorder children)
-        var cardHolders = FindAllSortedByPosition<NGridCardHolder>(screen);
+        var cardHolders = GetSelectableGridCards(screen);
         var cards = new List<Dictionary<string, object?>>();
         int index = 0;
         foreach (var holder in cardHolders)
@@ -1928,71 +1928,35 @@ public static partial class McpMod
         }
         state["cards"] = cards;
 
-        // Preview container showing? (selection complete, awaiting confirm)
-        // Upgrade screens use UpgradeSinglePreviewContainer / UpgradeMultiPreviewContainer
-        var previewSingle = screen.GetNodeOrNull<Godot.Control>("%UpgradeSinglePreviewContainer");
-        var previewMulti = screen.GetNodeOrNull<Godot.Control>("%UpgradeMultiPreviewContainer");
-        var previewGeneric = screen.GetNodeOrNull<Godot.Control>("%PreviewContainer");
-        bool previewShowing = (previewSingle?.Visible ?? false)
-                            || (previewMulti?.Visible ?? false)
-                            || (previewGeneric?.Visible ?? false);
-        state["preview_showing"] = previewShowing;
-        if (previewShowing)
+        if (GetInstanceFieldValue(screen, "_selectedCards") is IEnumerable<CardModel> selectedModels)
+        {
+            // Read the native selection collection so partial multi-card picks remain visible.
+            var selectedCards = new List<Dictionary<string, object?>>();
+            foreach (var card in selectedModels)
+            {
+                int selectedIndex = cardHolders.FindIndex(holder => ReferenceEquals(holder.CardModel, card));
+                selectedCards.Add(new Dictionary<string, object?>
+                {
+                    ["index"] = selectedIndex >= 0 ? selectedIndex : null,
+                    ["name"] = SafeGetText(() => card.Title)
+                });
+            }
+
+            state["selected_cards"] = selectedCards;
+            state["selected_count"] = selectedCards.Count;
+        }
+
+        var (preview, confirm, cancel) = GetCardSelectionControls(screen);
+        state["preview_showing"] = preview != null;
+        state["can_select"] = preview == null && cards.Count > 0;
+        state["can_confirm"] = confirm != null;
+        state["can_cancel"] = cancel != null;
+        if (preview != null)
         {
             var previewCards = new List<Dictionary<string, object?>>();
-            AddPreviewCardsFromContainer(previewSingle, previewCards);
-            AddPreviewCardsFromContainer(previewMulti, previewCards);
-            AddPreviewCardsFromContainer(previewGeneric, previewCards);
+            AddPreviewCardsFromContainer(preview, previewCards);
             state["preview_cards"] = previewCards;
         }
-
-        // Button states - when a preview is open, cancel goes through the
-        // preview container's Cancel / PreviewCancel button (same path as
-        // the action handler), not the top-level %Close button.
-        bool canCancel = false;
-        if (previewShowing)
-        {
-            foreach (var container in new[] { previewSingle, previewMulti, previewGeneric })
-            {
-                if (container?.Visible == true)
-                {
-                    var cancelBtn = container.GetNodeOrNull<NBackButton>("Cancel")
-                                    ?? container.GetNodeOrNull<NBackButton>("%PreviewCancel");
-                    if (cancelBtn?.IsEnabled == true) { canCancel = true; break; }
-                }
-            }
-        }
-        if (!canCancel)
-        {
-            var closeButton = screen.GetNodeOrNull<NBackButton>("%Close");
-            canCancel = closeButton?.IsEnabled ?? false;
-        }
-        state["can_cancel"] = canCancel;
-
-        // Confirm button - search all preview containers and main screen
-        bool canConfirm = false;
-        foreach (var container in new[] { previewSingle, previewMulti, previewGeneric })
-        {
-            if (container?.Visible == true)
-            {
-                var confirm = container.GetNodeOrNull<NConfirmButton>("Confirm")
-                              ?? container.GetNodeOrNull<NConfirmButton>("%PreviewConfirm");
-                if (confirm?.IsEnabled == true) { canConfirm = true; break; }
-            }
-        }
-        if (!canConfirm)
-        {
-            var mainConfirm = screen.GetNodeOrNull<NConfirmButton>("Confirm")
-                              ?? screen.GetNodeOrNull<NConfirmButton>("%Confirm");
-            if (mainConfirm?.IsEnabled == true) canConfirm = true;
-        }
-        // Fallback: search entire screen tree for any enabled confirm button
-        // (covers subclasses like NDeckEnchantSelectScreen)
-        if (!canConfirm)
-        {
-            canConfirm = FindAll<NConfirmButton>(screen).Any(b => b.IsEnabled && b.IsVisibleInTree());
-        }
-        state["can_confirm"] = canConfirm;
 
         return state;
     }
@@ -2004,7 +1968,7 @@ public static partial class McpMod
 
         state["prompt"] = "Choose a card.";
 
-        var cardHolders = FindAllSortedByPosition<NGridCardHolder>(screen);
+        var cardHolders = GetSelectableGridCards(screen);
         var cards = new List<Dictionary<string, object?>>();
         int index = 0;
         foreach (var holder in cardHolders)
@@ -2019,9 +1983,9 @@ public static partial class McpMod
         }
         state["cards"] = cards;
 
-        var skipButton = screen.GetNodeOrNull<NClickableControl>("SkipButton");
-        state["can_skip"] = skipButton?.IsEnabled == true && skipButton.Visible;
+        state["can_skip"] = GetEnabledSelectionButton<NClickableControl>(screen, "SkipButton") != null;
         state["preview_showing"] = false;
+        state["can_select"] = cards.Count > 0;
         state["can_confirm"] = false;
         state["can_cancel"] = state["can_skip"];
 
@@ -2036,8 +2000,9 @@ public static partial class McpMod
         state["prompt"] = "Choose a bundle.";
 
         var bundles = new List<Dictionary<string, object?>>();
+        var bundleNodes = FindAll<NCardBundle>(screen);
         int index = 0;
-        foreach (var bundle in FindAll<NCardBundle>(screen))
+        foreach (var bundle in bundleNodes)
         {
             var cards = new List<Dictionary<string, object?>>();
             int cardIndex = 0;
@@ -2059,13 +2024,13 @@ public static partial class McpMod
         }
         state["bundles"] = bundles;
 
-        var previewContainer = screen.GetNodeOrNull<Godot.Control>("%BundlePreviewContainer");
-        bool previewShowing = previewContainer?.Visible == true;
+        bool previewShowing = IsBundlePreviewShowing(screen);
         state["preview_showing"] = previewShowing;
+        state["can_select"] = !previewShowing && bundleNodes.Any(bundle => IsControlVisibleOrActionable(bundle.Hitbox));
 
         var previewCards = new List<Dictionary<string, object?>>();
         var previewCardsContainer = screen.GetNodeOrNull<Godot.Control>("%Cards");
-        if (previewCardsContainer != null)
+        if (previewShowing && previewCardsContainer != null)
         {
             int previewIndex = 0;
             foreach (var holder in FindAll<NPreviewCardHolder>(previewCardsContainer))
@@ -2081,10 +2046,8 @@ public static partial class McpMod
         }
         state["preview_cards"] = previewCards;
 
-        var cancelButton = screen.GetNodeOrNull<NBackButton>("%Cancel");
-        var confirmButton = screen.GetNodeOrNull<NConfirmButton>("%Confirm");
-        state["can_cancel"] = cancelButton?.IsEnabled == true;
-        state["can_confirm"] = confirmButton?.IsEnabled == true;
+        state["can_cancel"] = previewShowing && GetEnabledSelectionButton<NBackButton>(screen, "%Cancel") != null;
+        state["can_confirm"] = previewShowing && GetEnabledSelectionButton<NConfirmButton>(screen, "%Confirm") != null;
 
         return state;
     }
@@ -2114,17 +2077,16 @@ public static partial class McpMod
 
         // Selectable cards (visible holders in the hand)
         var selectableCards = new List<Dictionary<string, object?>>();
-        int index = 0;
-        foreach (var holder in hand.ActiveHolders)
+        var holders = hand.ActiveHolders;
+        for (int index = 0; index < holders.Count; index++)
         {
-            var card = holder.CardModel;
+            var card = holders[index].CardModel;
             if (card == null) continue;
 
             var cardInfo = BuildCardInfo(card);
             cardInfo["index"] = index;
             cardInfo["description"] = SafeGetCardDescription(card); // hand cards use default pile
             selectableCards.Add(cardInfo);
-            index++;
         }
         state["cards"] = selectableCards;
 
@@ -2151,8 +2113,7 @@ public static partial class McpMod
         }
 
         // Confirm button state
-        var confirmBtn = hand.GetNodeOrNull<NConfirmButton>("%SelectModeConfirmButton");
-        state["can_confirm"] = confirmBtn?.IsEnabled ?? false;
+        state["can_confirm"] = GetEnabledSelectionButton<NConfirmButton>(hand, "%SelectModeConfirmButton") != null;
 
         return state;
     }
