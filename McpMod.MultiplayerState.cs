@@ -14,6 +14,7 @@ using MegaCrit.Sts2.Core.Nodes.GodotExtensions;
 using MegaCrit.Sts2.Core.Nodes.Rooms;
 using MegaCrit.Sts2.Core.Nodes.Screens;
 using MegaCrit.Sts2.Core.Nodes.Screens.CardSelection;
+using MegaCrit.Sts2.Core.Nodes.Screens.GameOverScreen;
 using MegaCrit.Sts2.Core.Nodes.Screens.Map;
 using MegaCrit.Sts2.Core.Nodes.Screens.Overlays;
 using MegaCrit.Sts2.Core.Nodes.Screens.TreasureRoomRelic;
@@ -117,6 +118,10 @@ public static partial class McpMod
         {
             result["state_type"] = "rewards";
             result["rewards"] = BuildRewardsState(rewardsScreen, runState);
+        }
+        else if (topOverlay is NGameOverScreen gameOverScreen)
+        {
+            SetGameOverState(result, gameOverScreen);
         }
         else if (topOverlay is IOverlayScreen
                  && topOverlay is not NRewardsScreen
@@ -247,6 +252,7 @@ public static partial class McpMod
             result["player"] = BuildPlayerState(localPlayer);
         }
 
+        AddCombatWarnings(result, localPlayer?.Creature);
         return result;
     }
 
@@ -264,17 +270,10 @@ public static partial class McpMod
         battle["round"] = combatState.RoundNumber;
         battle["turn"] = combatState.CurrentSide.ToString().ToLower();
         battle["is_play_phase"] = IsPlayPhase(combatState);
+        AddCombatReadiness(battle, LocalContext.GetMe(runState));
         battle["all_players_ready"] = CombatManager.Instance.AllPlayersReadyToEndTurn();
 
-        // Enemies
-        var enemies = new List<Dictionary<string, object?>>();
-        var entityCounts = new Dictionary<string, int>();
-        foreach (var creature in combatState.Enemies)
-        {
-            if (creature.IsAlive)
-                enemies.Add(BuildEnemyState(creature, entityCounts));
-        }
-        battle["enemies"] = enemies;
+        battle["enemies"] = BuildEnemiesState(combatState);
 
         return battle;
     }

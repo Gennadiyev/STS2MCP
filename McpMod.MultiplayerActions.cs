@@ -45,7 +45,7 @@ public static partial class McpMod
             "claim_reward" => ExecuteClaimReward(data),
             "select_card_reward" => ExecuteSelectCardReward(data),
             "skip_card_reward" => ExecuteSkipCardReward(),
-            "proceed" => ExecuteProceed(),
+            "proceed" => ExecuteProceed(player, data),
             "select_card" => ExecuteSelectCard(data),
             "confirm_selection" => ExecuteConfirmSelection(),
             "cancel_selection" => ExecuteCancelSelection(),
@@ -71,21 +71,12 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteMultiplayerEndTurn(Player player)
     {
-        if (!CombatManager.Instance.IsInProgress)
-            return Error("Not in combat");
-        if (!IsPlayPhase(player))
-            return Error("Not in play phase - cannot act during enemy turn");
-        if (CombatManager.Instance.PlayerActionsDisabled)
-            return Error("Player actions are currently disabled");
-        if (!player.Creature.IsAlive)
-            return Error("Player creature is dead - cannot end turn");
-        if (CombatManager.Instance.IsPlayerReadyToEndTurn(player))
-            return Error("Already submitted end turn - use 'undo_end_turn' to retract");
-
-        // Match the game's own CanTurnBeEnded guard (NEndTurnButton.cs:114-123)
-        var hand = NCombatRoom.Instance?.Ui?.Hand;
-        if (hand != null && (hand.InCardPlay || hand.CurrentMode != NPlayerHand.Mode.Play))
-            return Error("Cannot end turn while a card is being played or hand is in selection mode");
+        if (GetCombatActionBlock(player) is { } block)
+        {
+            if (block.Reason == "turn_already_ended")
+                block = block with { Message = "Already submitted end turn. Use 'undo_end_turn' to retract." };
+            return BlockedAction(block);
+        }
 
         var combatState = player.Creature.CombatState;
         if (combatState == null)

@@ -58,7 +58,7 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
-    private static Dictionary<string, object?> BuildGameState()
+    private static Dictionary<string, object?> BuildGameState(bool compact = false)
     {
         var result = new Dictionary<string, object?>();
         var tree = (Godot.Engine.GetMainLoop()) as SceneTree;
@@ -451,12 +451,7 @@ public static partial class McpMod
         }
         else if (topOverlay is NGameOverScreen gameOverScreen)
         {
-            result["state_type"] = "game_over";
-            result["game_over"] = new Dictionary<string, object?>
-            {
-                ["message"] = "Run ended.",
-                ["options"] = new List<string> { "main_menu" }
-            };
+            SetGameOverState(result, gameOverScreen);
         }
         else if (topOverlay is IOverlayScreen
                  && topOverlay is not NRewardsScreen
@@ -606,10 +601,33 @@ public static partial class McpMod
         var _player = LocalContext.GetMe(runState);
         if (_player != null)
         {
-            result["player"] = BuildPlayerState(_player);
+            result["player"] = BuildPlayerState(_player, compact);
         }
 
+        AddCombatWarnings(result, _player?.Creature);
         return result;
+    }
+
+    private static void SetGameOverState(Dictionary<string, object?> state, NGameOverScreen screen)
+    {
+        // The native game-over banner reads RunHistory.Win from this screen's history.
+        // In co-op the local player can be dead even when the party won.
+        var history = GetInstanceFieldValue(screen, "_history");
+        var win = history?.GetType().GetProperty("Win")?.GetValue(history) as bool?;
+        var (outcome, message) = win switch
+        {
+            true => ("victory", "Victory!"),
+            false => ("defeat", "Defeat."),
+            null => ("unknown", "Run ended.")
+        };
+
+        state["state_type"] = "game_over";
+        state["game_over"] = new Dictionary<string, object?>
+        {
+            ["outcome"] = outcome,
+            ["message"] = message,
+            ["options"] = new List<string> { "main_menu" }
+        };
     }
 
     private static void AddCharacterSelectMenuState(
@@ -1072,23 +1090,14 @@ public static partial class McpMod
         battle["round"] = combatState.RoundNumber;
         battle["turn"] = combatState.CurrentSide.ToString().ToLower();
         battle["is_play_phase"] = IsPlayPhase(combatState);
+        AddCombatReadiness(battle, LocalContext.GetMe(runState));
 
-        // Enemies
-        var enemies = new List<Dictionary<string, object?>>();
-        var entityCounts = new Dictionary<string, int>();
-        foreach (var creature in combatState.Enemies)
-        {
-            if (creature.IsAlive)
-            {
-                enemies.Add(BuildEnemyState(creature, entityCounts));
-            }
-        }
-        battle["enemies"] = enemies;
+        battle["enemies"] = BuildEnemiesState(combatState);
 
         return battle;
     }
 
-    private static Dictionary<string, object?> BuildPlayerState(Player player)
+    private static Dictionary<string, object?> BuildPlayerState(Player player, bool compact = false)
     {
         var state = new Dictionary<string, object?>();
         var creature = player.Creature;
@@ -1129,13 +1138,16 @@ public static partial class McpMod
             state["exhaust_pile_count"] = combatState.ExhaustPile.Cards.Count;
 
             // Pile contents (draw pile sorted by rarity then card ID, matching in-game display)
-            var drawCards = combatState.DrawPile.Cards.ToList();
-            drawCards.Sort((c1, c2) => c1.Rarity != c2.Rarity
-                ? c1.Rarity.CompareTo(c2.Rarity)
-                : string.Compare(c1.Id.Entry, c2.Id.Entry, StringComparison.Ordinal));
-            state["draw_pile"] = BuildPileCardList(drawCards, PileType.Draw);
-            state["discard_pile"] = BuildPileCardList(combatState.DiscardPile.Cards, PileType.Discard);
-            state["exhaust_pile"] = BuildPileCardList(combatState.ExhaustPile.Cards, PileType.Exhaust);
+            if (!compact)
+            {
+                var drawCards = combatState.DrawPile.Cards.ToList();
+                drawCards.Sort((c1, c2) => c1.Rarity != c2.Rarity
+                    ? c1.Rarity.CompareTo(c2.Rarity)
+                    : string.Compare(c1.Id.Entry, c2.Id.Entry, StringComparison.Ordinal));
+                state["draw_pile"] = BuildPileCardList(drawCards, PileType.Draw);
+                state["discard_pile"] = BuildPileCardList(combatState.DiscardPile.Cards, PileType.Discard);
+                state["exhaust_pile"] = BuildPileCardList(combatState.ExhaustPile.Cards, PileType.Exhaust);
+            }
 
             // Orbs
             var orbQueue = combatState.OrbQueue;
@@ -1259,7 +1271,6 @@ public static partial class McpMod
 
         var state = BuildCardInfo(card);
         state["index"] = index;
-        state["description"] = SafeGetCardDescription(card); // hand cards use default pile
         state["target_type"] = card.TargetType.ToString();
         state["can_play"] = unplayableReason == UnplayableReason.None;
         state["unplayable_reason"] = unplayableReason != UnplayableReason.None ? unplayableReason.ToString() : null;
@@ -1268,7 +1279,8 @@ public static partial class McpMod
 
     private static void AddPreviewCardsFromContainer(
         Godot.Control? container,
-        List<Dictionary<string, object?>> previewCards)
+        List<Dictionary<string, object?>> previewCards,
+        Func<CardModel, CardModel>? projectCard = null)
     {
         if (container?.Visible != true)
             return;
@@ -1281,7 +1293,7 @@ public static partial class McpMod
                 var card = holder.CardModel;
                 if (card == null) continue;
 
-                var cardInfo = BuildCardInfo(card);
+                var cardInfo = BuildCardInfo(projectCard?.Invoke(card) ?? card);
                 cardInfo["index"] = previewCards.Count;
                 previewCards.Add(cardInfo);
             }
@@ -1293,9 +1305,39 @@ public static partial class McpMod
             var card = holder.CardModel;
             if (card == null) continue;
 
-            var cardInfo = BuildCardInfo(card);
+            var cardInfo = BuildCardInfo(projectCard?.Invoke(card) ?? card);
             cardInfo["index"] = previewCards.Count;
             previewCards.Add(cardInfo);
+        }
+    }
+
+    private static CardModel ProjectEnchantedCard(CardModel card, EnchantmentModel enchantment, decimal amount)
+    {
+        // Multi-card previews show the original models. Keep projections off the run's card scope,
+        // and avoid cloning existing modifiers that could notify subscribers on the original card.
+        if (card.Enchantment != null || card.Affliction != null ||
+            card.GetType().Assembly != typeof(CardModel).Assembly ||
+            enchantment.GetType().Assembly != typeof(EnchantmentModel).Assembly)
+            return card;
+
+        try
+        {
+            var projected = (CardModel)card.MutableClone();
+            projected.EnchantInternal(enchantment.ToMutable(), amount);
+            projected.IsEnchantmentPreview = true;
+            var applied = projected.Enchantment!;
+            applied.ModifyCard();
+
+            // Match the visual preview's calculations before formatting either description.
+            projected.DynamicVars.ClearPreview();
+            projected.UpdateDynamicVarPreview(CardPreviewMode.Normal, null, projected.DynamicVars);
+            applied.DynamicVars.ClearPreview();
+            projected.UpdateDynamicVarPreview(CardPreviewMode.Normal, null, applied.DynamicVars);
+            return projected;
+        }
+        catch
+        {
+            return card;
         }
     }
 
@@ -1316,16 +1358,14 @@ public static partial class McpMod
         return list;
     }
 
-    private static Dictionary<string, object?> BuildEnemyState(Creature creature, Dictionary<string, int> entityCounts)
+    private static List<Dictionary<string, object?>> BuildEnemiesState(ICombatState combatState) =>
+        GetLivingEnemies(combatState)
+            .Select(enemy => BuildEnemyState(enemy.Creature, enemy.EntityId))
+            .ToList();
+
+    private static Dictionary<string, object?> BuildEnemyState(Creature creature, string entityId)
     {
         var monster = creature.Monster;
-        string baseId = monster?.Id.Entry ?? "unknown";
-
-        // Generate entity_id like "jaw_worm_0"
-        if (!entityCounts.TryGetValue(baseId, out int count))
-            count = 0;
-        entityCounts[baseId] = count + 1;
-        string entityId = $"{baseId}_{count}";
 
         var state = new Dictionary<string, object?>
         {
@@ -1448,61 +1488,16 @@ public static partial class McpMod
 
         if (fakeMerchant.StartedFight)
         {
-            // After the foul potion fight, merchant is gone - just show proceed
-            var defeatedShop = new Dictionary<string, object?>
-            {
-                ["items"] = new List<Dictionary<string, object?>>()
-            };
-            AddShopActions(defeatedShop, null, proceedButton, null);
-            state["shop"] = defeatedShop;
+            state["shop"] = BuildMerchantShopState(null, null, proceedButton);
             state["message"] = "The fake merchant has been defeated.";
             return state;
         }
 
-        var inventory = fakeMerchant.Inventory;
-        var shopState = BuildFakeMerchantShopItems(inventory);
-        AddShopActions(shopState, fakeMerchantNode?.Inventory, proceedButton, inventory);
-        state["shop"] = shopState;
-        return state;
-    }
-
-    private static Dictionary<string, object?> BuildFakeMerchantShopItems(MerchantInventory? inventory)
-    {
-        var state = new Dictionary<string, object?>();
-
-        if (inventory == null)
-        {
-            state["items"] = new List<Dictionary<string, object?>>();
-            state["error"] = "Fake merchant inventory is not ready yet; retry in a moment.";
-            return state;
-        }
-
-        var items = new List<Dictionary<string, object?>>();
-        int index = 0;
-
-        // FakeMerchant only sells relics (no cards, potions, or card removal)
-        foreach (var entry in inventory.RelicEntries)
-        {
-            var item = new Dictionary<string, object?>
-            {
-                ["index"] = index,
-                ["category"] = "relic",
-                ["price"] = entry.Cost,
-                ["is_stocked"] = entry.IsStocked,
-                ["can_afford"] = entry.EnoughGold
-            };
-            if (entry.Model is { } relic)
-            {
-                item["relic_id"] = relic.Id.Entry;
-                item["relic_name"] = SafeGetText(() => relic.Title);
-                item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
-                item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
-            }
-            items.Add(item);
-            index++;
-        }
-
-        state["items"] = items;
+        state["shop"] = BuildMerchantShopState(
+            GetLocalMerchantInventory(fakeMerchant),
+            fakeMerchantNode?.Inventory,
+            proceedButton,
+            "Fake merchant inventory is not ready yet. Check again in a moment.");
         return state;
     }
 
@@ -1534,107 +1529,86 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildShopState(MerchantRoom merchantRoom, RunState runState)
     {
-        var state = new Dictionary<string, object?>();
-        var inventory = merchantRoom.GetLocalInventory();
         var room = NMerchantRoom.Instance;
-        AddShopActions(state, room?.Inventory, room?.ProceedButton, inventory);
-        if (inventory == null)
-        {
-            state["items"] = new List<Dictionary<string, object?>>();
-            state["error"] =
-                "Shop inventory is not ready yet (null). Often happens right after entering the merchant from the map; retry in a moment.";
-            return state;
-        }
+        return BuildMerchantShopState(
+            GetLocalMerchantInventory(merchantRoom),
+            room?.Inventory,
+            room?.ProceedButton,
+            "Shop inventory is not ready yet. Check again in a moment.");
+    }
 
+    private static Dictionary<string, object?> BuildMerchantShopState(
+        MerchantInventory? inventory,
+        NMerchantInventory? inventoryUi,
+        NProceedButton? proceedButton,
+        string? unavailableMessage = null)
+    {
+        var state = new Dictionary<string, object?>();
+        var entries = inventory == null ? Array.Empty<MerchantEntry>() : GetMerchantEntries(inventory);
         var items = new List<Dictionary<string, object?>>();
-        int index = 0;
-
-        // Cards
-        foreach (var entry in inventory.CardEntries)
+        for (int index = 0; index < entries.Count; index++)
         {
+            var entry = entries[index];
             var item = new Dictionary<string, object?>
             {
                 ["index"] = index,
-                ["category"] = "card",
-                ["price"] = entry.Cost,
-                ["is_stocked"] = entry.IsStocked,
-                ["can_afford"] = entry.EnoughGold,
-                ["on_sale"] = entry.IsOnSale
-            };
-            if (entry.CreationResult?.Card is { } card)
-            {
-                var cardInfo = BuildCardInfo(card);
-                item["card_id"] = cardInfo["id"];
-                item["card_name"] = cardInfo["name"];
-                item["card_type"] = cardInfo["type"];
-                item["card_cost"] = cardInfo["cost"];
-                item["card_star_cost"] = cardInfo["star_cost"];
-                item["card_rarity"] = cardInfo["rarity"];
-                item["card_description"] = cardInfo["description"];
-                item["keywords"] = cardInfo["keywords"];
-            }
-            items.Add(item);
-            index++;
-        }
-
-        // Relics
-        foreach (var entry in inventory.RelicEntries)
-        {
-            var item = new Dictionary<string, object?>
-            {
-                ["index"] = index,
-                ["category"] = "relic",
                 ["price"] = entry.Cost,
                 ["is_stocked"] = entry.IsStocked,
                 ["can_afford"] = entry.EnoughGold
             };
-            if (entry.Model is { } relic)
+            switch (entry)
             {
-                item["relic_id"] = relic.Id.Entry;
-                item["relic_name"] = SafeGetText(() => relic.Title);
-                item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
-                item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
+                case MerchantCardEntry cardEntry:
+                    item["category"] = "card";
+                    item["on_sale"] = cardEntry.IsOnSale;
+                    if (cardEntry.CreationResult?.Card is { } card)
+                    {
+                        var cardInfo = BuildCardInfo(card);
+                        item["card_id"] = cardInfo["id"];
+                        item["card_name"] = cardInfo["name"];
+                        item["card_type"] = cardInfo["type"];
+                        item["card_cost"] = cardInfo["cost"];
+                        item["card_star_cost"] = cardInfo["star_cost"];
+                        item["card_rarity"] = cardInfo["rarity"];
+                        item["card_description"] = cardInfo["description"];
+                        item["keywords"] = cardInfo["keywords"];
+                    }
+                    break;
+                case MerchantRelicEntry relicEntry:
+                    item["category"] = "relic";
+                    if (relicEntry.Model is { } relic)
+                    {
+                        item["relic_id"] = relic.Id.Entry;
+                        item["relic_name"] = SafeGetText(() => relic.Title);
+                        item["relic_description"] = SafeGetText(() => relic.DynamicDescription);
+                        item["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic);
+                    }
+                    break;
+                case MerchantPotionEntry potionEntry:
+                    item["category"] = "potion";
+                    if (potionEntry.Model is { } potion)
+                    {
+                        item["potion_id"] = potion.Id.Entry;
+                        item["potion_name"] = SafeGetText(() => potion.Title);
+                        item["potion_description"] = SafeGetText(() => potion.DynamicDescription);
+                        item["keywords"] = BuildHoverTips(potion.ExtraHoverTips);
+                    }
+                    break;
+                case MerchantCardRemovalEntry:
+                    item["category"] = "card_removal";
+                    break;
+                default:
+                    item["category"] = "other";
+                    item["entry_type"] = entry.GetType().Name;
+                    break;
             }
             items.Add(item);
-            index++;
-        }
-
-        // Potions
-        foreach (var entry in inventory.PotionEntries)
-        {
-            var item = new Dictionary<string, object?>
-            {
-                ["index"] = index,
-                ["category"] = "potion",
-                ["price"] = entry.Cost,
-                ["is_stocked"] = entry.IsStocked,
-                ["can_afford"] = entry.EnoughGold
-            };
-            if (entry.Model is { } potion)
-            {
-                item["potion_id"] = potion.Id.Entry;
-                item["potion_name"] = SafeGetText(() => potion.Title);
-                item["potion_description"] = SafeGetText(() => potion.DynamicDescription);
-                item["keywords"] = BuildHoverTips(potion.ExtraHoverTips);
-            }
-            items.Add(item);
-            index++;
-        }
-
-        // Card removal
-        if (inventory.CardRemovalEntry is { } removal)
-        {
-            items.Add(new Dictionary<string, object?>
-            {
-                ["index"] = index,
-                ["category"] = "card_removal",
-                ["price"] = removal.Cost,
-                ["is_stocked"] = removal.IsStocked,
-                ["can_afford"] = removal.EnoughGold
-            });
         }
 
         state["items"] = items;
+        if (inventory == null && unavailableMessage != null)
+            state["error"] = unavailableMessage;
+        AddShopActions(state, inventoryUi, proceedButton, entries);
         return state;
     }
 
@@ -1642,21 +1616,22 @@ public static partial class McpMod
         Dictionary<string, object?> shop,
         NMerchantInventory? inventoryUi,
         NProceedButton? proceedButton,
-        MerchantInventory? inventory)
+        IReadOnlyList<MerchantEntry> entries)
     {
         bool isOpen = inventoryUi?.IsOpen == true;
-        bool canClose = inventoryUi is { IsOpen: true } && GetAvailableShopBackButton(inventoryUi) != null;
-        bool canLeave = !isOpen && proceedButton is { IsEnabled: true } && IsNodeVisible(proceedButton);
+        bool canUseControls = CanUseShopControls();
+        bool canClose = canUseControls && inventoryUi is { IsOpen: true } && GetAvailableShopBackButton(inventoryUi) != null;
+        bool canLeave = canUseControls && !isOpen && IsControlVisibleOrActionable(proceedButton);
         shop["is_open"] = isOpen;
         shop["can_proceed"] = canLeave;
 
         var actions = new List<Dictionary<string, object?>>();
-        if (inventory?.AllEntries.Any(entry => entry.IsStocked && entry.EnoughGold) == true)
+        if (entries.Any(entry => entry.IsStocked && entry.EnoughGold))
         {
             actions.Add(new Dictionary<string, object?>
             {
                 ["action"] = "shop_purchase",
-                ["parameter"] = "index",
+                ["parameter"] = "item_index",
                 ["description"] = "Buy a stocked, affordable item."
             });
         }
@@ -1668,6 +1643,16 @@ public static partial class McpMod
                 ["description"] = canClose
                     ? "Close the inventory, then check the shop state before leaving."
                     : "Leave the shop and open the map."
+            });
+        }
+        if (canClose && IsLiveNode(proceedButton))
+        {
+            actions.Add(new Dictionary<string, object?>
+            {
+                ["action"] = "proceed",
+                ["parameter"] = "leave_shop",
+                ["arguments"] = new Dictionary<string, object?> { ["leave_shop"] = true },
+                ["description"] = "Close the inventory and leave the shop in one call."
             });
         }
         shop["available_actions"] = actions;
@@ -1882,8 +1867,7 @@ public static partial class McpMod
         }
         state["cards"] = cards;
 
-        var altButtons = FindAll<NCardRewardAlternativeButton>(cardScreen);
-        state["can_skip"] = altButtons.Count > 0;
+        state["can_skip"] = GetCardRewardSkipButton(cardScreen) != null;
 
         return state;
     }
@@ -1954,7 +1938,23 @@ public static partial class McpMod
         if (preview != null)
         {
             var previewCards = new List<Dictionary<string, object?>>();
-            AddPreviewCardsFromContainer(preview, previewCards);
+            if (screen is NDeckEnchantSelectScreen &&
+                ReferenceEquals(preview, screen.GetNodeOrNull<Godot.Control>("%EnchantMultiPreviewContainer")) &&
+                GetInstanceFieldValue(screen, "_enchantment") is EnchantmentModel enchantment &&
+                GetInstanceFieldValue(screen, "_enchantmentAmount") is int amount)
+            {
+                state["preview_enchantment"] = new Dictionary<string, object?>
+                {
+                    ["id"] = enchantment.Id.Entry,
+                    ["name"] = SafeGetText(() => enchantment.Title),
+                    ["amount"] = amount
+                };
+                AddPreviewCardsFromContainer(preview, previewCards, card => ProjectEnchantedCard(card, enchantment, amount));
+            }
+            else
+            {
+                AddPreviewCardsFromContainer(preview, previewCards);
+            }
             state["preview_cards"] = previewCards;
         }
 
@@ -1999,7 +1999,10 @@ public static partial class McpMod
 
         state["prompt"] = "Choose a bundle.";
 
+        bool previewShowing = IsBundlePreviewShowing(screen);
+        var selectedBundle = previewShowing ? GetInstanceFieldValue(screen, "_selectedBundle") as NCardBundle : null;
         var bundles = new List<Dictionary<string, object?>>();
+        var previewCards = new List<Dictionary<string, object?>>();
         var bundleNodes = FindAll<NCardBundle>(screen);
         int index = 0;
         foreach (var bundle in bundleNodes)
@@ -2013,6 +2016,8 @@ public static partial class McpMod
                 cards.Add(cardInfo);
                 cardIndex++;
             }
+            if (ReferenceEquals(bundle, selectedBundle))
+                previewCards = cards;
 
             bundles.Add(new Dictionary<string, object?>
             {
@@ -2024,26 +2029,8 @@ public static partial class McpMod
         }
         state["bundles"] = bundles;
 
-        bool previewShowing = IsBundlePreviewShowing(screen);
         state["preview_showing"] = previewShowing;
         state["can_select"] = !previewShowing && bundleNodes.Any(bundle => IsControlVisibleOrActionable(bundle.Hitbox));
-
-        var previewCards = new List<Dictionary<string, object?>>();
-        var previewCardsContainer = screen.GetNodeOrNull<Godot.Control>("%Cards");
-        if (previewShowing && previewCardsContainer != null)
-        {
-            int previewIndex = 0;
-            foreach (var holder in FindAll<NPreviewCardHolder>(previewCardsContainer))
-            {
-                var card = holder.CardModel;
-                if (card == null) continue;
-
-                var cardInfo = BuildCardInfo(card);
-                cardInfo["index"] = previewIndex;
-                previewCards.Add(cardInfo);
-                previewIndex++;
-            }
-        }
         state["preview_cards"] = previewCards;
 
         state["can_cancel"] = previewShowing && GetEnabledSelectionButton<NBackButton>(screen, "%Cancel") != null;
@@ -2252,55 +2239,70 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> BuildTreasureState(TreasureRoom treasureRoom, RunState runState)
     {
-        var state = new Dictionary<string, object?>();
-
-        var treasureUI = FindFirst<NTreasureRoom>(
-            ((Godot.SceneTree)Godot.Engine.GetMainLoop()).Root);
-
-        if (treasureUI == null)
+        var state = new Dictionary<string, object?>
         {
-            state["message"] = "Treasure room loading...";
+            ["can_claim"] = false,
+            ["can_skip"] = false,
+            ["can_proceed"] = false
+        };
+
+        if (GetVisibleTreasureRoom() is not { } treasure)
+        {
+            state["status"] = "loading";
+            state["message"] = "Treasure room is loading.";
             return state;
         }
 
-        // Auto-open chest if not yet opened
-        var chestButton = treasureUI.GetNodeOrNull<NClickableControl>("Chest");
-        if (chestButton is { IsEnabled: true })
+        // Preserve the existing auto-open behavior, using the live native control only once.
+        if (TryOpenTreasureChest(treasure))
         {
-            chestButton.ForceClick();
-            state["message"] = "Opening chest...";
+            state["status"] = "opening";
+            state["message"] = "Opening chest. Check the treasure state again after it opens.";
             return state;
         }
 
-        // Show relics available for picking
-        var relicCollection = treasureUI.GetNodeOrNull<NTreasureRoomRelicCollection>("%RelicCollection");
-        if (relicCollection?.Visible == true)
-        {
-            var holders = FindAll<NTreasureRoomRelicHolder>(relicCollection)
-                .Where(h => h.IsEnabled && h.Visible)
-                .ToList();
+        var button = GetAvailableTreasureProceedButton(treasure);
+        var holders = GetAvailableTreasureRelicHolders(treasure);
+        state["can_claim"] = holders.Count > 0;
+        state["can_skip"] = button?.IsSkip == true;
+        state["can_proceed"] = button is { IsSkip: false };
 
-            var relics = new List<Dictionary<string, object?>>();
-            int index = 0;
-            foreach (var holder in holders)
+        var relics = new List<Dictionary<string, object?>>();
+        for (int index = 0; index < holders.Count; index++)
+        {
+            var relic = holders[index].Relic!.Model!;
+            relics.Add(new Dictionary<string, object?>
             {
-                var relic = holder.Relic?.Model;
-                if (relic == null) continue;
-                relics.Add(new Dictionary<string, object?>
-                {
-                    ["index"] = index,
-                    ["id"] = relic.Id.Entry,
-                    ["name"] = SafeGetText(() => relic.Title),
-                    ["description"] = SafeGetText(() => relic.DynamicDescription),
-                    ["rarity"] = relic.Rarity.ToString(),
-                    ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
-                });
-                index++;
-            }
-            state["relics"] = relics;
+                ["index"] = index,
+                ["id"] = relic.Id.Entry,
+                ["name"] = SafeGetText(() => relic.Title),
+                ["description"] = SafeGetText(() => relic.DynamicDescription),
+                ["rarity"] = relic.Rarity.ToString(),
+                ["keywords"] = BuildHoverTips(relic.HoverTipsExcludingRelic)
+            });
         }
+        state["relics"] = relics;
 
-        state["can_proceed"] = treasureUI.ProceedButton?.IsEnabled ?? false;
+        if (button is { IsSkip: false })
+        {
+            state["status"] = "ready_to_leave";
+            state["message"] = "The map is available through Proceed.";
+        }
+        else if (holders.Count > 0)
+        {
+            state["status"] = "relics_available";
+            state["message"] = "Choose a relic.";
+        }
+        else if (GetInstanceFieldValue(treasure, "_isRelicCollectionOpen") is true)
+        {
+            state["status"] = "waiting_for_relics";
+            state["message"] = "Waiting for treasure relic selection to finish.";
+        }
+        else
+        {
+            state["status"] = "opening";
+            state["message"] = "Opening chest. Check the treasure state again after it opens.";
+        }
 
         return state;
     }

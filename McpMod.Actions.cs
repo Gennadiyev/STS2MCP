@@ -27,6 +27,7 @@ using MegaCrit.Sts2.Core.Rewards;
 using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Commands;
 using MegaCrit.Sts2.Core.Context;
+using MegaCrit.Sts2.Core.Entities.CardRewardAlternatives;
 using MegaCrit.Sts2.Core.Entities.Cards;
 using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.Entities.Players;
@@ -44,7 +45,8 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
-    private static Dictionary<string, object?> ExecuteAction(string action, Dictionary<string, JsonElement> data)
+    private static Dictionary<string, object?> ExecuteAction(string action, Dictionary<string, JsonElement> data,
+        CombatStateWait? wait = null)
     {
         if (!RunManager.Instance.IsInProgress)
             return Error("No run in progress");
@@ -60,11 +62,11 @@ public static partial class McpMod
 
         return action switch
         {
-            "play_card" => ExecutePlayCard(player, data),
+            "play_card" => ExecutePlayCard(player, data, wait),
             "use_potion" => ExecuteUsePotion(player, data),
             "discard_potion" => ExecuteDiscardPotion(player, data),
-            "end_turn" => ExecuteEndTurn(player),
-            "choose_map_node" => ExecuteChooseMapNode(data),
+            "end_turn" => ExecuteEndTurn(player, wait),
+            "choose_map_node" => ExecuteChooseMapNode(data, wait),
             "choose_event_option" => ExecuteChooseEventOption(data),
             "advance_dialogue" => ExecuteAdvanceDialogue(),
             "choose_rest_option" => ExecuteChooseRestOption(data),
@@ -72,7 +74,7 @@ public static partial class McpMod
             "claim_reward" => ExecuteClaimReward(data),
             "select_card_reward" => ExecuteSelectCardReward(data),
             "skip_card_reward" => ExecuteSkipCardReward(),
-            "proceed" => ExecuteProceed(),
+            "proceed" => ExecuteProceed(player, data),
             "select_card" => ExecuteSelectCard(data),
             "confirm_selection" => ExecuteConfirmSelection(),
             "cancel_selection" => ExecuteCancelSelection(),
@@ -80,7 +82,7 @@ public static partial class McpMod
             "confirm_bundle_selection" => ExecuteConfirmBundleSelection(),
             "cancel_bundle_selection" => ExecuteCancelBundleSelection(),
             "combat_select_card" => ExecuteCombatSelectCard(data),
-            "combat_confirm_selection" => ExecuteCombatConfirmSelection(),
+            "combat_confirm_selection" => ExecuteCombatConfirmSelection(wait),
             "select_relic" => ExecuteSelectRelic(data),
             "skip_relic_selection" => ExecuteSkipRelicSelection(),
             "claim_treasure_relic" => ExecuteClaimTreasureRelic(data),
@@ -91,26 +93,27 @@ public static partial class McpMod
         };
     }
 
-    private static Dictionary<string, object?> ExecutePlayCard(Player player, Dictionary<string, JsonElement> data)
+    private static Dictionary<string, object?> ExecutePlayCard(Player player, Dictionary<string, JsonElement> data,
+        CombatStateWait? wait = null)
     {
-        if (!CombatManager.Instance.IsInProgress)
-            return Error("Not in combat");
-        if (!IsPlayPhase(player))
-            return Error("Not in play phase - cannot act during enemy turn");
-        if (CombatManager.Instance.PlayerActionsDisabled)
-            return Error("Player actions are currently disabled");
-        if (!player.Creature.IsAlive)
-            return Error("Player creature is dead - cannot play cards");
+        if (GetCombatActionBlock(player) is { } block)
+            return BlockedAction(block);
 
+        if (!data.TryGetValue("card_index", out var indexElem))
+            return Error("Missing 'card_index'");
+
+        string? target = data.TryGetValue("target", out var targetElem) && targetElem.ValueKind == JsonValueKind.String
+            ? targetElem.GetString() : null;
+        return ExecutePlayableCard(player, indexElem.GetInt32(), target, wait);
+    }
+
+    private static Dictionary<string, object?> ExecutePlayableCard(Player player, int cardIndex,
+        string? targetId, CombatStateWait? wait)
+    {
         var combatState = player.Creature.CombatState;
         if (combatState == null)
             return Error("No combat state");
 
-        // Get card by index in hand
-        if (!data.TryGetValue("card_index", out var indexElem))
-            return Error("Missing 'card_index'");
-
-        int cardIndex = indexElem.GetInt32();
         var hand = player.PlayerCombatState?.Hand;
         if (hand == null)
             return Error("No hand available");
@@ -127,17 +130,19 @@ public static partial class McpMod
         Creature? target = null;
         if (card.TargetType == TargetType.AnyEnemy)
         {
-            if (!data.TryGetValue("target", out var targetElem))
+            if (targetId == null)
                 return Error("Card requires a target. Provide 'target' with an entity_id.");
 
-            string targetId = targetElem.GetString() ?? "";
             target = ResolveTarget(combatState, targetId);
             if (target == null)
                 return Error($"Target '{targetId}' not found among alive enemies");
         }
 
         // Play the card via the action queue (same path as the game UI)
-        RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(new PlayCardAction(card, target));
+        var play = new PlayCardAction(card, target);
+        RunManager.Instance.ActionQueueSynchronizer.RequestEnqueue(play);
+        if (wait != null)
+            wait.CardCompletion = play.CompletionTask;
 
         return new Dictionary<string, object?>
         {
@@ -146,20 +151,13 @@ public static partial class McpMod
         };
     }
 
-    private static Dictionary<string, object?> ExecuteEndTurn(Player player)
+    private static Dictionary<string, object?> ExecuteEndTurn(Player player, CombatStateWait? wait)
     {
-        if (!CombatManager.Instance.IsInProgress)
-            return Error("Not in combat");
-        if (!IsPlayPhase(player))
-            return Error("Not in play phase - cannot act during enemy turn");
-        if (CombatManager.Instance.PlayerActionsDisabled)
-            return Error("Player actions are currently disabled (turn may already be ending)");
+        if (GetCombatActionBlock(player) is { } block)
+            return BlockedAction(block);
 
-        // Match the game's own CanTurnBeEnded guard (NEndTurnButton.cs:114-123)
-        var hand = NCombatRoom.Instance?.Ui?.Hand;
-        if (hand != null && (hand.InCardPlay || hand.CurrentMode != NPlayerHand.Mode.Play))
-            return Error("Cannot end turn while a card is being played or hand is in selection mode");
-
+        if (wait != null)
+            wait.EndedTurnNumber = player.PlayerCombatState?.TurnNumber;
         PlayerCmd.EndTurn(player, canBackOut: false);
 
         return new Dictionary<string, object?>
@@ -185,22 +183,15 @@ public static partial class McpMod
             return Error($"Potion '{SafeGetText(() => potion.Title)}' is already queued for use");
         if (potion.Owner.Creature.IsDead)
             return Error("Cannot use potion - player creature is dead");
+        bool inCombat = CombatManager.Instance.IsInProgress;
+        if (potion.Usage == PotionUsage.CombatOnly && !inCombat)
+            return Error($"Potion '{SafeGetText(() => potion.Title)}' can only be used in combat");
+        if (potion.Usage == PotionUsage.Automatic)
+            return Error($"Potion '{SafeGetText(() => potion.Title)}' is automatic and cannot be manually used");
+        if (inCombat && GetCombatActionBlock(player) is { } block)
+            return BlockedAction(block);
         if (!potion.PassesCustomUsabilityCheck)
             return Error($"Potion '{SafeGetText(() => potion.Title)}' cannot be used right now");
-
-        bool inCombat = CombatManager.Instance.IsInProgress;
-        if (potion.Usage == PotionUsage.CombatOnly)
-        {
-            if (!inCombat)
-                return Error($"Potion '{SafeGetText(() => potion.Title)}' can only be used in combat");
-            if (!IsPlayPhase(player))
-                return Error("Cannot use potions outside of play phase");
-        }
-        else if (potion.Usage == PotionUsage.Automatic)
-            return Error($"Potion '{SafeGetText(() => potion.Title)}' is automatic and cannot be manually used");
-
-        if (inCombat && CombatManager.Instance.PlayerActionsDisabled)
-            return Error("Player actions are currently disabled");
 
         // Resolve target
         Creature? target = null;
@@ -362,8 +353,7 @@ public static partial class McpMod
             var merchUI = NMerchantRoom.Instance;
             if (merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
                 merchUI.OpenInventory();
-            // v0.107 split the merchant into per-player inventories; take the local one.
-            inventory = merchantRoom.GetLocalInventory();
+            inventory = GetLocalMerchantInventory(merchantRoom);
         }
         else if (player.RunState.CurrentRoom is EventRoom eventRoom
                  && eventRoom.CanonicalEvent is FakeMerchant
@@ -387,7 +377,7 @@ public static partial class McpMod
                     }
                 }
             }
-            inventory = fakeMerchant.Inventory;
+            inventory = GetLocalMerchantInventory(fakeMerchant);
         }
         else
         {
@@ -402,7 +392,7 @@ public static partial class McpMod
 
         int index = indexElem.GetInt32();
 
-        var allEntries = inventory.AllEntries.ToList();
+        var allEntries = GetMerchantEntries(inventory);
         if (index < 0 || index >= allEntries.Count)
             return Error($"Shop item index {index} out of range ({allEntries.Count} items)");
 
@@ -412,17 +402,19 @@ public static partial class McpMod
         if (!entry.EnoughGold)
             return Error($"Not enough gold (need {entry.Cost}, have {player.Gold})");
 
-        // Fire-and-forget purchase (same path as AutoSlay)
-        _ = entry.OnTryPurchaseWrapper(inventory);
+        int price = entry.Cost;
+        if (!TryStartMerchantPurchase(inventory, entry))
+            return Error("Shop inventory changed. Read shop state before trying again.");
 
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",
-            ["message"] = $"Purchasing item for {entry.Cost} gold"
+            ["message"] = $"Purchasing item for {price} gold"
         };
     }
 
-    private static Dictionary<string, object?> ExecuteChooseMapNode(Dictionary<string, JsonElement> data)
+    private static Dictionary<string, object?> ExecuteChooseMapNode(Dictionary<string, JsonElement> data,
+        CombatStateWait? wait = null)
     {
         var mapScreen = NMapScreen.Instance;
         if (mapScreen == null || (!mapScreen.IsOpen && !IsNodeVisible(mapScreen)))
@@ -445,6 +437,8 @@ public static partial class McpMod
 
         var target = travelable[index];
         var pt = target.Point!;
+        if (wait != null && RunManager.Instance.DebugOnlyGetState() is { } run)
+            wait.MapTravel = new(run, run.CurrentRoom, run.CurrentActIndex, pt.coord);
         mapScreen.OnMapPointSelectedLocally(target);
 
         return new Dictionary<string, object?>
@@ -517,17 +511,37 @@ public static partial class McpMod
         };
     }
 
+    private static NCardRewardAlternativeButton? GetCardRewardSkipButton(NCardRewardSelectionScreen screen)
+    {
+        if (GetInstanceFieldValue(screen, "_extraOptions") is not IReadOnlyList<CardRewardAlternative> options ||
+            GetInstanceFieldValue(screen, "_rewardAlternativesContainer") is not Control container)
+            return null;
+
+        // Godot keeps replaced buttons in the tree until the end of the frame.
+        var buttons = container.GetChildren().OfType<NCardRewardAlternativeButton>()
+            .Where(button => !button.IsQueuedForDeletion()).ToList();
+        if (buttons.Count != options.Count)
+            return null;
+
+        for (int index = 0; index < options.Count; index++)
+        {
+            if (options[index].OptionId == "Skip" && IsControlVisibleOrActionable(buttons[index]))
+                return buttons[index];
+        }
+        return null;
+    }
+
     private static Dictionary<string, object?> ExecuteSkipCardReward()
     {
         var overlay = NOverlayStack.Instance?.Peek();
         if (overlay is not NCardRewardSelectionScreen cardScreen)
             return Error("Card reward selection screen is not open");
 
-        var altButtons = FindAll<NCardRewardAlternativeButton>(cardScreen);
-        if (altButtons.Count == 0)
+        var skipButton = GetCardRewardSkipButton(cardScreen);
+        if (skipButton == null)
             return Error("No skip option available on this card reward");
 
-        altButtons[0].ForceClick();
+        skipButton.ForceClick();
 
         return new Dictionary<string, object?>
         {
@@ -536,8 +550,24 @@ public static partial class McpMod
         };
     }
 
-    private static Dictionary<string, object?> ExecuteProceed()
+    private static Dictionary<string, object?> ExecuteProceed(Player player, Dictionary<string, JsonElement> data)
     {
+        bool leaveShop = false;
+        if (data.TryGetValue("leave_shop", out var leaveShopElement))
+        {
+            if (leaveShopElement.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                return Error("'leave_shop' must be a boolean.");
+            leaveShop = leaveShopElement.GetBoolean();
+        }
+
+        bool isShopRoom = player.RunState.CurrentRoom is MerchantRoom or EventRoom { CanonicalEvent: FakeMerchant };
+        if (leaveShop)
+        {
+            if (!isShopRoom)
+                return Error("'leave_shop' is available only in a shop or Fake Merchant room.");
+            return ExecuteShopProceed(player, leaveShop: true);
+        }
+
         // Try rewards overlay
         var overlay = NOverlayStack.Instance?.Peek();
         if (overlay is NRewardsScreen rewardsScreen)
@@ -557,46 +587,23 @@ public static partial class McpMod
             return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from rest site" };
         }
 
-        // Try merchant - close inventory first if open, then proceed
-        if (NMerchantRoom.Instance is { } merchRoom)
-        {
-            if (merchRoom.Inventory is { IsOpen: true } inventory)
-            {
-                return ExecuteCloseShopInventory(inventory);
-            }
-            if (merchRoom.ProceedButton is { IsEnabled: true } proceedButton && IsNodeVisible(proceedButton))
-            {
-                proceedButton.ForceClick();
-                return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from shop" };
-            }
-        }
+        if (isShopRoom)
+            return ExecuteShopProceed(player, leaveShop: false);
 
-        // Try fake merchant - close inventory first if open, then proceed
-        if (NEventRoom.Instance is { } evtRoom)
+        if (player.RunState.CurrentRoom is TreasureRoom && !IsMapScreenOpenOrVisible())
         {
-            var fmNode = FindFirst<NFakeMerchant>(evtRoom);
-            if (fmNode != null)
-            {
-                if (fmNode.Inventory is { IsOpen: true } inventory)
-                {
-                    return ExecuteCloseShopInventory(inventory);
-                }
-                var proceedBtn = FindFirst<NProceedButton>(fmNode);
-                if (proceedBtn is { IsEnabled: true } && IsNodeVisible(proceedBtn))
-                {
-                    proceedBtn.ForceClick();
-                    return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from fake merchant" };
-                }
-            }
-        }
+            var treasure = GetVisibleTreasureRoom();
+            if (treasure == null || GetAvailableTreasureProceedButton(treasure) is not { } button)
+                return BlockedAction(new("treasure_not_ready",
+                    "The treasure room's Proceed or Skip control is not ready. Check the treasure state.", true));
 
-        // Try treasure room
-        var treasureUI = FindFirst<NTreasureRoom>(
-            ((Godot.SceneTree)Godot.Engine.GetMainLoop()).Root);
-        if (treasureUI != null && treasureUI.ProceedButton.IsEnabled)
-        {
-            treasureUI.ProceedButton.ForceClick();
-            return new Dictionary<string, object?> { ["status"] = "ok", ["message"] = "Proceeding from treasure room" };
+            bool isSkip = button.IsSkip;
+            button.ForceClick();
+            return new Dictionary<string, object?>
+            {
+                ["status"] = "ok",
+                ["message"] = isSkip ? "Skipping treasure relic selection" : "Proceeding from treasure room"
+            };
         }
 
         return Error("No proceed button available or enabled");
@@ -609,17 +616,64 @@ public static partial class McpMod
             && IsNodeVisible(button) ? button : null;
     }
 
-    private static Dictionary<string, object?> ExecuteCloseShopInventory(NMerchantInventory inventory)
-    {
-        var backButton = GetAvailableShopBackButton(inventory);
-        if (backButton == null)
-            return Error("Shop inventory cannot close yet. Check the shop state before retrying.");
+    private static bool CanUseShopControls() =>
+        !IsMapScreenOpenOrVisible() && NOverlayStack.Instance?.Peek() == null && GetOpenModalNode() == null;
 
-        backButton.ForceClick();
+    private static Dictionary<string, object?> ExecuteShopProceed(Player player, bool leaveShop)
+    {
+        if (!CanUseShopControls())
+            return Error("Shop controls are blocked. Check the current state.");
+
+        var room = player.RunState.CurrentRoom;
+        NMerchantInventory? inventory;
+        NProceedButton? proceedButton;
+        string roomName;
+        if (room is MerchantRoom && NMerchantRoom.Instance is { } merchantRoom)
+        {
+            (inventory, proceedButton, roomName) = (merchantRoom.Inventory, merchantRoom.ProceedButton, "shop");
+        }
+        else if (room is EventRoom { CanonicalEvent: FakeMerchant }
+                 && NEventRoom.Instance is { } eventRoom
+                 && FindFirst<NFakeMerchant>(eventRoom) is { } fakeMerchant)
+        {
+            (inventory, proceedButton, roomName) = (fakeMerchant.Inventory, FindFirst<NProceedButton>(fakeMerchant), "fake merchant");
+        }
+        else
+        {
+            return Error("Shop controls are not ready. Check the current state.");
+        }
+
+        if (inventory is { IsOpen: true })
+        {
+            var backButton = GetAvailableShopBackButton(inventory);
+            if (backButton == null)
+                return Error("Shop inventory cannot close yet. Check the shop state before retrying.");
+            if (leaveShop && !IsLiveNode(proceedButton))
+                return Error("The shop exit is not ready. Check the shop state before retrying.");
+
+            // The native InventoryClosed signal enables Proceed during this click.
+            backButton.ForceClick();
+            if (!leaveShop)
+            {
+                return new Dictionary<string, object?>
+                {
+                    ["status"] = "ok",
+                    ["message"] = "Closing shop inventory. Check the shop state before calling proceed again to leave."
+                };
+            }
+
+            if (!ReferenceEquals(room, player.RunState.CurrentRoom) || !CanUseShopControls())
+                return Error("Shop controls changed after closing the inventory. Check the current state.");
+        }
+
+        if (inventory?.IsOpen == true || !IsControlVisibleOrActionable(proceedButton))
+            return Error("The shop exit is not ready. Check the shop state before retrying.");
+
+        proceedButton!.ForceClick();
         return new Dictionary<string, object?>
         {
             ["status"] = "ok",
-            ["message"] = "Closing shop inventory. Check the shop state before calling proceed again to leave."
+            ["message"] = $"Proceeding from {roomName}"
         };
     }
 
@@ -885,7 +939,7 @@ public static partial class McpMod
         };
     }
 
-    private static Dictionary<string, object?> ExecuteCombatConfirmSelection()
+    private static Dictionary<string, object?> ExecuteCombatConfirmSelection(CombatStateWait? wait = null)
     {
         var hand = NPlayerHand.Instance;
         if (hand == null || !hand.IsInCardSelection)
@@ -895,6 +949,8 @@ public static partial class McpMod
         if (confirmBtn == null)
             return Error("Confirm button is not enabled - select more cards first");
 
+        if (wait != null)
+            wait.HandConfirmation = new(hand, GetHandSelectionPrompt(hand));
         confirmBtn.ForceClick();
 
         return new Dictionary<string, object?>
@@ -951,23 +1007,18 @@ public static partial class McpMod
 
     private static Dictionary<string, object?> ExecuteClaimTreasureRelic(Dictionary<string, JsonElement> data)
     {
-        var treasureUI = FindFirst<NTreasureRoom>(
-            ((Godot.SceneTree)Godot.Engine.GetMainLoop()).Root);
-        if (treasureUI == null)
+        if (GetVisibleTreasureRoom() is not { } treasure)
             return Error("Treasure room is not open");
-
-        var relicCollection = treasureUI.GetNodeOrNull<NTreasureRoomRelicCollection>("%RelicCollection");
-        if (relicCollection?.Visible != true)
-            return Error("Relic collection is not visible - chest may not be opened yet");
 
         if (!data.TryGetValue("index", out var indexElem))
             return Error("Missing 'index' (relic index)");
 
         int index = indexElem.GetInt32();
 
-        var holders = FindAll<NTreasureRoomRelicHolder>(relicCollection)
-            .Where(h => h.IsEnabled && h.Visible)
-            .ToList();
+        var holders = GetAvailableTreasureRelicHolders(treasure);
+        if (holders.Count == 0)
+            return BlockedAction(new("treasure_not_ready",
+                "No relic can be claimed yet. Check the treasure state.", true));
 
         if (index < 0 || index >= holders.Count)
             return Error($"Relic index {index} out of range ({holders.Count} relics available)");
@@ -1072,24 +1123,10 @@ public static partial class McpMod
 
     private static Creature? ResolveTarget(ICombatState combatState, string entityId)
     {
-        // Try to match by entity_id pattern: "model_entry_N"
-        // First try matching by combat_id if it's a pure number
-        if (uint.TryParse(entityId, out uint combatId))
-            return combatState.GetCreature(combatId);
-
-        // Match by entity_id pattern (e.g., "jaw_worm_0")
-        // We rebuild the entity IDs the same way as BuildEnemyState
-        var entityCounts = new Dictionary<string, int>();
-        foreach (var creature in combatState.Enemies)
+        bool useCombatId = uint.TryParse(entityId, out uint combatId);
+        foreach (var (creature, id) in GetLivingEnemies(combatState))
         {
-            if (!creature.IsAlive) continue;
-            string baseId = creature.Monster?.Id.Entry ?? "unknown";
-            if (!entityCounts.TryGetValue(baseId, out int count))
-                count = 0;
-            entityCounts[baseId] = count + 1;
-            string generatedId = $"{baseId}_{count}";
-
-            if (generatedId == entityId)
+            if (useCombatId ? creature.CombatId == combatId : id == entityId)
                 return creature;
         }
 

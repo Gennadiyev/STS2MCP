@@ -3,9 +3,10 @@
 ## MCP Tool Calling Tips
 
 ### State Polling
-- After `combat_end_turn`, the state may show `is_play_phase: false` or `turn: enemy`. Call `get_game_state` again to advance to the next player turn.
-- Sometimes you need to call `get_game_state` twice — once to see enemy turn results, once to see your new hand.
-- Use `format: "json"` during combat for structured data; `format: "markdown"` for map/event overview.
+- For single-player combat, use `combat_play_sequence` for up to six plays you can plan from the current hand. Supply each card's original index, ID, and target if required. Set `end_turn: true` only if you intend to end the turn after those plays. For a single action, `combat_play_card` and `combat_end_turn` accept `return_state: true`.
+- To start combat or recover after a wait expires, call `get_game_state` with `compact: true` and `wait_for_ready: true`. Check `battle.can_act` before playing. Pile counts remain available in compact mode.
+- After choosing a map node or confirming an in-combat selection, use `return_state: true` to get the destination or settled combat state. Read `battle.warnings` when present before planning more plays.
+- Use `format: "json"` for structured data or `format: "markdown"` for a map or event overview.
 
 ### Card Index Shifting
 - **CRITICAL**: Playing a card removes it from hand and shifts all indices. Play cards from RIGHT to LEFT (highest index first) to keep lower indices stable, or re-check state between plays.

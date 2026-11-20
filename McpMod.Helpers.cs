@@ -5,7 +5,9 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Godot;
+using MegaCrit.Sts2.Core.Combat;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Entities.Creatures;
 using MegaCrit.Sts2.Core.HoverTips;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Nodes.CommonUi;
@@ -16,6 +18,36 @@ namespace STS2_MCP;
 
 public static partial class McpMod
 {
+    private sealed class CombatEnemyIds
+    {
+        internal readonly Dictionary<Creature, string> Ids = new(ReferenceEqualityComparer.Instance);
+        internal readonly Dictionary<string, int> NextIndexByModel = new(StringComparer.Ordinal);
+    }
+
+    private static readonly ConditionalWeakTable<ICombatState, CombatEnemyIds> EnemyIdsByCombat = new();
+
+    private static List<(Creature Creature, string EntityId)> GetLivingEnemies(ICombatState combatState)
+    {
+        var names = EnemyIdsByCombat.GetOrCreateValue(combatState);
+        var living = new List<(Creature, string)>();
+        foreach (var creature in combatState.Enemies)
+        {
+            // Reserve the ID until combat ends, even if the creature leaves the enemy list.
+            if (!names.Ids.TryGetValue(creature, out var entityId))
+            {
+                string modelId = creature.Monster?.Id.Entry ?? "unknown";
+                int nextIndex = names.NextIndexByModel.GetValueOrDefault(modelId);
+                names.NextIndexByModel[modelId] = nextIndex + 1;
+                entityId = $"{modelId}_{nextIndex}";
+                names.Ids.Add(creature, entityId);
+            }
+
+            if (creature.IsAlive)
+                living.Add((creature, entityId));
+        }
+        return living;
+    }
+
     // STS2 v0.107 removed CombatManager.IsPlayPhase. The turn phase now lives per-player on
     // PlayerCombatState.Phase, so these helpers rebuild the old semantics: we're in the play
     // phase when combat is running, it's the player side's turn, and the player is in Play.
@@ -130,10 +162,9 @@ public static partial class McpMod
         return sb.ToString();
     }
 
-    internal static void SendJson(HttpListenerResponse response, object data)
+    internal static void SendJson(HttpListenerResponse response, object data, bool compact = false)
     {
-        string json = JsonSerializer.Serialize(data, _jsonOptions);
-        byte[] buffer = Encoding.UTF8.GetBytes(json);
+        byte[] buffer = JsonSerializer.SerializeToUtf8Bytes(data, compact ? _compactJsonOptions : _jsonOptions);
         response.ContentType = "application/json; charset=utf-8";
         response.ContentLength64 = buffer.Length;
         response.OutputStream.Write(buffer, 0, buffer.Length);

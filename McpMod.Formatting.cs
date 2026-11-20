@@ -313,8 +313,8 @@ public static partial class McpMod
         if (state.TryGetValue("game_over", out var gameOverObj) &&
             gameOverObj is Dictionary<string, object?> gameOver)
         {
-            if (gameOver.TryGetValue("message", out var msg) && msg != null)
-                sb.AppendLine(msg.ToString());
+            if (gameOver.TryGetValue("message", out var msg) && msg is string message)
+                sb.AppendLine($"**{message}**");
             if (gameOver.TryGetValue("options", out var optionsObj) && optionsObj != null)
                 FormatMenuOptionsMarkdown(sb, optionsObj);
         }
@@ -348,8 +348,20 @@ public static partial class McpMod
     {
         string allReady = battle.TryGetValue("all_players_ready", out var ar) ? $" | All Ready: {ar}" : "";
         sb.AppendLine($"**Round {battle["round"]}** | Turn: {battle["turn"]} | Play Phase: {battle["is_play_phase"]}{allReady}");
+        if (battle.TryGetValue("can_act", out var canAct))
+        {
+            if (canAct is true)
+                sb.AppendLine("**Actions ready.**");
+            else if (battle.TryGetValue("action_blocked_message", out var blockedMessage))
+                sb.AppendLine($"**Actions waiting.** {blockedMessage}");
+        }
         sb.AppendLine();
 
+        FormatListSection(sb, "Combat warnings", battle, "warnings", warning =>
+        {
+            string priority = warning.GetValueOrDefault("interrupt_sequence") is true ? "Danger" : "Note";
+            return $"- **{priority} · {warning["name"]}** — {warning["message"]}";
+        });
         if (player != null)
         {
             sb.AppendLine("## Player (You)");
@@ -427,6 +439,13 @@ public static partial class McpMod
 
     private static void FormatDeckPilesMarkdown(StringBuilder sb, Dictionary<string, object?> player)
     {
+        if (!player.ContainsKey("draw_pile"))
+        {
+            sb.AppendLine($"Draw pile: {player["draw_pile_count"]} | Discard: {player["discard_pile_count"]} | Exhaust: {player["exhaust_pile_count"]}");
+            sb.AppendLine();
+            return;
+        }
+
         sb.AppendLine("### Deck Information");
         sb.AppendLine();
 
@@ -585,12 +604,15 @@ public static partial class McpMod
     {
         var actions = shop.GetValueOrDefault("available_actions") as List<Dictionary<string, object?>>;
         var proceed = actions?.FirstOrDefault(action => action.GetValueOrDefault("action") as string == "proceed");
+        var leave = actions?.FirstOrDefault(action => action.GetValueOrDefault("parameter") as string == "leave_shop");
         if (proceed != null)
             sb.AppendLine($"**`proceed`** — {proceed["description"]}");
         else if (shop.GetValueOrDefault("is_open") is true)
             sb.AppendLine("The inventory is open. Wait for the Back button to become available.");
         else
             sb.AppendLine("Wait for the Proceed button to become available.");
+        if (leave != null)
+            sb.AppendLine($"**`proceed` with `leave_shop: true`** — {leave["description"]}");
         sb.AppendLine();
     }
 
@@ -879,6 +901,11 @@ public static partial class McpMod
         if (preview)
         {
             sb.AppendLine("**Preview is showing**");
+            if (cardSelect.TryGetValue("preview_enchantment", out var enchantmentObj) &&
+                enchantmentObj is Dictionary<string, object?> enchantment)
+            {
+                sb.AppendLine($"Enchantment to apply: **{enchantment["name"]}** ({enchantment["amount"]})");
+            }
             if (canConfirm)
                 sb.AppendLine("Use `confirm_selection()` to confirm the preview.");
             if (canCancel)
@@ -1021,15 +1048,15 @@ public static partial class McpMod
             sb.AppendLine();
             sb.AppendLine("Use `treasure_claim_relic(relic_index)` to claim a relic.");
         }
-        else
+        else if (treasure.TryGetValue("message", out var message))
         {
-            sb.AppendLine("Chest is opening...");
+            sb.AppendLine(message?.ToString());
         }
-        sb.AppendLine();
 
-        bool canProceed = treasure.TryGetValue("can_proceed", out var cp) && cp is true;
-        if (canProceed)
-            sb.AppendLine("**Can proceed:** Yes");
+        if (treasure.TryGetValue("can_skip", out var canSkip) && canSkip is true)
+            sb.AppendLine("Use `proceed` to skip relic selection.");
+        if (treasure.TryGetValue("can_proceed", out var canProceed) && canProceed is true)
+            sb.AppendLine("Use `proceed` to move to the map.");
         sb.AppendLine();
     }
 

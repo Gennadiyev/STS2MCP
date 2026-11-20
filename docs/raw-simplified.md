@@ -8,7 +8,7 @@ The API listens on loopback at port `15526`. Game requests require an `Authoriza
 - `POST /api/v1/multiplayer` — perform multiplayer action
 - `GET /api/v1/profile` — read current profile progress
 - `GET /api/v1/compendium` — read Compendium-shaped profile progress
-- `GET /api/v1/wiki` — fuzzy-search discovered card/relic wiki entries
+- `GET /api/v1/wiki` — look up discovered cards and relics, or unlocked characters
 - `GET /api/v1/profiles` — list profile slots
 - `POST /api/v1/profiles` — switch or delete profile slots
 
@@ -79,12 +79,14 @@ When a run is active, the response includes `current_run.run_id` in `{save_scope
 
 Run history is resolved from the active Steam account's profile save root. `current_run.run_id` identifies one concrete attempt; `seed` identifies generated run content and can repeat across attempts.
 
-`GET /api/v1/wiki?query=<text>&item_type=<all|card|relic>&limit=<n>` returns a bounded fuzzy-search result over the active profile's discovered cards and relics. `query` is required because this endpoint is intentionally selective and does not dump the full catalog. `item_type` defaults to `all`, and `limit` defaults to 10 with an internal maximum. Card results include both `base` and `upgraded` objects when the card can be upgraded.
+`GET /api/v1/wiki?query=<text>&item_type=<all|card|relic|character>&limit=<n>` fuzzy-matches a query and returns up to 10 results by default. The default type `all` searches the active profile’s discovered cards and relics. Card results include `base` and `upgraded` objects when the card can be upgraded. Select `character` to look up unlocked characters and their starting stats, deck and relics.
 
 Example searches:
 
 - `/api/v1/wiki?query=ironclad%20perfect%20strike&item_type=card`
 - `/api/v1/wiki?query=silver%20spoon&item_type=relic&limit=5`
+- `/api/v1/wiki?query=regent&item_type=character`
+- `/api/v1/wiki?query=character&item_type=character` for the unlocked roster
 
 `GET /api/v1/profiles` returns the three profile slots:
 

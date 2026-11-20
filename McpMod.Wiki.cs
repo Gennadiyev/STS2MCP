@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using MegaCrit.Sts2.Core.Entities.Cards;
+using MegaCrit.Sts2.Core.Localization;
 using MegaCrit.Sts2.Core.Models;
 using MegaCrit.Sts2.Core.Saves;
 
@@ -54,7 +55,7 @@ public static partial class McpMod
 
         var normalizedItemType = NormalizeWikiItemType(itemType);
         if (normalizedItemType == null)
-            return Error("item_type must be one of: all, card, relic.");
+            return Error("item_type must be one of: all, card, relic, character.");
 
         var discoveredCards = progress.DiscoveredCards
             .Select(id => id.Entry)
@@ -70,6 +71,8 @@ public static partial class McpMod
             candidates.AddRange(BuildCardWikiCandidates(discoveredCards));
         if (normalizedItemType is "all" or "relic")
             candidates.AddRange(BuildRelicWikiCandidates(discoveredRelics));
+        if (normalizedItemType == "character")
+            candidates.AddRange(BuildCharacterWikiCandidates(saveManager.GenerateUnlockStateFromProgress().Characters));
 
         var matches = candidates
             .Select(candidate => new
@@ -91,8 +94,12 @@ public static partial class McpMod
             ["query"] = query,
             ["item_type"] = normalizedItemType,
             ["limit"] = limit,
-            ["scope"] = "active_profile_discovered_cards_and_relics",
-            ["selection_policy"] = "Searches only cards and relics discovered by the active profile, then returns the best fuzzy matches instead of exposing the full catalog.",
+            ["scope"] = normalizedItemType == "character"
+                ? "active_profile_unlocked_characters"
+                : "active_profile_discovered_cards_and_relics",
+            ["selection_policy"] = normalizedItemType == "character"
+                ? "Searches only characters unlocked by the active profile, then returns the best fuzzy matches."
+                : "Searches only cards and relics discovered by the active profile, then returns the best fuzzy matches instead of exposing the full catalog.",
             ["counts"] = new Dictionary<string, object?>
             {
                 ["discovered_cards"] = discoveredCards.Count,
@@ -122,6 +129,7 @@ public static partial class McpMod
             "" or "all" or "any" => "all",
             "card" or "cards" => "card",
             "relic" or "relics" => "relic",
+            "character" or "characters" => "character",
             _ => null
         };
     }
@@ -174,6 +182,26 @@ public static partial class McpMod
         return byId.Values;
     }
 
+    private static IEnumerable<WikiCandidate> BuildCharacterWikiCandidates(IEnumerable<CharacterModel> characters)
+    {
+        foreach (var character in characters)
+        {
+            var id = SafeGetText(() => character.Id.Entry);
+            if (string.IsNullOrWhiteSpace(id))
+                continue;
+
+            var name = SafeGetText(() => character.Title) ?? id;
+            yield return new WikiCandidate(
+                Kind: "character",
+                Id: id,
+                Name: name,
+                SearchText: BuildWikiSearchText("character", id, name),
+                Card: null,
+                Relic: null,
+                Character: character);
+        }
+    }
+
     private static Dictionary<string, object?> BuildWikiResult(WikiCandidate candidate, double score)
     {
         if (candidate.Card != null)
@@ -181,13 +209,39 @@ public static partial class McpMod
         if (candidate.Relic != null)
             return BuildWikiRelicResult(candidate, score);
 
-        return new Dictionary<string, object?>
+        var result = new Dictionary<string, object?>
         {
             ["item_type"] = candidate.Kind,
             ["id"] = candidate.Id,
             ["name"] = candidate.Name,
             ["score"] = Math.Round(score, 3)
         };
+
+        if (candidate.Character is { } character)
+        {
+            result["description"] = SafeGetText(() => new LocString("characters", character.CharacterSelectDesc));
+            result["card_pool_description"] = SafeGetText(() => character.CardsModifierDescription);
+            result["starting_hp"] = character.StartingHp;
+            result["starting_gold"] = character.StartingGold;
+            result["energy_per_turn"] = character.MaxEnergy;
+            result["starting_relics"] = character.StartingRelics.Select(relic => new Dictionary<string, object?>
+            {
+                ["id"] = relic.Id.Entry,
+                ["name"] = SafeGetText(() => relic.Title),
+                ["description"] = SafeGetText(() => relic.DynamicDescription)
+            }).ToList();
+            result["starting_deck"] = character.StartingDeck
+                .GroupBy(card => card.Id.Entry)
+                .Select(cards => new Dictionary<string, object?>
+                {
+                    ["id"] = cards.Key,
+                    ["name"] = SafeGetText(() => cards.First().Title),
+                    ["count"] = cards.Count()
+                })
+                .ToList();
+        }
+
+        return result;
     }
 
     private static Dictionary<string, object?> BuildWikiCardResult(WikiCandidate candidate, double score)
@@ -385,5 +439,6 @@ public static partial class McpMod
         string Name,
         string SearchText,
         CardModel? Card,
-        RelicModel? Relic);
+        RelicModel? Relic,
+        CharacterModel? Character = null);
 }

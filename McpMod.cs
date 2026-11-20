@@ -34,6 +34,7 @@ public static partial class McpMod
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
+    private static readonly JsonSerializerOptions _compactJsonOptions = new(_jsonOptions) { WriteIndented = false };
 
     private static (int Port, bool AllowProfileDelete) LoadConfig()
     {
@@ -147,14 +148,14 @@ public static partial class McpMod
             {
                 var context = _listener.GetContext();
                 // Handle each request asynchronously so we don't block the listener
-                ThreadPool.QueueUserWorkItem(_ => HandleRequest(context));
+                ThreadPool.QueueUserWorkItem(static ctx => _ = HandleRequest(ctx), context, preferLocal: false);
             }
             catch (HttpListenerException) { break; }
             catch (ObjectDisposedException) { break; }
         }
     }
 
-    private static void HandleRequest(HttpListenerContext context)
+    private static async Task HandleRequest(HttpListenerContext context)
     {
         try
         {
@@ -199,9 +200,9 @@ public static partial class McpMod
                 }
 
                 if (request.HttpMethod == "GET")
-                    HandleGetState(request, response);
+                    await HandleGetState(request, response).ConfigureAwait(false);
                 else if (request.HttpMethod == "POST")
-                    HandlePostAction(request, response);
+                    await HandlePostAction(request, response).ConfigureAwait(false);
                 else
                     SendError(response, 405, "Method not allowed");
             }
@@ -377,14 +378,17 @@ public static partial class McpMod
         }
     }
 
-    private static void HandleGetState(HttpListenerRequest request, HttpListenerResponse response)
+    private static async Task HandleGetState(HttpListenerRequest request, HttpListenerResponse response)
     {
         string format = request.QueryString["format"] ?? "json";
+        bool compact = bool.TryParse(request.QueryString["compact"], out bool compactValue) && compactValue;
+        bool wait = bool.TryParse(request.QueryString["wait_for_ready"], out bool waitValue) && waitValue;
 
         try
         {
-            var stateTask = RunOnMainThread(() => BuildGameState());
-            var state = stateTask.GetAwaiter().GetResult();
+            var state = wait
+                ? (await ReadReadyState(compact).ConfigureAwait(false)).State
+                : await RunOnMainThread(() => BuildGameState(compact)).ConfigureAwait(false);
 
             if (format == "markdown")
             {
@@ -395,12 +399,12 @@ public static partial class McpMod
                 catch (Exception ex)
                 {
                     GD.PrintErr($"[STS2 MCP] FormatAsMarkdown failed, returning JSON: {ex}");
-                    SendJson(response, state);
+                    SendJson(response, state, compact);
                 }
             }
             else
             {
-                SendJson(response, state);
+                SendJson(response, state, compact);
             }
         }
         catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
@@ -420,7 +424,7 @@ public static partial class McpMod
         }
     }
 
-    private static void HandlePostAction(HttpListenerRequest request, HttpListenerResponse response)
+    private static async Task HandlePostAction(HttpListenerRequest request, HttpListenerResponse response)
     {
         string body;
         using (var reader = new StreamReader(request.InputStream, request.ContentEncoding))
@@ -452,8 +456,7 @@ public static partial class McpMod
             {
                 var option = parsed.TryGetValue("option", out var optElem) ? optElem.GetString() ?? "" : "";
                 var seed = parsed.TryGetValue("seed", out var seedElem) ? seedElem.GetString() : null;
-                var resultTask = RunOnMainThread(() => ExecuteMenuSelect(option, seed));
-                var result = resultTask.GetAwaiter().GetResult();
+                var result = await RunOnMainThread(() => ExecuteMenuSelect(option, seed)).ConfigureAwait(false);
                 SendJson(response, result);
             }
             catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
@@ -465,9 +468,32 @@ public static partial class McpMod
 
         try
         {
-            var resultTask = RunOnMainThread(() => ExecuteAction(action, parsed));
-            var result = resultTask.GetAwaiter().GetResult();
-            SendJson(response, result);
+            if (action == "play_card_sequence")
+            {
+                SendJson(response, await ExecuteCardSequence(parsed).ConfigureAwait(false), compact: true);
+                return;
+            }
+
+            var wait = (action is "play_card" or "end_turn" or "choose_map_node" or "combat_confirm_selection") &&
+                parsed.TryGetValue("return_state", out var returnState) && returnState.ValueKind == JsonValueKind.True
+                ? new CombatStateWait() : null;
+            var result = await RunOnMainThread(() => ExecuteAction(action, parsed, wait)).ConfigureAwait(false);
+            if (wait != null && result.GetValueOrDefault("status") is "ok")
+            {
+                try
+                {
+                    var ready = await ReadReadyState(compact: true, action: wait).ConfigureAwait(false);
+                    result["state"] = ready.State;
+                    if (ready.TimedOut)
+                        result["state_wait_timed_out"] = true;
+                }
+                catch (Exception ex)
+                {
+                    GD.PrintErr($"[STS2 MCP] Action succeeded but follow-up state failed: {ex}");
+                    result["state_error"] = "The action was accepted. Refresh game state to check the result.";
+                }
+            }
+            SendJson(response, result, compact: wait != null);
         }
         catch (Exception ex) when (ex is not MainThreadQueueTimeoutException)
         {

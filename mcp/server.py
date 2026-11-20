@@ -11,9 +11,11 @@ import os
 import re
 import sys
 from pathlib import Path
+from typing import Annotated
 
 import httpx
 from mcp.server.fastmcp import FastMCP
+from pydantic import BaseModel, ConfigDict, Field
 
 mcp = FastMCP("sts2")
 
@@ -77,14 +79,16 @@ def _get_client() -> httpx.AsyncClient:
     return _http
 
 
-async def _get(params: dict | None = None) -> str:
-    r = await _get_client().get(_sp_url(), params=params)
+async def _get(params: dict | None = None, *, wait_for_ready: bool = False) -> str:
+    timeout = {"timeout": httpx.Timeout(15, connect=10)} if wait_for_ready else {}
+    r = await _get_client().get(_sp_url(), params=params, **timeout)
     r.raise_for_status()
     return r.text
 
 
 async def _post(body: dict) -> str:
-    r = await _get_client().post(_sp_url(), json=body)
+    timeout = {"timeout": httpx.Timeout(20, connect=10)} if body.get("return_state") else {}
+    r = await _get_client().post(_sp_url(), json=body, **timeout)
     r.raise_for_status()
     return r.text
 
@@ -186,18 +190,29 @@ def _handle_error(e: Exception) -> str:
 
 
 @mcp.tool()
-async def get_game_state(format: str = "markdown") -> str:
+async def get_game_state(format: str = "markdown", compact: bool = False, wait_for_ready: bool = False) -> str:
     """Get the current Slay the Spire 2 game state.
 
     Returns the full game state including player stats, hand, enemies, potions, etc.
     The state_type field indicates the current screen (combat, map, event, shop,
     fake_merchant, etc.).
+    For active play, use compact=true and wait_for_ready=true to read hand, intents,
+    and resources in one call. Use return_state=true on card plays and end turns
+    to get the next state with the action receipt.
 
     Args:
         format: "markdown" for human-readable output, "json" for structured data.
+        compact: Keep pile counts and omit individual draw, discard, and exhaust cards.
+        wait_for_ready: Wait up to seven seconds during combat or treasure transitions.
+            Selection prompts and other screens return immediately. Check can_act or treasure readiness on return.
     """
     try:
-        return await _get({"format": format})
+        params = {"format": format}
+        if compact:
+            params["compact"] = "true"
+        if wait_for_ready:
+            params["wait_for_ready"] = "true"
+        return await _get(params, wait_for_ready=wait_for_ready)
     except Exception as e:
         return _handle_error(e)
 
@@ -267,16 +282,17 @@ async def get_compendium() -> str:
 
 @mcp.tool()
 async def search_wiki(query: str, item_type: str = "all", limit: int = 10) -> str:
-    """Search discovered card and relic wiki entries for the active profile.
+    """Look up card, relic, and character knowledge from the game.
 
-    Uses fuzzy matching over profile-unlocked content only, so agents can ask
-    for a card or relic by approximate name without receiving the entire game
-    catalog. Card results include both base and upgraded variants when the card
-    can be upgraded.
+    Card and relic searches use the active profile's discoveries. Upgradable
+    cards include base and upgraded rules, costs, and keywords. Character
+    searches cover unlocked characters and include their localized descriptions,
+    starting stats, deck, and relics.
 
     Args:
-        query: Search text such as "ironclad perfect strike" or "silver spoon".
-        item_type: "all", "card", or "relic".
+        query: A name or ID such as "FALLING_STAR", "silver spoon", or "REGENT".
+            Use "character" with item_type="character" for the unlocked roster.
+        item_type: "all" for cards and relics, or "card", "relic", or "character".
         limit: Maximum results to return. Defaults to 10; the mod clamps it to
             a bounded maximum.
     """
@@ -360,7 +376,7 @@ async def use_potion(slot: int, target: str | None = None) -> str:
 
     Args:
         slot: Potion slot index (as shown in game state).
-        target: Entity ID of the target enemy (e.g. "JAW_WORM_0"). Required for enemy-targeted potions.
+        target: Enemy entity ID from the current combat. Required for enemy-targeted potions.
     """
     body: dict = {"action": "use_potion", "slot": slot}
     if target is not None:
@@ -388,16 +404,19 @@ async def discard_potion(slot: int) -> str:
 
 
 @mcp.tool()
-async def proceed_to_map() -> str:
+async def proceed_to_map(leave_shop: bool = False) -> str:
     """Proceed from the current screen to the map.
 
-    Works from: rewards screen, rest site, shop, fake merchant.
-    If a shop inventory is open, the first call closes it. Check the shop
-    state, then call again when the room is ready to leave.
+    Works from rewards, rest sites, shops, Fake Merchant, and treasure.
+
+    Args:
+        leave_shop: Leave a shop in one call, closing its inventory first if needed.
+            With the default false, an open inventory is only closed.
+
     Does NOT work for events — use event_choose_option() with the Proceed option's index.
     """
     try:
-        return await _post({"action": "proceed"})
+        return await _post({"action": "proceed", "leave_shop": leave_shop})
     except Exception as e:
         return _handle_error(e)
 
@@ -407,13 +426,49 @@ async def proceed_to_map() -> str:
 # ---------------------------------------------------------------------------
 
 
+class PlannedCardPlay(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    card_index: int = Field(ge=0, description="Index in the starting hand, before any of the planned plays.")
+    card_id: str = Field(min_length=1, description="Expected card ID at that index.")
+    target: str | None = Field(default=None, description="Enemy entity ID for a single-target card.")
+
+
 @mcp.tool()
-async def combat_play_card(card_index: int, target: str | None = None) -> str:
+async def combat_play_sequence(
+    plays: Annotated[list[PlannedCardPlay], Field(min_length=1, max_length=6)], end_turn: bool = False
+) -> str:
+    """[Combat] Play a short single-player plan and return the next compact state.
+
+    Use distinct indices and expected card IDs from the starting hand. The game resolves each card before
+    playing the next. A choice, new danger warning, changed enemy roster, unplayable card, or turn change
+    stops the sequence. Read the returned state and submitted prefix before deciding what to do next.
+
+    Args:
+        plays: Up to six plays in the intended execution order.
+        end_turn: End the turn if every play settles and the original turn still accepts input.
+    """
+    try:
+        return await _post({
+            "action": "play_card_sequence",
+            "plays": [play.model_dump(exclude_none=True) for play in plays],
+            "end_turn": end_turn,
+            "return_state": True,
+        })
+    except Exception as e:
+        return _handle_error(e)
+
+
+@mcp.tool()
+async def combat_play_card(card_index: int, target: str | None = None, return_state: bool = False) -> str:
     """[Combat] Play a card from the player's hand.
 
     Args:
         card_index: Index of the card in hand (0-based, as shown in game state).
-        target: Entity ID of the target enemy (e.g. "JAW_WORM_0"). Required for single-target cards.
+        target: Enemy entity ID from the current combat. It stays assigned to that enemy until combat ends.
+            Required for single-target cards.
+        return_state: For consecutive plays, include compact JSON state after effects resolve or a choice opens.
+            If state_wait_timed_out or state_error is returned, refresh state and continue from it.
 
     Note that the index can change as cards are played - playing a card will shift the indices of remaining cards in hand.
     Refer to the latest game state for accurate indices. New cards are drawn to the right, so playing cards from right to left can help maintain more stable indices for remaining cards.
@@ -421,6 +476,8 @@ async def combat_play_card(card_index: int, target: str | None = None) -> str:
     body: dict = {"action": "play_card", "card_index": card_index}
     if target is not None:
         body["target"] = target
+    if return_state:
+        body["return_state"] = True
     try:
         return await _post(body)
     except Exception as e:
@@ -428,10 +485,18 @@ async def combat_play_card(card_index: int, target: str | None = None) -> str:
 
 
 @mcp.tool()
-async def combat_end_turn() -> str:
-    """[Combat] End the player's current turn."""
+async def combat_end_turn(return_state: bool = False) -> str:
+    """[Combat] End the player's current turn.
+
+    Args:
+        return_state: Include compact JSON for the next playable turn or new screen.
+            If state_wait_timed_out or state_error is returned, refresh state and continue from it.
+    """
+    body = {"action": "end_turn"}
+    if return_state:
+        body["return_state"] = True
     try:
-        return await _post({"action": "end_turn"})
+        return await _post(body)
     except Exception as e:
         return _handle_error(e)
 
@@ -458,14 +523,21 @@ async def combat_select_card(card_index: int) -> str:
 
 
 @mcp.tool()
-async def combat_confirm_selection() -> str:
+async def combat_confirm_selection(return_state: bool = False) -> str:
     """[Combat Selection] Confirm the in-combat card selection.
 
     After selecting the required number of cards from hand (exhaust, discard, etc.),
     use this to confirm the selection. Only works when the confirm button is enabled.
+
+    Args:
+        return_state: Include compact JSON after the selection resolves or another choice appears.
+            If state_wait_timed_out or state_error is returned, refresh state before continuing.
     """
+    body: dict = {"action": "combat_confirm_selection"}
+    if return_state:
+        body["return_state"] = True
     try:
-        return await _post({"action": "combat_confirm_selection"})
+        return await _post(body)
     except Exception as e:
         return _handle_error(e)
 
@@ -522,14 +594,19 @@ async def rewards_skip_card() -> str:
 
 
 @mcp.tool()
-async def map_choose_node(node_index: int) -> str:
+async def map_choose_node(node_index: int, return_state: bool = False) -> str:
     """[Map] Choose a map node to travel to.
 
     Args:
         node_index: 0-based index of the node from the next_options list.
+        return_state: Include compact JSON after reaching the destination and its next playable turn or choice.
+            If state_wait_timed_out or state_error is returned, refresh state before continuing.
     """
+    body: dict = {"action": "choose_map_node", "index": node_index}
+    if return_state:
+        body["return_state"] = True
     try:
-        return await _post({"action": "choose_map_node", "index": node_index})
+        return await _post(body)
     except Exception as e:
         return _handle_error(e)
 
@@ -731,8 +808,8 @@ async def relic_skip() -> str:
 async def treasure_claim_relic(relic_index: int) -> str:
     """[Treasure] Claim a relic from the treasure chest.
 
-    The chest is auto-opened when entering the treasure room.
-    After claiming, use proceed_to_map() to continue.
+    State polling opens the chest. Wait for treasure.can_claim before claiming
+    and for treasure.can_proceed before calling proceed_to_map().
 
     Args:
         relic_index: 0-based index of the relic (as shown in game state).
@@ -797,6 +874,8 @@ async def mp_get_game_state(format: str = "markdown") -> str:
     detail for the local player (relics, potions, deck, etc.), along with
     multiplayer-specific data: map votes, event votes, treasure bids,
     end-turn ready status. Only works during a multiplayer run.
+    Wait for battle.can_act before ordinary local combat actions and for the
+    treasure readiness fields before claiming, skipping, or proceeding.
 
     Args:
         format: "markdown" for human-readable output, "json" for structured data.
@@ -816,7 +895,8 @@ async def mp_combat_play_card(card_index: int, target: str | None = None) -> str
 
     Args:
         card_index: Index of the card in hand (0-based).
-        target: Entity ID of the target enemy (e.g. "JAW_WORM_0"). Required for single-target cards.
+        target: Enemy entity ID from the current combat. It stays assigned to that enemy until combat ends.
+            Required for single-target cards.
     """
     body: dict = {"action": "play_card", "card_index": card_index}
     if target is not None:
@@ -859,7 +939,7 @@ async def mp_use_potion(slot: int, target: str | None = None) -> str:
 
     Args:
         slot: Potion slot index (as shown in game state).
-        target: Entity ID of the target enemy. Required for enemy-targeted potions.
+        target: Enemy entity ID from the current combat. Required for enemy-targeted potions.
     """
     body: dict = {"action": "use_potion", "slot": slot}
     if target is not None:
@@ -990,15 +1070,17 @@ async def mp_rewards_skip_card() -> str:
 
 
 @mcp.tool()
-async def mp_proceed_to_map() -> str:
+async def mp_proceed_to_map(leave_shop: bool = False) -> str:
     """[Multiplayer] Proceed from the current screen to the map.
 
-    Works from: rewards screen, rest site, shop, fake merchant.
-    If a shop inventory is open, the first call closes it. Check the shop
-    state, then call again when the room is ready to leave.
+    Works from rewards, rest sites, shops, Fake Merchant, and treasure.
+
+    Args:
+        leave_shop: Leave a shop in one call, closing its inventory first if needed.
+            With the default false, an open inventory is only closed.
     """
     try:
-        return await _mp_post({"action": "proceed"})
+        return await _mp_post({"action": "proceed", "leave_shop": leave_shop})
     except Exception as e:
         return _handle_error(e)
 
