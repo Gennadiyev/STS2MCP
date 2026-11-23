@@ -356,14 +356,14 @@ public static partial class McpMod
     {
         MerchantInventory? inventory = null;
 
-        if (player.RunState.CurrentRoom is MerchantRoom merchantRoom)
+        if (player.RunState.CurrentRoom is MerchantRoom)
         {
             // Regular merchant - auto-open inventory if needed
             var merchUI = NMerchantRoom.Instance;
             if (merchUI?.Inventory != null && !merchUI.Inventory.IsOpen)
                 merchUI.OpenInventory();
             // v0.107 split the merchant into per-player inventories; take the local one.
-            inventory = merchantRoom.GetLocalInventory();
+            inventory = RunManager.Instance.MerchantSynchronizer.GetInventoryFor(player);
         }
         else if (player.RunState.CurrentRoom is EventRoom eventRoom
                  && eventRoom.CanonicalEvent is FakeMerchant
@@ -414,7 +414,7 @@ public static partial class McpMod
             return Error($"Not enough gold (need {entry.Cost}, have {player.Gold})");
 
         // Fire-and-forget purchase (same path as AutoSlay)
-        _ = entry.OnTryPurchaseWrapper(inventory);
+        _ = RunManager.Instance.MerchantSynchronizer.PurchaseLocalEntry(entry);
 
         return new Dictionary<string, object?>
         {
